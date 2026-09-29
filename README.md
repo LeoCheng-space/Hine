@@ -72,3 +72,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the team workflow.
 - Backend B — REST API and database
 - PM / DevOps — architecture, CI/CD, infrastructure, integration
 - QA — integration, E2E, load, regression, and acceptance testing
+
+## 團隊文件入口
+
+請從 [HINE-IC-0.4 文件地圖](docs/README.md) 依角色閱讀。角色 PRD：[Frontend A](docs/prd/frontend-a.md) · [Frontend B](docs/prd/frontend-b.md) · [Backend A](docs/prd/backend-a.md) · [Backend B](docs/prd/backend-b.md) · [DevOps](docs/prd/devops.md) · [QA](docs/prd/qa.md)。
