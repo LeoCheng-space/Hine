@@ -1,0 +1,31 @@
+name: Repository Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  repository-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify required project files
+        run: |
+          test -f README.md
+          test -f CONTRIBUTING.md
+          test -d docs
+          test -d frontend
+          test -d backend
+          test -d infra
+          test -d tests
+
+      - name: Check for common secret files
+        run: |
+          if find . -type f \( -name ".env" -o -name "*.pem" -o -name "*.key" \) -not -path "./.git/*" | grep -q .; then
+            echo "Potential secret file detected."
+            exit 1
+          fi
