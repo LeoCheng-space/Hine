@@ -4,7 +4,7 @@
 **狀態：** 待產品核准  
 **來源：** [歷史來源：HINE-IC-0.4 role PRDs](../HINE-IC-0.4-role-prds.md); 唯一現行介面規格依據為 [共同介面契約](../contracts/interface-contract.md).  
 **角色目的：** 負責主機路由、設定／secret 綁定、交付流程、監控及可重現的驗證環境。本 PRD 規定未來行為與驗收要求，不代表已實作或已完成測試。
-**必讀／串接時查閱：** [共同介面契約](../contracts/interface-contract.md)、[驗收矩陣](../testing/acceptance-matrix.md)；各功能串接見下方 Trace／Handoff。 [返回文件導覽](../README.md)。
+**必讀／串接時查閱：** [系統架構](../architecture/README.md)、[共同介面契約](../contracts/interface-contract.md)、[驗收矩陣](../testing/acceptance-matrix.md)；各功能串接見下方 Trace／Handoff。 [返回文件導覽](../README.md)。
 
 ## 範圍
 

@@ -4,7 +4,7 @@
 **狀態：** 待產品核准  
 **來源：** [歷史來源：HINE-IC-0.4 role PRDs](../HINE-IC-0.4-role-prds.md); 唯一現行介面規格依據為 [共同介面契約](../contracts/interface-contract.md).  
 **角色目的：** 負責唯一的 SessionContext、auth-cookie、個人檔案／聯絡人／群組入口、push-token 與頂層路由。本 PRD 規定未來行為與驗收要求，不代表已實作或已完成測試。
-**必讀／串接時查閱：** [共同介面契約](../contracts/interface-contract.md); [驗收矩陣](../testing/acceptance-matrix.md); [Web/RWD 規格](../ui/web-rwd.md#web-rwd); [決策：Web Push](../decisions.md#decision-web-push); [文件導覽](../README.md)。
+**必讀／串接時查閱：** [系統架構](../architecture/README.md); [共同介面契約](../contracts/interface-contract.md); [驗收矩陣](../testing/acceptance-matrix.md); [Web/RWD 規格](../ui/web-rwd.md#web-rwd); [決策：Web Push](../decisions.md#decision-web-push); [文件導覽](../README.md)。
 
 ## 範圍
 
