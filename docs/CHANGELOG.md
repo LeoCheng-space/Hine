@@ -1,10 +1,18 @@
 # HINE 文件變更紀錄
 
+## 2026-10-01 — PR #3 三項契約一致性修正
+
+- Issue 1：明訂 BB 的 EntityID／text canonical 單位為 JSON 解碼後 Unicode code points（Unicode 碼點），排除 UTF-8 bytes、UTF-16 code units 與 grapheme clusters。僅增加 😀＝1、e 加組合重音＝2 的 BB 案例；FA／FB／BA 不需重現算法，不 trim／normalization 或改內容。
+- Issue 2：所有 Client／其他模組輸入的 EntityID（含 path、欄位、陣列與巢狀參數）先驗結構／長度；超長 INVALID_ARGUMENT 先於資源／授權。同步實際接收 EntityID 的 REST／internal error list 及引用；只輸出 EntityID、只收其他 ID 型別或範圍外操作不機械新增錯誤。
+- Issue 3：結構、輸入合法性、認證／授權、C1 比對、持久化依序；同 C1＋非法 text 先 INVALID_ARGUMENT，合法 World 才 IDEMPOTENCY_CONFLICT，相同合法 Hello 回 existing_same／同 M1。同步 W05／W17、persistIfAbsent、角色／QA／矩陣及原架構圖的順序說明，不新增架構或 A／W／REQ ID。
+- 仍保留首輪登入／一對一／W06／W07／A19、Title 群組前候選、內部保留時間部署待決、分輪治理與模組自由；不改推播、活動租約或群組回條。這是文件修正，尚未產品驗證，也不是 FA／FB／BA／BB 的對接確認。
+- 本輪文件 smoke：14 份相關文件的 1,275 個相對連結／anchor 與 34 個 JSON 區塊通過；A25／W22／REQ22 的 ID 集合及既有 JSON 範例值未增刪或改動，原 32 項 PM 決議正文未改。兩個 BB Unicode 與三個 C1 情境只做 JSON 解碼／資料往返探查，沒有產品後端、WSS、持久化或瀏覽器測試；尚未產品驗證。
+
 ## 2026-10-01 — PM 正式確認首輪限制與後端權威驗證
 
 - PM 已正式確認 EntityID 上限固定為 128、對消費端仍為 opaque string；超長輸入由後端依既有契約回 INVALID_ARGUMENT。text 必須非空，有效範圍固定為 1～4096。
 - Canonical validation 由後端負責；文字最終權威驗證由 BB 在持久化前完成。BA 可驗證 envelope、必要欄位與型別，BB 拒絕後 BA 映射既有 W17 INVALID_ARGUMENT，不持久化、不回成功 W06；前端提示／字數／預先阻擋僅屬 UX。
-- 移除消費端或不同語言必須重現相同計數模型的契約要求與必要驗收；首輪僅以 ASCII 資料驗收 text 空、1、4096／4097 及 EntityID 128／129 邊界。不自動 trim、Unicode normalization 或改變訊息內容。
+- 前輪移除消費端或不同語言必須重現相同計數模型的要求，以 ASCII 資料驗 text 空、1、4096／4097 及 EntityID 128／129；上方本次修正另明訂 BB 專屬單位及兩個最小 BB Unicode 案例，不恢復消費端算法義務。不 trim／normalization 或改內容。
 - Title 1～80 保留 A14／A15 群組串接前候選，`INVALIDATION_RETENTION_SECONDS` 保留部署／維運待決；不阻擋首輪登入與一對一文字聊天。分輪治理與模組內自由維持不變，共同修改僅要求提供方及直接受影響消費方確認。
 - 本次僅同步政策文件、角色交接、導覽、協作／PR 清單與驗收條件；不新增 API／WSS ID，不改其他產品規格。PM 確認不代表 FA／FB／BA／BB 已確認；尚未產品驗證，不宣稱全介面已凍結或產品已實作／測試通過。
 - 本次已執行文件 smoke：13 份文件的 1,192 個相對連結／錨點與 34 個 JSON 區塊通過檢查，六個 ASCII 邊界資料已實際產生並完成 JSON 往返檢查。這是文件／測試資料驗證，不是後端、WSS 或瀏覽器產品測試；尚未產品驗證。

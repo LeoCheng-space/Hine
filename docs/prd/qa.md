@@ -38,7 +38,7 @@
 - **正常流程：** 驗證欄位存在性、null／省略、方法／路徑、status、關聯、授權、排序分頁及事件對應。C8–C14 使用跨語言 Schema／測試樣例驗收：C8 `validateAccess` 可信 `user_id` 用於 W02；C9/C10 已核驗附件版本及對話授權；C11/C12 排序與 REST 分頁；C13 內部身分錯誤分層；C14-S 伺服器權威未讀查詢。A23–A25、W21／W22 本版範圍外，僅保留 ID，不做 Schema／樣例驗收。
 - **失敗流程：** 欄位不符、事件錯配、以摘要代詳細資料或洩漏 subject_id 均為契約失敗。
 - **驗收條件：** 每個消費端參照同一契約並通過對應 Schema／測試樣例；不要求跨語言共用程式碼型別。
-- **首輪長度驗收：** PM 已確認 EntityID 上限 128、text 非空且有效範圍 1～4096；用 ASCII 資料驗收 text 空、1、4096／4097 與 EntityID 128／129。核對 BB 持久化前的最終判定、拒絕時不寫訊息／C1 對應／事件流，以及 BA 映射既有 W17 INVALID_ARGUMENT、不回成功 W06；前端提示僅屬 UX，不驗收跨語言一致計數算法。原訊息不自動 trim／normalization 或轉換。依[首輪條件](../testing/acceptance-matrix.md#first-integration-cases)記錄實際證據；只有文件檢查時明列「尚未產品驗證」。
+- **首輪三項一致性驗收：** 保留 EntityID 128／129、text 空／1／4096／4097 ASCII 邊界；只對 BB 增加 😀＝1、e 加組合重音＝2 的 JSON 解碼後碼點案例。超長 ID 先 INVALID_ARGUMENT，不做存在性／授權；合法但不存在的 A12／A19 ID 才 NOT_FOUND。依「結構 → 輸入合法性 → 認證／授權 → C1 → 持久化」驗同 C1＋5000 ASCII → INVALID_ARGUMENT、合法 World → IDEMPOTENCY_CONFLICT、相同合法 Hello → existing_same／同 M1。拒絕不持久化／不回成功 W06，原內容不 trim／normalization，不驗收消費端一致算法。依[首輪條件](../testing/acceptance-matrix.md#first-integration-cases)留證；尚未產品驗證。
 - **交接：** 結構描述／報告發現交給 [FA-01](frontend-a.md#fa-01)、[FB-01](frontend-b.md#fb-01)、[BA-01](backend-a.md#ba-01)、[BB-01](backend-b.md#bb-01)。
 
 <a id="qa-02--工作階段更新活動與多裝置行為"></a>

@@ -111,7 +111,7 @@ flowchart TB
 
 | 識別碼 | 產生者 | 用途 | 限制 |
 |---|---|---|---|
-| `client_message_id`（C1，UUID） | 傳送端前端 A，每個傳送意圖一次 | 冪等與去重；斷線或 ACK 遺失時沿用 | 同一意圖重試不得換新 C1；同 C1 不同內容回 `IDEMPOTENCY_CONFLICT` |
+| `client_message_id`（C1，UUID） | 傳送端前端 A，每個傳送意圖一次 | 冪等與去重；斷線或 ACK 遺失時沿用 | 同一意圖重試不換 C1；先通過 validation／授權的不同合法內容才 IDEMPOTENCY_CONFLICT，非法 payload 先 INVALID_ARGUMENT |
 | `message_id`（M1，UUID） | 後端 B | 標準訊息 ID；即時、歷史與同步中一致 | — |
 | 訊息 `event_id`（UUID） | 後端 B，於提交時產生 | 即時 W07 與 W16 重播使用同一值，用戶端據此去重 | — |
 | 請求 `event_id`、`correlation_id` | 送出請求的一方 | 回應以 `correlation_id` 對應請求 | 每次嘗試不同，不可取代 C1 |
@@ -173,7 +173,7 @@ sequenceDiagram
   participant PS as Redis Pub/Sub
   participant T as 接收端 Frontend A
   S->>R: W05 message.send（C1）
-  R->>B: authorize 與 persistIfAbsent
+  R->>B: persistIfAbsent（BB 先驗輸入、再認證／授權與 C1）
   B->>DB: 單一交易寫入訊息、C1→M1、各收件者 feed
   DB-->>B: commit
   B-->>R: created 或 existing_same（M1、event_id、order_key、recipient_ids、invalidation_position）
@@ -184,11 +184,12 @@ sequenceDiagram
     PS->>R: 單一實例接收通知
     R->>T: W07 message.created（通過遞送閘門）
   end
-  Note over S,R: ACK 遺失時以同一 C1 重送，取得同一 M1
+  Note over S,R: ACK 遺失以同一 C1／相同合法 payload 重送，取得同一 M1
   Note over PS,T: 發布或轉送遺失時由 W15／W16 補回
 ```
 
 - W06 與 W07 沒有先後保證；前端 A 依 C1 與 `message_id` 合併成同一則可見訊息。
+- 上圖沿用[驗證優先順序](../contracts/interface-contract.md#validation-precedence)：BB 先做結構／輸入合法性，再認證／授權、C1 比對與持久化；BA 不先以 authorize 拒絕而跳過完整 validation。輸入非法回 W17 INVALID_ARGUMENT，不進入上圖成功 ACK／提交後扇出路徑。
 - `persisted` 只代表已持久化，不代表送達或已讀。W08/W09 經 [persistReceipt](../contracts/interface-contract.md#internal-persist-receipt) 寫入後，每次都以 W19 回覆請求者（重複請求可能是 `changed:false`）。W10 只在一對一回條狀態實際改變、`status_event_id` 非 null 時產生；群組不發 W10，保留個別 W08／W09／W19 狀態。見[回條交接](../contracts/interface-contract.md#receipt-projection-handoff)。
 - 單一 realtime 實例透過 Redis Pub/Sub 發布及接收提交後通知；收件者一律採用後端 B 在提交交易內決定的清單，遞送前依 `invalidation_position` 補齊工作階段失效紀錄；不得以快取成員名單或 `authorize` 結果決定收件者（[BA-05](../prd/backend-a.md#ba-05)、[6.6](#flow-invalidation)）。
 

@@ -22,7 +22,7 @@
 - 提供方與直接受影響的消費方；共同確認紀錄。
 - 同步的契約／範例／驗收／實作，以及相關 PR 依賴與共同切換方式。
 - 已執行的驗證與未取得的證據；文件檢查不代表產品串接通過。
-- 涉及 EntityID／text 時，後端負責權威驗證，BB 在持久化前判定文字長度，BA 映射拒絕為 W17 INVALID_ARGUMENT、不回成功 W06；前端提示僅屬 UX，不要求重現相同計數算法。驗收列出 ASCII 邊界，且不轉換原訊息。
+- 涉及 EntityID／text 時，確認 BB 專屬 JSON 解碼後 Unicode code point 單位、外部 EntityID 前置 INVALID_ARGUMENT 與實際接收操作 error list、validation 在認證／授權及 C1 比對之前；列 ASCII、兩個 BB Unicode 與三個 C1 案例。前端／BA 不需重現算法；BB 拒絕由 BA 映射既有 W17、不回成功 W06，不轉換原訊息。
 - 分開記錄 PM 政策確認與直接受影響成員確認；沒有實際證據不替 FA／FB／BA／BB 宣稱已確認。文件／CI 檢查不代表產品測試通過，未執行產品情境須明列「尚未產品驗證」。
 
 

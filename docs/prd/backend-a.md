@@ -62,10 +62,10 @@
 ### BA-03 — 訊息入口與持久化 ACK
 **追溯：** [REQ-06 文字訊息與持久 ACK](../testing/acceptance-matrix.md#req-06), [REQ-07 ACK 遺失、重試與去重](../testing/acceptance-matrix.md#req-07); [W05](../contracts/interface-contract.md#event-w05), [W06](../contracts/interface-contract.md#event-w06), [W07](../contracts/interface-contract.md#event-w07), [W17](../contracts/interface-contract.md#event-w17); [authorize](../contracts/interface-contract.md#internal-authorize), [persistIfAbsent](../contracts/interface-contract.md#internal-persist-if-absent)。
 - **前置條件：** 已驗證的主體、已授權的對話、有效訊息 C1。
-**正常流程：** 驗證 WSS envelope、必要欄位、型別等入口結構、授權並呼叫交易式持久化；文字長度不由 BA 另立權威字數規則，交由 BB 在持久化前最終判定。完整持久化結果產生後才送出 [W06](../contracts/interface-contract.md#event-w06)；將 [W07](../contracts/interface-contract.md#event-w07) 路由至已授權的收件者。每使用者訊息速率為每秒 5 則、突發 10 則（本版設定，未量測）。
+**正常流程：** 驗證 WSS envelope、必要欄位、型別等入口結構，再由 BB 按[驗證優先順序](../contracts/interface-contract.md#validation-precedence)完成 EntityID／text 合法性、認證／授權、C1 比對及持久化；不得先呼叫 authorize 提前拒絕而跳過 BB 的輸入驗證，也不維護另一套權威 text 計數算法。完整持久化結果後才回 [W06](../contracts/interface-contract.md#event-w06)，[W07](../contracts/interface-contract.md#event-w07) 路由至已授權收件者。每使用者訊息速率仍每秒 5、突發 10（未量測）。
 - **失敗流程：** BB 以 INVALID_ARGUMENT 拒絕空字串或超過 4096 的 text 後，BA 映射為既有 W17 INVALID_ARGUMENT、關聯原 W05，不得產生成功 W06。已知回滾時不得產生成功 ACK；結果不明時標示 OUTCOME_UNCONFIRMED；ACK 遺失時以相同 C1 復原。Redis 發布失敗可透過 [W16](../contracts/interface-contract.md#event-w16) 復原。
-- **驗收條件：** ACK 不得早於訊息、C1 對應及必要事件流提交完成。同一 C1 對應至同一 M1／事件；承載資料變更時衝突；超出訊息速率須依 RATE_LIMITED／retry_after_ms 契約處理。
-- **長度交接：** 遵循[BB 權威驗證與 ASCII 邊界](../contracts/interface-contract.md#string-length-counting)；前端 UX 或 BA 結構檢查通過不表示 text 已通過最終驗證。不自動 trim／normalization 或轉換原訊息內容。
+- **驗收條件：** ACK 不得早於訊息、C1 對應及必要事件流提交。先 validation、再認證／授權及 C1：相同 C1＋非法 payload 回 W17 INVALID_ARGUMENT；不同合法 payload 回 IDEMPOTENCY_CONFLICT；相同合法 payload 回原同 M1／existing_same。拒絕不回成功 ACK；訊息速率仍依 RATE_LIMITED／retry_after_ms。
+- **長度交接：** [JSON 解碼後 Unicode code points](../contracts/interface-contract.md#string-length-counting)是 BB canonical 單位，不是 BA 重現算法義務；BB 的 EntityID 前置拒絕及 text 拒絕均沿用 INVALID_ARGUMENT 映射。不 trim／normalization 或轉換原內容。
 - **交接：** [BB-04](backend-b.md#bb-04) 持久化／收件者；[FA-03](frontend-a.md#fa-03) 重試／合併；[QA-04](qa.md#qa-04) 故障案例。
 
 <a id="ba-04"></a>

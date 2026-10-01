@@ -51,7 +51,7 @@
 - **內部實作：** 不改外部可觀察契約的語言、框架、資料結構、狀態管理、檔案安排與演算法，由模組負責人決定；不需逐項取得 PM 的介面批准，仍走一般 PR／Review／CI。
 - **共同介面：** REST、WSS、前端模組交接、後端內部 HTTP，以及會影響其他模組的啟動／部署設定。路徑、事件、欄位、型別、null／省略、錯誤、認證、ACK、排序、游標與冪等語意都不能由單方改定；新增可選欄位亦須讓受影響端確認。
 - **逐輪對齊：** 開始某條串接路徑前，提供方與消費方在同一個任務／PR 確認使用的介面 ID、輸入／輸出、成功／失敗例子、工作值與驗收方式。其他輪的未決項目不阻擋不依賴它的模組開發；實驗介面不得默認為共同基線。
-- **首輪驗證責任：** PM 已確認 EntityID 上限 128、text 非空且有效範圍 1～4096。Canonical validation 由後端負責；BB 在持久化前判定文字長度，BA 只做入口結構檢查並把 BB 拒絕映射為既有 W17 INVALID_ARGUMENT，不持久化／不回成功 W06。前端提示僅屬 UX，不要求各語言重現相同計數算法；邊界用 ASCII 驗收，不自動 trim／normalization 或轉換原內容。完整定義以[權威驗證責任](docs/contracts/interface-contract.md#string-length-counting)為準。
+- **首輪三項一致性：** BB 以 JSON 解碼後 Unicode code points 作 EntityID ≤128、text 非空／1～4096 的 canonical backend 單位，消費端不需重現算法。外部 EntityID 先 validation，超長先 INVALID_ARGUMENT，不查資源／授權；操作依結構、輸入合法性、認證／授權、C1、持久化處理。同 C1＋非法 payload → INVALID_ARGUMENT，合法不同 → IDEMPOTENCY_CONFLICT，相同合法 → existing_same／同 M1；BA 映射既有 W17，拒絕不回成功 W06。前端提示只是 UX，不 trim／normalization 或轉換原內容。完整定義見[BB 單位](docs/contracts/interface-contract.md#string-length-counting)及[優先順序](docs/contracts/interface-contract.md#validation-precedence)。
 
 介面修改沿用既有任務、決策紀錄與 PR，不另設規格平台：
 

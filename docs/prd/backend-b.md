@@ -69,10 +69,10 @@
 ### BB-04 — 交易式訊息、冪等性與持久化事件流
 **追溯：** [REQ-06 文字訊息與持久 ACK](../testing/acceptance-matrix.md#req-06), [REQ-07 ACK 遺失、重試與去重](../testing/acceptance-matrix.md#req-07), [REQ-08 即時廣播與漏送復原（單一 realtime 實例）](../testing/acceptance-matrix.md#req-08), [REQ-14 裝置活動與背景推播（本版範圍外，僅保留追溯）](../testing/acceptance-matrix.md#req-14); [W05](../contracts/interface-contract.md#event-w05), [W06](../contracts/interface-contract.md#event-w06), [W07](../contracts/interface-contract.md#event-w07); [authorize](../contracts/interface-contract.md#internal-authorize), [persistIfAbsent](../contracts/interface-contract.md#internal-persist-if-absent)。
 - **前置條件：** 已授權的傳送者、訊息格式、穩定 C1。
-**正常流程：** 接收 EntityID 的後端操作以固定上限 128 做權威驗證，超長依既有契約回 INVALID_ARGUMENT；EntityID 對消費端仍是 opaque string。BB 在 `persistIfAbsent` 持久化前完成 text 的最終權威長度驗證：非空且有效範圍 1～4096，不以前端 UX 或 BA 結構檢查通過作免驗證依據。合法且已授權時，以交易寫入正式訊息、C1 對應及每位使用者所有必要事件流資料列；傳回 `created` 或 `existing_same` 與持久化結果。每使用者送訊息每秒 5 則、突發 10 則（本版設定，未量測）。不建立推播意圖（本版範圍外，2026-10-01 PM 決議）。
-- **失敗流程：** text 空字串或超過 4096 時回 INVALID_ARGUMENT，不持久化訊息、C1 對應或事件流，不回成功持久化結果；BA 映射 W17 INVALID_ARGUMENT，不回成功 W06。同一 C1 配上不同承載資料時為衝突；區分已知回滾與結果不明；必要資料列提交前絕不寫入成功 ACK 證據。
-- **驗收條件：** 重試傳送會產生相同 M1 與穩定事件 ID；通知經提交後 publish；不含推播供應商派送。
-- **責任與內容：** Canonical validation 由後端負責，不要求消費端或不同語言重現相同計數算法；首輪只以 ASCII 邊界驗收。不自動 trim、Unicode normalization 或改變原訊息內容，詳見[共同責任](../contracts/interface-contract.md#string-length-counting)。
+**正常流程：** 接收 EntityID 的操作先依[共用前置驗證](../contracts/interface-contract.md#entityid-input-validation)驗結構／長度；BB 用 JSON 解碼後 Unicode code points 計 EntityID ≤128、text 非空且 1～4096，不按 UTF-8 bytes、UTF-16 code units 或 grapheme clusters。依[順序](../contracts/interface-contract.md#validation-precedence)先結構與輸入合法性、再認證／授權、C1 比對、持久化；合法且已授權時才原子寫訊息、C1 對應及必要事件流，回 created／existing_same。訊息速率每秒 5、突發 10 不變；不建立推播意圖（本版範圍外）。
+- **失敗流程：** EntityID >128、text 空或超過 4096 先回 INVALID_ARGUMENT，不做資源／授權／C1 比對、不持久化；BA 映射 W17 INVALID_ARGUMENT，無成功 W06。通過 validation 與認證／授權後，同 C1／不同合法 payload 才回 IDEMPOTENCY_CONFLICT；相同合法 payload 回 existing_same／原 M1。區分已知回滾與結果不明，提交前沒有成功 ACK 證據。
+- **驗收條件：** 保留 ASCII 邊界，僅以 😀＝1、e 加組合重音＝2 驗 BB canonical 單位；覆蓋同 C1＋5000 ASCII／合法 World／相同 Hello 三種結果。原事件 ID／提交後 publish 不變，沒有推播派送。
+- **責任與內容：** Canonical 計數只約束 BB，不要求 FA／FB／BA 或其他模組重現算法；不自動 trim、Unicode normalization 或改變原訊息內容。BB 不以前端 UX 或 BA 結構檢查作免驗證依據。
 - **現行規格（C3；2026-10-01 PM 決議）：** `persistIfAbsent` 依 T2 鎖定工作階段列與群組對話列，在交易內計算 `recipient_ids`，並回傳 `invalidation_position` 與 `membership_version`。
 - **交接：** [BA-03](backend-a.md#ba-03) 交易結果；[FA-03](frontend-a.md#fa-03) C1 合併；[QA-04](qa.md#qa-04) 故障結果。
 
