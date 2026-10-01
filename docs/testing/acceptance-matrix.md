@@ -8,7 +8,7 @@
 <a id="first-integration-cases"></a>
 ## 首輪一對一文字串接：共同確認與驗收
 
-依[近期串接基線](../contracts/interface-contract.md#integration-baseline)先對齊下列情境，不要求先驗收整份矩陣。FA／FB／BA／BB 對接確認及產品執行結果尚未取得；本節是可重跑的驗收條件，不是通過報告，也不取消其他需求。
+依[近期串接基線](../contracts/interface-contract.md#integration-baseline)先對齊下列情境，不要求先驗收整份矩陣。首輪 EntityID／text 限制與後端權威驗證責任已由 PM 正式確認；FA／FB／BA／BB 對接確認及產品執行結果尚未取得，尚未產品驗證。本節是可重跑的驗收條件，不是通過報告，也不取消其他需求。
 
 | 範圍／角色 | 操作與必要邊界 | 預期結果與須留存證據 |
 |---|---|---|
@@ -16,7 +16,13 @@
 | A13、openChat；FB／BB／FA | 以另一帳號公開 ID 建立一對一，重複建立；由 FB 把回傳 conversation_id 交 FA | 同一雙人配對只有一個對話；一對一 title／membership_version 為 null；聊天導覽不開第二條 WSS |
 | W03／W04、W05／W06／W07；FA／BA／BB | 各端心跳；送出文字；分別讓 W06 或 W07 先到寄件端 | 同連線 nonce／correlation_id 精確匹配；完整提交後才回 W06。寄件端依 C1／M1 合併，兩端呈現同一 M1 且不重複；sender_id 取可信身分 |
 | W05 冪等與拒絕；FA／BA／BB | 同 C1／同文字重送；同 C1／不同文字重送；以無權對話送出文字 | 同內容回同一 M1，不多寫訊息／事件；改內容回 IDEMPOTENCY_CONFLICT。無權操作依既有拒絕，不回成功 ACK；不觸發整帳號登出 |
-| EntityID／text 邊界；FB／FA／BA／BB | EntityID 128／129 個碼點；W05 text 空字串、1／4096／4097 個 ASCII 或 emoji 碼點；另送 `"e\u0301"` | EntityID 128 在長度上合法、129 回該操作 INVALID_ARGUMENT；UUID／游標不套用該上限。text 1／4096 長度合法，0／4097 回 W17 INVALID_ARGUMENT 且不寫入／不回成功 ACK。😀 算 1、e 加組合重音算 2；仍須通過其他既有驗證 |
+| text 空字串；BB／BA／QA | 在有效授權／工作階段下以 W05 傳送 `text:""`，另直接對 BB 持久化入口傳相同輸入 | BB 拒絕且不持久化訊息、C1 對應或事件流；BA 映射既有 W17 INVALID_ARGUMENT、關聯原 W05，不回成功 W06 |
+| text 長度 1；BB／BA／QA | 以 W05 傳送 ASCII `text:"A"` | 長度驗證接受；仍須通過其他既有驗證，完整原子提交後才回成功 W06 |
+| text 長度 4096；BB／BA／QA | 以 W05 傳送 4096 個 ASCII `"A"` | 長度上合法；仍須通過其他既有驗證與持久化條件 |
+| text 長度 4097；BB／BA／QA | 以 W05 傳送 4097 個 ASCII `"A"`，另直接對 BB 持久化入口傳相同輸入 | BB 回 INVALID_ARGUMENT，不持久化訊息、C1 對應或事件流；BA 映射 W17 INVALID_ARGUMENT，不回成功 W06 |
+| EntityID 長度 128；BB／QA | 對接收 EntityID 的後端操作送出 128 個 ASCII `"a"` | 長度上合法；消費端仍視為 opaque string，不代表資源存在或已授權；UUID／游標不套用該上限 |
+| EntityID 長度 129；BB／QA | 對同一操作送出 129 個 ASCII `"a"` | 後端依該操作既有契約回 INVALID_ARGUMENT，不由前端是否預先阻擋決定 |
+| 權威責任與內容；FB／FA／BA／BB／QA | 不啟用前端長度預檢，經 BA 將結構合法的上述空字串／超長文字送往 BB；使用前後帶空白的合法 ASCII 文字核對保存與接收內容 | 文字長度最終由 BB 判定，BA 不另立權威計數規則；拒絕不能回成功 ACK。前端提示僅屬 UX，不要求重現後端算法；原訊息不自動 trim／normalization 或做其他轉換 |
 | A19 保存核對；FA／BB／QA | 以成功 ACK 的 M1 查歷史，重新載入後再查，並比較 text／order_key | 查到同一 M1 與原文字／排序鍵，不以即時 UI 顯示充當持久化證據；使用既有 REST 清單封套、授權與歷史游標 |
 | 共同變更；直接受影響角色 | 若串接發現欄位／錯誤／工作值須改，依任務／PR 列出新舊差異、受影響端、同步修改與切換方式 | 提供方與受影響消費方共同確認；契約、範例、驗收與實作同改。只有文件時明列尚未產品驗證，不單方改線上格式 |
 

@@ -62,9 +62,10 @@
 ### BA-03 — 訊息入口與持久化 ACK
 **追溯：** [REQ-06 文字訊息與持久 ACK](../testing/acceptance-matrix.md#req-06), [REQ-07 ACK 遺失、重試與去重](../testing/acceptance-matrix.md#req-07); [W05](../contracts/interface-contract.md#event-w05), [W06](../contracts/interface-contract.md#event-w06), [W07](../contracts/interface-contract.md#event-w07), [W17](../contracts/interface-contract.md#event-w17); [authorize](../contracts/interface-contract.md#internal-authorize), [persistIfAbsent](../contracts/interface-contract.md#internal-persist-if-absent)。
 - **前置條件：** 已驗證的主體、已授權的對話、有效訊息 C1。
-**正常流程：** 驗證類型／內容、授權並呼叫交易式持久化；完整持久化結果產生後才送出 [W06](../contracts/interface-contract.md#event-w06)；將 [W07](../contracts/interface-contract.md#event-w07) 路由至已授權的收件者。每使用者訊息速率為每秒 5 則、突發 10 則（本版設定，未量測）。
-- **失敗流程：** 已知回滾時不得產生成功 ACK；結果不明時標示 OUTCOME_UNCONFIRMED；ACK 遺失時以相同 C1 復原。Redis 發布失敗可透過 [W16](../contracts/interface-contract.md#event-w16) 復原。
+**正常流程：** 驗證 WSS envelope、必要欄位、型別等入口結構、授權並呼叫交易式持久化；文字長度不由 BA 另立權威字數規則，交由 BB 在持久化前最終判定。完整持久化結果產生後才送出 [W06](../contracts/interface-contract.md#event-w06)；將 [W07](../contracts/interface-contract.md#event-w07) 路由至已授權的收件者。每使用者訊息速率為每秒 5 則、突發 10 則（本版設定，未量測）。
+- **失敗流程：** BB 以 INVALID_ARGUMENT 拒絕空字串或超過 4096 的 text 後，BA 映射為既有 W17 INVALID_ARGUMENT、關聯原 W05，不得產生成功 W06。已知回滾時不得產生成功 ACK；結果不明時標示 OUTCOME_UNCONFIRMED；ACK 遺失時以相同 C1 復原。Redis 發布失敗可透過 [W16](../contracts/interface-contract.md#event-w16) 復原。
 - **驗收條件：** ACK 不得早於訊息、C1 對應及必要事件流提交完成。同一 C1 對應至同一 M1／事件；承載資料變更時衝突；超出訊息速率須依 RATE_LIMITED／retry_after_ms 契約處理。
+- **長度交接：** 遵循[BB 權威驗證與 ASCII 邊界](../contracts/interface-contract.md#string-length-counting)；前端 UX 或 BA 結構檢查通過不表示 text 已通過最終驗證。不自動 trim／normalization 或轉換原訊息內容。
 - **交接：** [BB-04](backend-b.md#bb-04) 持久化／收件者；[FA-03](frontend-a.md#fa-03) 重試／合併；[QA-04](qa.md#qa-04) 故障案例。
 
 <a id="ba-04"></a>

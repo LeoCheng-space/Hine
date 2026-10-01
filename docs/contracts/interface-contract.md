@@ -2,7 +2,7 @@
 <a id="hine-ic-04--shared-interface-contract"></a>
 # HINE-IC-0.4 — 共用介面契約
 
-**狀態：**HINE-IC-0.4 共用介面契約（2026-10-01 PM 決議與分輪對齊政策）。本文是跨模組溝通的共同依據，不是一次鎖死整份規格；先確認[近期串接基線](#integration-baseline)，其餘介面在相應串接前共同確認。模組內實作可自由選擇，跨模組變更依[共同變更流程](../../CONTRIBUTING.md#interface-changes)辦理。本輪工作值已書面列明，受影響成員確認尚未取得；不宣稱產品已實作、部署或測試。響應式介面見[獨立 Web/RWD 規格](../ui/web-rwd.md#web-rwd)。
+**狀態：**HINE-IC-0.4 共用介面契約（2026-10-01 PM 決議與分輪對齊政策）。本文是跨模組溝通的共同依據，不是一次鎖死整份規格；先確認[近期串接基線](#integration-baseline)，其餘介面在相應串接前共同確認。模組內實作可自由選擇，跨模組變更依[共同變更流程](../../CONTRIBUTING.md#interface-changes)辦理。PM 已正式確認 EntityID／text 上限與後端權威驗證責任，但 FA／FB／BA／BB 對接確認尚未取得；尚未產品驗證，不宣稱產品已實作、部署或測試。響應式介面見[獨立 Web/RWD 規格](../ui/web-rwd.md#web-rwd)。
 
 <a id="1-契約不變條件與提案狀態"></a>
 <a id="1-contract-invariants-and-proposal-status"></a>
@@ -16,7 +16,7 @@
 - `openChat(conversation_id)` 是前端 A 的模組介面，不是 REST 路由或 WSS 事件。前端 B 負責應用程式路由並呼叫它；前端 A 負責掛載／切換聊天 UI，並擁有單一應用程式範圍的 WSS。聊天導覽不會開啟第二個連線。
 <a id="refresh-cookie-roles"></a>**更新憑證 Cookie 與 AccessSession 分工：** 後端 B 在 A02／A03 回應以 `Set-Cookie` 設定 HttpOnly／Secure／SameSite 更新憑證 Cookie，並負責輪替、撤銷與有效性判定；瀏覽器保存該 Cookie，並在同源 A03／A04 請求自動附帶。前端程式碼（FB、FA）無法也不得讀取、複製、保存或記錄 Cookie 值。前端 B 負責 A02／A03／A04 的呼叫時機與流程、SessionContext，以及保存 A02／A03 回傳的 AccessSession；前端 A 只消費 FB 交付的 AccessSession（存取權杖、裝置、世代）建立與替換 WSS。A03 成功後，前端 B 將新的 AccessSession 交給前端 A，後者會關閉舊 WSS 並建立新的 WSS (W01/W02)，並從已儲存的游標繼續。不得在同一連線上重新驗證。A04 會撤銷目前裝置工作階段；登出成功後會清除本機驗證資訊，並通知前端 A 停止其連線。其他裝置不受影響。同一瀏覽器設定檔只允許一個可操作聊天分頁（C5／M1）；分頁鎖政策見前端 PRD。
 - 群組對應：A14/A16 → W11；A15/A17 → W20；A18 → W12。沒有封鎖操作。
-- 已確認／承襲：CC-01 持久化 ACK、C1→M1 冪等性、可安全提交的逐使用者游標、快照續傳及離線復原。C1–C6（其中 C1–C4、C6 依決議改寫）、C8–C14、E1、G1–G3、S1–S2 為現行規則（2026-10-01 PM 決議）；C7、A23–A25、W21/W22、活動租約、推播及相關功能本版範圍外。EntityID／text 採下方本輪工作值；Title 留待群組串接前確認，`INVALIDATION_RETENTION_SECONDS` 另屬內部部署待決事項。分輪交付不取消既有授權、ACK、冪等及保存義務；工作值不是正式環境 SLO。
+- 已確認／承襲：CC-01 持久化 ACK、C1→M1 冪等性、可安全提交的逐使用者游標、快照續傳及離線復原。C1–C6（其中 C1–C4、C6 依決議改寫）、C8–C14、E1、G1–G3、S1–S2 為現行規則（2026-10-01 PM 決議）；C7、A23–A25、W21/W22、活動租約、推播及相關功能本版範圍外。EntityID／text 採下方 PM 已確認限制與後端權威驗證責任；Title 留待群組串接前確認，`INVALIDATION_RETENTION_SECONDS` 另屬內部部署待決事項。分輪交付不取消既有授權、ACK、冪等及保存義務；長度限制不是正式環境 SLO。
 - HINE 用戶端是一個 RWD 響應式 Web 應用程式。前端 A（聊天／即時通訊）和前端 B（驗證／聯絡人／路由）是此單一 Web 應用程式中的功能模組，並非獨立或依裝置區分的應用程式。兩者共用 `SessionContext`、REST API 用戶端、WebSocket 事件、資料模型，以及單一應用程式範圍的 WSS 連線。前端框架與樣式工具由團隊共同選定；本契約不依賴特定框架。本契約不要求原生 App、PWA、安裝功能或完整離線使用；這不取消 W05／W08／W14／W16 既有的[本機保存義務](#local-persistence-boundary)。
 - Web Push 與 iOS／Android 原生推播均為本版範圍外（2026-10-01 PM 決議）。保留開啟網頁時的 WebSocket 即時訊息、聊天內提示與查詢後更新的未讀徽章；關閉網頁後不保證通知。A23／A24 保留 ID，標示本版範圍外；不要求推播工作程序或推播金鑰，不影響核心服務就緒。
 
@@ -30,19 +30,19 @@
 | 帳號與公開身分 | [A01／A02／A05](#api-a01)：註冊不回工作階段；登入回 AccessSession；A02.user_id＝A05.id；首次 device_id 可為 null、回覆使用伺服器核發值 | FB ↔ BB；FA／BA 消費身分 |
 | 前端模組 | [SessionContext／AccessSession](#shared-scalar-types-and-privacy) 與 `openChat(conversation_id)`：FB 管認證／路由，FA 管單一 WSS／聊天室；不自行解讀 Cookie 或另開聊天連線 | FB ↔ FA |
 | 一對一入口與歷史 | [A13](#api-a13) 用 peer_user_id 建立／取得唯一對話；一對一 title／membership_version 為 null；[A19](#api-a19) 用既有 REST 清單封套、歷史游標與 order_key 排序 | FB／FA ↔ BB |
-| WSS 與文字 | [W01–W07](#event-w01)、[W17](#event-w17)：驗證、心跳、文字送出、ACK、接收與錯誤；封套／必填及 null／UUID／correlation_id、C1→M1、text 計數一致；W06／W07 不保證先後 | FA ↔ BA；FB 提供 AccessSession |
-| 後端驗證與寫入 | [validateAccess／authorize／persistIfAbsent](#internal-handoffs)：以可信 user_id 與工作階段綁定處理；BB 原子提交訊息、C1 對應與事件流後，BA 才回 W06；同一 C1 重試得到同一 M1 | BA ↔ BB |
+| WSS 與文字 | [W01–W07](#event-w01)、[W17](#event-w17)：驗證、心跳、文字送出、ACK、接收與錯誤；封套／必填及 null／UUID／correlation_id、C1→M1 一致；前端長度提示僅屬 UX，最終判定依 BB；W06／W07 不保證先後 | FA ↔ BA；FB 提供 AccessSession |
+| 後端驗證與寫入 | [validateAccess／authorize／persistIfAbsent](#internal-handoffs)：以可信 user_id 與工作階段綁定處理；BB 在持久化前做權威文字長度驗證，拒絕時 BA 映射 W17 INVALID_ARGUMENT、不回成功 W06；BB 原子提交訊息、C1 對應與事件流後 BA 才回 W06；同一 C1 重試得到同一 M1 | BA ↔ BB |
 | 提交後傳遞 | [publishCommitted](#internal-publish-committed) 的 HTTP／JSON、服務身分與單一 Redis Pub/Sub 路徑；收件者由 BB 在提交時決定，不以快取或用戶端 sender_id 決定 | BB ↔ BA；DO 提供私有路由／設定 |
 
 **共用格式：** 上表引用的 REST／WSS 封套、路徑、欄位、型別、可省略／null、狀態碼、錯誤分流、授權、排序與冪等語意使用本文同一份定義；不得各自另訂線上格式。內部 HTTP 亦適用，不只公開 API。
 
-**本輪工作值：** EntityID 上限 128 個 Unicode 碼點；文字 text 為 1–4096 個 Unicode 碼點。這兩項是近期對接的共同預設值，並非不可修改；受影響成員確認或提出共同修訂後，依變更流程留下紀錄。Title 的 1–80 候選不阻擋一對一 title:null，必須在 A14／A15 群組串接前確認。
+**本輪 PM 已確認規則：** EntityID 上限固定為 128，對前端與其他消費端仍是 opaque string，不解析內部格式；超長輸入由後端依既有契約拒絕為 INVALID_ARGUMENT。文字 text 必須非空，有效範圍固定為 1～4096；空字串或超長由 BB 在持久化前拒絕，再由 BA 映射 W17 INVALID_ARGUMENT，不得持久化或回成功 W06。權威驗證責任見[長度驗證](#string-length-counting)，不要求各語言自行重現同一算法。Title 的 1–80 候選不阻擋一對一 title:null，必須在 A14／A15 群組串接前確認；將來若修改已確認規則，仍走共同變更流程。
 
 **模組內自由：** 語言、框架、內部類別／函式、資料結構、狀態管理、檔案安排與演算法由負責人決定，不需逐項請 PM 批准；仍須符合既有功能／安全要求及單一 Web 交付。若改動會讓其他模組更換輸入、解析、錯誤處理、呼叫或部署方式，就屬共同介面變更，不是內部自由。
 
 **後續分輪：** 聯絡人、群組／Title、附件、回條及完整重連／同步驗收，在各輪串接前確認相關介面、例子、對接人與預期結果；不要求先簽核整份文件才開始模組開發。既有規則仍適用，不能以「尚未本輪驗收」推論可以自行改格式或略過安全／保存義務；A23–A25、W21／W22 的範圍外狀態不變。
 
-**紀錄：** 政策日期為 2026-10-01；來源基準為 `main` 的 `17c25ec`，本次書面修訂透過 `docs/incremental-interface-baseline` 分支交付，以該分支提交紀錄追溯；合併前不宣稱 `main` 已更新。PM 已要求分輪共同對齊；FA／FB／BA／BB 的本輪確認尚未取得，不標示為全員凍結完成。各輪對接確認、變更 PR 與合併提交依[決策治理](../decisions.md#incremental-interface-governance)記錄；驗收見[首輪條件](../testing/acceptance-matrix.md#first-integration-cases)。
+**紀錄：** 政策日期為 2026-10-01；來源基準為 `main` 的 `17c25ec`，本次書面修訂透過 `docs/incremental-interface-baseline` 分支交付，以該分支提交紀錄追溯；合併前不宣稱 `main` 已更新。PM 已正式確認首輪限制與驗證責任，分輪共同對齊政策不變；FA／FB／BA／BB 的對接確認尚未取得，不標示為全員凍結完成。各輪對接確認、變更 PR 與合併提交依[決策治理](../decisions.md#incremental-interface-governance)記錄；驗收見[首輪條件](../testing/acceptance-matrix.md#first-integration-cases)。
 
 <a id="data-dictionary"></a>
 <a id="2-common-formats-errors-ids-and-projections"></a>
@@ -94,13 +94,13 @@ W17 是錯誤容器，不是「刷新」命令。FA／FB 先以 `correlation_id`
 <a id="shared-scalar-types-and-privacy"></a>
 ### 共用純量型別與隱私
 
-- `EntityID`：不透明的伺服器簽發 JSON 字串，本輪工作上限 128 個 Unicode 碼點（見[字元計數](#string-length-counting)與[近期基線](#integration-baseline)）；不一定是 UUID。`message_id`、`client_message_id` 和 `event_id` 以外的 ID 都是不透明字串。
+- `EntityID`：不透明的伺服器簽發 JSON 字串，PM 已確認上限 128；後端負責[權威長度驗證](#string-length-counting)，超長輸入依既有契約回 INVALID_ARGUMENT。不一定是 UUID；前端與其他消費端不得解析內部格式。`message_id`、`client_message_id` 和 `event_id` 以外的 ID 都是不透明字串。
 - `DeviceID`：伺服器核發的不透明識別碼，僅作裝置／本機資料分區識別，不是登入憑證。同帳號、同瀏覽器且本機 DeviceStore 尚在時重用；清除網站資料、遺失儲存或重新安裝後視為新裝置重新核發；不做指紋或舊裝置找回。切換帳號須重新驗證並使用該帳號自己的綁定與儲存分區；同一瀏覽器設定檔同時一帳號、一個可操作分頁。
 - 公開的 `user_id` 和內部的 `subject_id` 是不同的身分型別。後端 B 會進行對應；`subject_id` 絕不是用戶端欄位。
 - `UUID`：UUID 字串；`message_id`、`client_message_id`、`event_id` 和回應關聯 ID 必填。
 - `Timestamp`：ISO-8601 UTC 字串；具權威性的時間戳記由伺服器產生。
 - `OpaqueCursor`：由伺服器簽發的不透明字串，與使用者／事件流世代或其 REST 查詢綁定；無法解碼，也不能用於授權存取。
-- `Title`：字串；1–80 個 Unicode 碼點仍是群組串接前的候選，依[字元計數](#string-length-counting)。不阻擋本輪一對一的 title:null，不宣稱已取得群組對接確認。
+- `Title`：字串；1–80 限制仍是群組串接前的候選，待 A14／A15 相關成員確認。不阻擋本輪一對一的 title:null，不宣稱已取得群組對接確認。
 - `UserSummary`：`{id:EntityID,display_name:string,avatar_attachment_id:EntityID|null}`；所有欄位皆必填。若頭像不存在或不可見，則為 null。摘要不包含電子郵件。
 - `UserProfile`：包含所有 UserSummary 欄位，另加必填的 `email:string`；只有本人和後端 B 可以查看電子郵件。密碼只會出現在 A01/A02 請求中，絕不會出現在回應、記錄或 WSS 訊框中。
 - `AccessSession`：`{access_token:string,expires_at:Timestamp,user_id:EntityID,device_id:DeviceID,session_generation:int}`；所有欄位皆必填／不可為 null。更新憑證是 HTTP-only Secure/SameSite Cookie，絕不會以 JSON 傳送；由後端 B 以 `Set-Cookie` 設定、瀏覽器管理，前端程式碼無法讀取（見[分工](#refresh-cookie-roles)）。A01 僅回傳 UserProfile；A02/A03 回傳 AccessSession。
@@ -108,20 +108,27 @@ W17 是錯誤容器，不是「刷新」命令。FA／FB 先以 `correlation_id`
 - 內部 JWT 主體 `subject_id` 會在伺服器端映射為公開的 `user_id`；絕不會從用戶端接受或傳回。DeviceID 用於識別已綁定的裝置，不是憑證。
 
 <a id="string-length-counting"></a>
-#### 字元計數：跨語言共用規則
+#### 長度驗證責任與 ASCII 邊界
 
-EntityID、Title、text 的長度按 JSON 解碼後的 Unicode 碼點計算，不按 UTF-8 位元組、UTF-16 碼元或畫面上的字素叢集計算；不在計數前自動 trim 或 Unicode 正規化。JavaScript 可用 `Array.from(value).length`，Python 可用 `len(value)` 計算有效 Unicode 字串；其他語言採等價計數，實作方式不強制一致。
+Canonical validation 統一由後端負責；EntityID 上限固定為 128，text 必須非空且在 1～4096 範圍內。前端可做輸入提示、字數顯示或預先阻擋，但僅屬 UX，不是契約上的權威驗證，後端結果才是最終判定。本契約不要求前端、BA 或其他語言模組重現同一字元計數算法，也不把特定字元計數模型列為跨模組要求。
 
-| JSON 字串範例 | Unicode 碼點數 | 本輪文字結果 |
+- **BB：** 接收 EntityID 的後端操作拒絕超過 128 的輸入，依既有契約回 INVALID_ARGUMENT；文字的最終權威長度驗證由 BB 在 `persistIfAbsent` 持久化前完成。text 空字串或超過 4096 時不持久化，不回成功持久化結果；不能以 BA 或前端預先通過當成免驗證依據。
+- **BA：** 可驗證 WSS envelope、必要欄位、型別等入口結構；不另立一套權威文字字數規則。BB 拒絕後，BA 將其 INVALID_ARGUMENT 映射為既有 W17 INVALID_ARGUMENT，關聯原 W05，不得產生成功 W06 ACK。
+- **消費端：** EntityID 仍是 opaque string；前端提示或字數顯示不能取代後端判定，也不要求不同語言的消費端計數一致。
+- **內容保存：** 不因長度驗證自動 trim、Unicode normalization 或做其他尚未決定的文字轉換；保留原訊息內容。
+
+首輪使用 ASCII 資料核對下列邊界，不引入額外的跨語言計數模型：
+
+| 輸入 | ASCII 測試資料 | 長度判定與拒絕交接 |
 |---|---|---|
-| `""` | 0 | 不接受：W05 回 W17 INVALID_ARGUMENT，不寫入／不回成功 ACK |
-| `"A"` | 1 | 在文字長度範圍內 |
-| `"\uD83D\uDE00"`（😀） | 1 | 在文字長度範圍內；不是 2 個 UTF-16 碼元 |
-| `"e\u0301"`（e 加組合重音） | 2 | 在文字長度範圍內，不先正規化成單一碼點 |
-| 4096 個 `"A"` 或 4096 個 `"😀"` | 4096 | 長度合法；仍須通過其他既有驗證 |
-| 4097 個 `"A"` 或 4097 個 `"😀"` | 4097 | 不接受：W05 回 W17 INVALID_ARGUMENT，不寫入／不回成功 ACK |
+| text 空字串 | `""` | BB 拒絕；不持久化，BA 回 W17 INVALID_ARGUMENT，不回成功 W06 |
+| text 長度 1 | `"A"` | 長度上接受；仍須通過其他既有驗證及原子提交後才回成功 W06 |
+| text 長度 4096 | 4096 個 `"A"` | 長度上合法；仍須通過其他既有驗證 |
+| text 長度 4097 | 4097 個 `"A"` | BB 拒絕；不持久化，BA 回 W17 INVALID_ARGUMENT，不回成功 W06 |
+| EntityID 長度 128 | 128 個 `"a"` | 長度上合法，不代表該資源存在或已授權 |
+| EntityID 長度 129 | 129 個 `"a"` | 後端依該操作既有契約回 INVALID_ARGUMENT |
 
-超過 EntityID 本輪上限的輸入依各操作既有 INVALID_ARGUMENT 處理；UUID、OpaqueCursor 不套用 EntityID 上限。Title 邊界在群組輪共同確認後才列入該輪驗收。
+UUID、OpaqueCursor 不套用 EntityID 上限。Title 邊界在群組輪共同確認後才列入該輪驗收。以上是文件驗收條件，尚未產品驗證。
 
 <a id="user-conversation-and-membership-types"></a>
 ### 使用者、對話與成員資格型別
@@ -137,7 +144,7 @@ EntityID、Title、text 的長度按 JSON 解碼後的 Unicode 碼點計算，�
 <a id="messages-receipts-attachments-and-sync"></a>
 ### 訊息、回條、附件與同步
 
-- `MessageView`（A19）：必填且非 null 的 `id:UUID,event_id:UUID,conversation_id:EntityID,sender_id:EntityID,created_at:Timestamp,order_key:20 位 ASCII 數字字串,type:"text"|"image"|"file"`；必填但**可為 null** 的 `receipt:ReceiptProjection|null`（無可見一對一回條或群組回條不適用時為 null，不可省略）。若為文字訊息，必填 `text:string`（本輪工作範圍 1–4096 個 Unicode 碼點，依[字元計數](#string-length-counting)），並省略 `attachment_id`。若為圖片／檔案訊息，必填 `attachment_id:EntityID`，並省略 `text`。可省略的 `client_message_id:UUID` 僅原始寄件者可見。`order_key` 不是同步游標；編碼／比較見[排序規則](#ordering-pagination)。
+- `MessageView`（A19）：必填且非 null 的 `id:UUID,event_id:UUID,conversation_id:EntityID,sender_id:EntityID,created_at:Timestamp,order_key:20 位 ASCII 數字字串,type:"text"|"image"|"file"`；必填但**可為 null** 的 `receipt:ReceiptProjection|null`（無可見一對一回條或群組回條不適用時為 null，不可省略）。若為文字訊息，必填 `text:string`（PM 已確認非空且有效範圍 1～4096，BB 在持久化前做[權威長度驗證](#string-length-counting)），並省略 `attachment_id`。若為圖片／檔案訊息，必填 `attachment_id:EntityID`，並省略 `text`。可省略的 `client_message_id:UUID` 僅原始寄件者可見。`order_key` 不是同步游標；編碼／比較見[排序規則](#ordering-pagination)。
 - `MessageSnapshot` 具有與 MessageView 相同的欄位和可見性，並代表完整的近期內容。W07/W16 將頂層 event_id→MessageView.event_id、`timestamp`→`created_at`、conversation_id 和 sender_id 對應至相應欄位，並將 `payload.message_id`→MessageView.id。W07 的 C1 僅限寄件者。
 - `ReceiptProjection` 僅為一對一回條 `{kind:"direct",message_id:UUID,recipient_id:EntityID,status:"delivered"|"read",updated_at:Timestamp}`；群組 `MessageView.receipt`／`MessageSnapshot.receipt` 為 null，本版不做群組彙總。後端會儲存每位收件者的個別狀態；待處理是用戶端 UI 狀態，不是已儲存的回條值。
 - `AttachmentView` (A21)：必填且不可為 null 的 `id:EntityID,scope:"avatar"|"conversation",uploader_id:EntityID,kind:"image"|"file",filename:string,content_type:string,size_bytes:int>0,sha256:string`（64 個十六進位字元）、`state:"pending"|"ready",created_at:Timestamp`；必要但**可為 null** 的 `conversation_id:EntityID|null`。`scope=avatar` 必須明確指定 null 對話、`image` 類型及擁有者上傳者。對話範圍必須指定非 null 對話，並於建立／下載時檢查成員資格。僅支援 JPEG、PNG、PDF，最多 10,485,760 bytes，檔名 1–255 Unicode 字元；GCS 物件金鑰不會公開；A21 是擁有者完成上傳，不是收件者中繼資料查詢。
@@ -239,7 +246,7 @@ A20 對話上傳請求變體：
 | <a id="event-w02"></a>W02 `auth.accepted` | S→C，與 W01 關聯：`{user_id:EntityID,device_id:DeviceID,expires_at:Timestamp,session_generation:int,heartbeat_interval_seconds:int,heartbeat_timeout_seconds:int}` | 公開身分與工作階段世代；本版心跳間隔 30 秒、逾時 90 秒。無游標影響。 |
 | <a id="event-w03"></a>W03 `heartbeat.ping` | C→S `{nonce:string}` | `nonce` 必須非空；僅用於連線存活檢查，不會續期 JWT。[精確比對](#heartbeat-nonce)。 |
 | <a id="event-w04"></a>W04 `heartbeat.pong` | S→C，與 W03 關聯 `{nonce:string}` | 回傳完全相同的 `nonce`，並與此連線上尚待回應的 W03 關聯；逾時只會關閉此連線。[比對規則](#heartbeat-nonce)。 |
-| <a id="event-w05"></a>W05 `message.send` | C→S，頂層 `conversation_id`；`{client_message_id,type:"text"\|"image"\|"file",text? \| attachment_id?}` | 文字訊息只能包含 `text`；圖片／檔案訊息只能包含 `attachment_id`。同一 C1／相同承載資料可冪等處理；不同承載資料則衝突。 |
+| <a id="event-w05"></a>W05 `message.send` | C→S，頂層 `conversation_id`；`{client_message_id,type:"text"\|"image"\|"file",text? \| attachment_id?}` | 文字訊息只能包含 `text`，非空且長度 1～4096 的最終權威驗證由 BB 在持久化前完成；空或超長不寫入，BA 映射 W17 INVALID_ARGUMENT，不回成功 W06。圖片／檔案訊息只能包含 `attachment_id`。同一 C1／相同承載資料可冪等處理；不同承載資料則衝突。 |
 | <a id="event-w06"></a>W06 `message.ack` | S→C，與目前的 W05 相關聯，頂層 `conversation_id`；`{client_message_id,message_id,status:"persisted"}` | 僅在完整原子持久化後傳送；可能因中斷連線而遺失。 |
 | <a id="event-w07"></a>W07 `message.created` | S→C，頂層 `conversation_id,sender_id`；`{message_id,client_message_id?,type,text? \| attachment_id?,order_key}` | 傳送給已授權的收件者；C1 僅傳送給寄件者。事件流重播時 event_id 穩定。即時事件永不推進游標。 |
 | <a id="event-w08"></a>W08 `message.received` | C→S，頂層 `conversation_id`；`{message_id}` | 收件端把該訊息及後續同步／去重所需的識別資訊（至少 `message_id`、`conversation_id`）持久保存到本機後才傳送；不需先取得伺服器回條。回應為 W19；具冪等性。 |
@@ -339,11 +346,11 @@ W03／W04 的 `nonce` 必填、非 null、非空 JSON 字串。發送端每次 W
 <a id="5-backend-a--backend-b-internal-contracts"></a>
 ## 5. 後端 A ↔ 後端 B 內部契約
 
-這些是模組契約，不是公開端點，也不要求採用特定微服務架構。後端 A 會傳遞已驗證的主體／裝置資訊和請求關聯資訊；後端 B 會在每個變更資料的交易中重新檢查授權。將內部故障對應至共用的公開代碼，但不要暴露資料表名稱／私有欄位。
+這些是模組契約，不是公開端點，也不要求採用特定微服務架構。後端 A 會傳遞已驗證的主體／裝置資訊和請求關聯資訊；後端 B 會在每個變更資料的交易中重新檢查授權，並負責[權威長度驗證](#string-length-counting)。接收 EntityID 的後端操作以既有 INVALID_ARGUMENT 拒絕超長輸入；文字拒絕由 BA 映射 W17 INVALID_ARGUMENT，不回成功 ACK。將內部故障對應至共用的公開代碼，但不要暴露資料表名稱／私有欄位。
 
 1. <a id="internal-validate-access"></a>`validateAccess(access_token:string,device_id:DeviceID)` → `{subject_id:EntityID,user_id:EntityID,session_id:EntityID,session_generation:int,expires_at:Timestamp,session_valid:boolean,invalidation_position:int}`。錯誤：UNAUTHENTICATED、DEPENDENCY_UNAVAILABLE。檢查簽章、簽發者／受眾、裝置綁定及撤銷狀態；`user_id` 為同次驗證取得的可信公開身分，`invalidation_position` 為驗證快照中的失效位置。
 2. <a id="internal-authorize"></a>`authorize(subject_id:EntityID,device_id:DeviceID,session_id:EntityID,session_generation:int,action:"send"|"receive"|"read"|"history"|"attachment"|"manage_group",resource_type:"conversation"|"message"|"attachment",resource_id:EntityID)` → `{allowed:boolean,authorization_version:EntityID}`。錯誤：UNAUTHENTICATED、FORBIDDEN、NOT_FOUND、DEPENDENCY_UNAVAILABLE。僅供預先檢查；變更交易必須重新檢查，並驗證工作階段綁定。
-3. <a id="internal-persist-if-absent"></a>`persistIfAbsent(subject_id:EntityID,device_id:DeviceID,session_id:EntityID,session_generation:int,conversation_id:EntityID,client_message_id:UUID,type:"text"|"image"|"file",payload:{text:string}|{attachment_id:EntityID},request_event_id:UUID)` → 恰好回傳 `created|existing_same` 其中之一，並附上 `{message_id:UUID,event_id:UUID,order_key:string,created_at:Timestamp,recipient_ids:EntityID[],status:"persisted",invalidation_position:int,membership_version:int|null}`。錯誤：UNAUTHENTICATED、FORBIDDEN、IDEMPOTENCY_CONFLICT、PERSISTENCE_FAILED、OUTCOME_UNCONFIRMED、DEPENDENCY_UNAVAILABLE。相同 C1／不同本文會觸發 IDEMPOTENCY_CONFLICT。訊息、C1 對應及每位必要收件者的事件流項目須在 W06 前原子提交。
+3. <a id="internal-persist-if-absent"></a>`persistIfAbsent(subject_id:EntityID,device_id:DeviceID,session_id:EntityID,session_generation:int,conversation_id:EntityID,client_message_id:UUID,type:"text"|"image"|"file",payload:{text:string}|{attachment_id:EntityID},request_event_id:UUID)` → 恰好回傳 `created|existing_same` 其中之一，並附上 `{message_id:UUID,event_id:UUID,order_key:string,created_at:Timestamp,recipient_ids:EntityID[],status:"persisted",invalidation_position:int,membership_version:int|null}`。錯誤：INVALID_ARGUMENT、UNAUTHENTICATED、FORBIDDEN、IDEMPOTENCY_CONFLICT、PERSISTENCE_FAILED、OUTCOME_UNCONFIRMED、DEPENDENCY_UNAVAILABLE。BB 在持久化前執行權威文字長度驗證；text 空字串或超過 4096 時回 INVALID_ARGUMENT，不持久化、不回成功結果；BA 映射 W17 INVALID_ARGUMENT，不回成功 W06。相同 C1／不同本文會觸發 IDEMPOTENCY_CONFLICT。訊息、C1 對應及每位必要收件者的事件流項目須在 W06 前原子提交。
 4. <a id="internal-persist-receipt"></a>`persistReceipt(subject_id:EntityID,device_id:DeviceID,session_id:EntityID,session_generation:int,conversation_id:EntityID,message_id:UUID,kind:"delivered"|"read",request_event_id:UUID)` → `{message_id:UUID,status:"delivered"|"read",changed:boolean,updated_at:Timestamp,status_event_id:UUID|null,invalidation_position:int,observer_ids:EntityID[],membership_version:int|null}`。錯誤：UNAUTHENTICATED、FORBIDDEN、NOT_FOUND、PERSISTENCE_FAILED、OUTCOME_UNCONFIRMED、DEPENDENCY_UNAVAILABLE。狀態只能單向遞進；未變更的重複請求不會建立新的狀態事件；`status_event_id` 非 null 時 `observer_ids` 是 W10 收件者，否則為空陣列。
 5. <a id="internal-read-bootstrap"></a>`readBootstrap(subject_id:EntityID,session_id:EntityID,session_generation:int,reason:"first_login"|"cursor_reset",snapshot_id?:EntityID,page_token?:OpaqueCursor)` → SyncBootstrapPage。錯誤：UNAUTHENTICATED、FORBIDDEN、CURSOR_INVALID、SYNC_RESET_REQUIRED、DEPENDENCY_UNAVAILABLE。快照狀態／最新位置會在短暫的 REPEATABLE READ 交易中一致讀取；分頁期間不可讓交易跨越網路請求。每頁前都要驗證工作階段與授權；快照過期時應重新開始，而非混用不同快照。
 6. <a id="internal-read-feed"></a>`readFeed(subject_id:EntityID,session_id:EntityID,session_generation:int,cursor:OpaqueCursor,snapshot_boundary?:OpaqueCursor,limit:int)` → SyncBatch。錯誤：UNAUTHENTICATED、FORBIDDEN、CURSOR_INVALID、SYNC_RESET_REQUIRED、DEPENDENCY_UNAVAILABLE。固定延續邊界；可見與隱藏位置都要掃描；回傳已授權內容及最精簡的自身撤銷通知；不得讓一個已撤銷的對話阻塞事件流中其他位置。每頁重新驗證工作階段與授權。
@@ -838,5 +845,5 @@ A18 提交後由後端 B 傳給 `publishCommitted` 的群組通知（被移除�
 <a id="7-待定產品決策與變更紀錄"></a>
 <a id="7-pending-product-decisions-and-change-ledger"></a>
 ## 本版決議狀態與變更紀錄
-本版決策狀態（2026-10-01 PM 決議）：C1–C6（C1–C4 改寫、C5 保留、C6 改寫）、C8–C14、E1、G1–G3、S1–S2 已整合為現行規格；C7、A23–A25、W21／W22、活動租約、推播（Web 與原生）為本版範圍外。A01–A25、W01–W22 ID 保留；A18 是成員移除／退出，不是封鎖。EntityID／text 採[本輪工作值](#integration-baseline)，Title 待群組串接前共同確認，`INVALIDATION_RETENTION_SECONDS` 另屬內部部署待決事項。介面可依共同流程修改，不宣稱整份規格已凍結、產品已實作、部署或測試。
+本版決策狀態（2026-10-01 PM 決議）：C1–C6（C1–C4 改寫、C5 保留、C6 改寫）、C8–C14、E1、G1–G3、S1–S2 已整合為現行規格；C7、A23–A25、W21／W22、活動租約、推播（Web 與原生）為本版範圍外。A01–A25、W01–W22 ID 保留；A18 是成員移除／退出，不是封鎖。EntityID／text 採[PM 已確認限制與驗證責任](#integration-baseline)，Title 待群組串接前共同確認，`INVALIDATION_RETENTION_SECONDS` 另屬內部部署待決事項。介面可依共同流程修改，不宣稱整份規格已凍結或 FA／FB／BA／BB 已確認；尚未產品驗證。
 變更紀錄：持久化 ACK、C1 冪等性、游標／快照／同步核心語義維持不變；整合決議不重編 A／W／REQ／功能 ID。

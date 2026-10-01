@@ -17,13 +17,13 @@
 
 **整合查找順序：** 先查[共用介面契約](contracts/interface-contract.md)，再查[依需求編列的驗收矩陣](testing/acceptance-matrix.md)、[決策登錄表](decisions.md)及相關角色需求文件。較早的[整合版六角色 0.4 文件](HINE-IC-0.4-role-prds.md)僅作歷史來源保存，不是現行或共同權威來源；現行導覽以六份拆分角色需求文件和獨立契約為準。
 
-**近期開始開發：** 先讀[首輪串接基線](contracts/interface-contract.md#integration-baseline)與[共同介面變更流程](../CONTRIBUTING.md#interface-changes)。先對齊近期的一對一文字路徑；模組內實作自由，其餘介面在相應串接前共同確認，不需先鎖死整份規格。工作值與成員確認狀態見[分輪決策紀錄](decisions.md#incremental-interface-governance)。
+**近期開始開發：** 先讀[首輪串接基線](contracts/interface-contract.md#integration-baseline)與[共同介面變更流程](../CONTRIBUTING.md#interface-changes)。PM 已確認 EntityID 上限 128、text 非空且有效範圍 1～4096；權威驗證由後端負責，文字由 BB 在持久化前判定，前端提示只是 UX，不要求各語言重現相同算法。先對齊近期一對一文字路徑；模組內實作自由，其餘介面在相應串接前共同確認，不需一次鎖死整份規格。PM 確認與尚未取得的成員對接確認分別記錄於[分輪決策紀錄](decisions.md#incremental-interface-governance)；尚未產品驗證。
 
 
 ## 按問題查找
 
 - [系統架構與部署拓樸（推播流程本版範圍外）](architecture/README.md)
-- [近期串接基線與字元計數](contracts/interface-contract.md#integration-baseline)
+- [近期串接基線與後端權威長度驗證](contracts/interface-contract.md#integration-baseline)
 - [共同修改介面的流程](../CONTRIBUTING.md#interface-changes)
 - [關鍵即時流程：連線、傳送、群組事件、附件（推播範圍外）](architecture/README.md#arch-flows)
 - [REST API 登錄表 A01–A25](contracts/interface-contract.md#rest-api)（本版提供 A01–A22；A23–A25 僅保留 ID）
