@@ -21,7 +21,7 @@
 - [FA-04 — 送達與已讀回條](#fa-04)
 - [FA-05 — 聊天導覽、歷史紀錄、初始化與同步](#fa-05)
 - [FA-06 — 對話附件、更新與下載](#fa-06)
-- [FA-07 — 應用程式活動與租約更新](#fa-07)
+- [FA-07 — 應用程式活動與租約更新（本版範圍外）](#fa-07)
 - [FA-08 — 響應式 Web 聊天互動](#fa-08)
 
 ## 角色目的與責任界線
@@ -77,7 +77,7 @@
 <a id="fa-05-chat-navigation-history-bootstrap-and-synchronization"></a>
 <a id="fa-05--chat-navigation-history-bootstrap-and-synchronization"></a>
 ### FA-05 — 聊天導覽、歷史紀錄、初始化與同步
-**追溯：** [REQ-04 一對一聊天導覽與建立](../testing/acceptance-matrix.md#req-04), [REQ-08 跨節點即時廣播與漏送復原](../testing/acceptance-matrix.md#req-08), [REQ-09 首次登入、已授權快照與歷史分離](../testing/acceptance-matrix.md#req-09), [REQ-10 快照切換與即時投影合併](../testing/acceptance-matrix.md#req-10), [REQ-11 撤銷篩選、自身通知與多群組同步](../testing/acceptance-matrix.md#req-11); [A12](../contracts/interface-contract.md#api-a12), [A19](../contracts/interface-contract.md#api-a19), [W07](../contracts/interface-contract.md#event-w07), [W11](../contracts/interface-contract.md#event-w11), [W12](../contracts/interface-contract.md#event-w12), [W13](../contracts/interface-contract.md#event-w13), [W14](../contracts/interface-contract.md#event-w14), [W15](../contracts/interface-contract.md#event-w15), [W16](../contracts/interface-contract.md#event-w16), [W17](../contracts/interface-contract.md#event-w17)。
+**追溯：** [REQ-04 一對一聊天導覽與建立](../testing/acceptance-matrix.md#req-04), [REQ-08 即時廣播與漏送復原（單一 realtime 實例）](../testing/acceptance-matrix.md#req-08), [REQ-09 首次登入、已授權快照與歷史分離](../testing/acceptance-matrix.md#req-09), [REQ-10 快照切換與即時投影合併](../testing/acceptance-matrix.md#req-10), [REQ-11 撤銷篩選、自身通知與多群組同步](../testing/acceptance-matrix.md#req-11); [A12](../contracts/interface-contract.md#api-a12), [A19](../contracts/interface-contract.md#api-a19), [W07](../contracts/interface-contract.md#event-w07), [W11](../contracts/interface-contract.md#event-w11), [W12](../contracts/interface-contract.md#event-w12), [W13](../contracts/interface-contract.md#event-w13), [W14](../contracts/interface-contract.md#event-w14), [W15](../contracts/interface-contract.md#event-w15), [W16](../contracts/interface-contract.md#event-w16), [W17](../contracts/interface-contract.md#event-w17)。
 - **前置條件：** FB 將已授權的對話 ID 路由至 FA，或已驗證用戶端具有已儲存事件流游標／首次登入狀態。
 - **正常流程：** 提供 `openChat(conversation_id)` 供 FB 呼叫；掛載／切換聊天 UI，使用 A12 取得詳細資料、A19 由新到舊載入歷史，並以 W13/W14 取得快照。對單一 snapshot_id 暫存所有頁面，合併期間接收的即時項目，原子切換本機投影，最後安裝 start_cursor。W14 每頁最多 100 個邏輯項目；W16 每批最多 100 個事件、每次請求最多掃描 1000 個事件流位置，到上限依游標續傳，未掃完不得當同步完成。原子儲存投影與游標；保留核心本機持久性義務，不代表完整離線產品。重新連線、回到前景及協調時使用 W15/W16；較舊歷史使用 A19。C14-S 未讀數以伺服器最近查詢值為準，不本機合併。
 - **失敗流程：** A12 拒絕時移除無法存取的檢視。A19 游標失敗僅重啟該歷史查詢，不呼叫 W13。頁面不完整時不儲存 start_cursor；快照切換時保留已觀察到的即時 E41/C1；僅在原子套用投影時前移 W16 游標。WSS 事件流重設時請求新的 W13；撤權內容持續過濾，不阻擋其他事件流資料列。

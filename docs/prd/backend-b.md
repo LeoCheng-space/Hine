@@ -4,7 +4,7 @@
 **版本：** HINE-IC-0.4  
 **狀態：** 現行規格（2026-10-01 PM 決議）
 **來源：** [歷史來源：HINE-IC-0.4 角色 PRD](../HINE-IC-0.4-role-prds.md); 唯一現行介面規格依據為 [共同介面契約](../contracts/interface-contract.md).  
-**角色目的：** 負責 REST API、帳戶／工作階段權威、PostgreSQL 正式狀態、物件中繼資料／GCS 授權、持久化事件流與推播意圖。本 PRD 規定未來行為與驗收要求，不代表已實作或已完成測試。
+**角色目的：** 負責 REST API、帳戶／工作階段權威、PostgreSQL 正式狀態、物件中繼資料／GCS 授權及持久化事件流；推播意圖本版範圍外（BB-08 僅保留 ID）。本 PRD 規定未來行為與驗收要求，不代表已實作或已完成測試。
 **必讀／串接時查閱：** [系統架構](../architecture/README.md)、[共同介面契約](../contracts/interface-contract.md)、[驗收矩陣](../testing/acceptance-matrix.md)；各功能串接見下方追溯／交接。 [返回文件導覽](../README.md)。
 
 ## 範圍
@@ -22,11 +22,11 @@
 - [BB-05 — 歷史紀錄與回條權威](#bb-05)
 - [BB-06 — 快照與持久化使用者事件流](#bb-06)
 - [BB-07 — 附件、頭像與簽署傳輸](#bb-07)
-- [BB-08 — Push 權杖儲存與背景派送](#bb-08)
+- [BB-08 — 推播權杖儲存與背景派送（本版範圍外）](#bb-08)
 
 ## 角色目的與責任界線
 
-[A01](../contracts/interface-contract.md#api-a01)–[A25](../contracts/interface-contract.md#api-a25)、帳戶／工作階段權威、PostgreSQL 正式狀態、物件中繼資料／GCS 授權憑證及持久化事件流。不負責用戶端連線，也不使用 Redis 儲存訊息；Redis 僅供通知與在線狀態。所有瀏覽器版面皆使用相同 REST 契約、模型、授權與持久化事件流；各模組可用不同語言，以內部 HTTP＋JSON 對接，不要求共用 backend/common 原始碼或 ORM。
+本版提供 [A01](../contracts/interface-contract.md#api-a01)–[A22](../contracts/interface-contract.md#api-a22)（A23–A25 僅保留 ID，本版範圍外）、帳戶／工作階段權威、PostgreSQL 正式狀態、物件中繼資料／GCS 授權憑證及持久化事件流。不負責用戶端連線，也不使用 Redis 儲存訊息；Redis 僅供通知與在線狀態。所有瀏覽器版面皆使用相同 REST 契約、模型、授權與持久化事件流；各模組可用不同語言，以內部 HTTP＋JSON 對接，不要求共用 backend/common 原始碼或 ORM。
 
 <a id="bb-01"></a>
 <a id="bb-01--accounts-session-and-device-identity"></a>
@@ -67,7 +67,7 @@
 <a id="bb-04"></a>
 <a id="bb-04--transactional-messages-idempotency-and-durable-push-intent"></a>
 ### BB-04 — 交易式訊息、冪等性與持久化事件流
-**追溯：** [REQ-06 文字訊息與持久 ACK](../testing/acceptance-matrix.md#req-06), [REQ-07 ACK 遺失、重試與去重](../testing/acceptance-matrix.md#req-07), [REQ-08 跨節點即時廣播與漏送復原](../testing/acceptance-matrix.md#req-08), [REQ-14 裝置活動與背景推播](../testing/acceptance-matrix.md#req-14); [W05](../contracts/interface-contract.md#event-w05), [W06](../contracts/interface-contract.md#event-w06), [W07](../contracts/interface-contract.md#event-w07); [authorize](../contracts/interface-contract.md#internal-authorize), [persistIfAbsent](../contracts/interface-contract.md#internal-persist-if-absent)。
+**追溯：** [REQ-06 文字訊息與持久 ACK](../testing/acceptance-matrix.md#req-06), [REQ-07 ACK 遺失、重試與去重](../testing/acceptance-matrix.md#req-07), [REQ-08 即時廣播與漏送復原（單一 realtime 實例）](../testing/acceptance-matrix.md#req-08), [REQ-14 裝置活動與背景推播（本版範圍外，僅保留追溯）](../testing/acceptance-matrix.md#req-14); [W05](../contracts/interface-contract.md#event-w05), [W06](../contracts/interface-contract.md#event-w06), [W07](../contracts/interface-contract.md#event-w07); [authorize](../contracts/interface-contract.md#internal-authorize), [persistIfAbsent](../contracts/interface-contract.md#internal-persist-if-absent)。
 - **前置條件：** 已授權的傳送者、訊息格式、穩定 C1。
 **正常流程：** 以交易寫入正式訊息、C1 對應及每位使用者所有必要事件流資料列；傳回 `created` 或 `existing_same` 與持久化結果。每使用者送訊息每秒 5 則、突發 10 則（本版設定，未量測）。不建立推播意圖（本版範圍外，2026-10-01 PM 決議）。
 - **失敗流程：** 同一 C1 配上不同承載資料時為衝突；區分已知回滾與結果不明；必要資料列提交前絕不寫入成功 ACK 證據。
@@ -122,6 +122,6 @@
 ## 決策與共用參照
 
 - [響應式 Web 行為](../ui/web-rwd.md#web-rwd)
-- [決策：Web Push 範圍](../decisions.md#decision-web-push)；A23/A24 僅定義 iOS／Android 原生推播權杖，瀏覽器推播未定義且待另行核准。
+- [決策：Web Push 範圍](../decisions.md#decision-web-push)；Web Push 與 iOS／Android 原生推播均為本版範圍外（2026-10-01 PM 決議），A23／A24 僅保留 ID。
 - [決策：響應式 Web 版面](../decisions.md#decision-rwd)
 - [返回文件導覽](../README.md)

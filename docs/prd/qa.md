@@ -35,7 +35,7 @@
 **WebSocket 條目：** [W01](../contracts/interface-contract.md#event-w01), [W02](../contracts/interface-contract.md#event-w02), [W03](../contracts/interface-contract.md#event-w03), [W04](../contracts/interface-contract.md#event-w04), [W05](../contracts/interface-contract.md#event-w05), [W06](../contracts/interface-contract.md#event-w06), [W07](../contracts/interface-contract.md#event-w07), [W08](../contracts/interface-contract.md#event-w08), [W09](../contracts/interface-contract.md#event-w09), [W10](../contracts/interface-contract.md#event-w10), [W11](../contracts/interface-contract.md#event-w11)。
 **WebSocket 條目（續）：** [W12](../contracts/interface-contract.md#event-w12), [W13](../contracts/interface-contract.md#event-w13), [W14](../contracts/interface-contract.md#event-w14), [W15](../contracts/interface-contract.md#event-w15), [W16](../contracts/interface-contract.md#event-w16), [W17](../contracts/interface-contract.md#event-w17), [W18](../contracts/interface-contract.md#event-w18), [W19](../contracts/interface-contract.md#event-w19), [W20](../contracts/interface-contract.md#event-w20), [W21](../contracts/interface-contract.md#event-w21)（本版範圍外）, [W22](../contracts/interface-contract.md#event-w22)（本版範圍外）。
 - **前置條件：** 各語言的契約 Schema／測試樣例及共用字典。
-- **正常流程：** 驗證欄位存在性、null／省略、方法／路徑、status、關聯、授權、排序分頁及事件對應。C8–C14 使用跨語言 Schema／測試樣例驗收：C8 `validateAccess` 可信 `user_id` 用於 W02；C9/C10 已核驗附件版本及對話授權；C11/C12 排序與 REST 分頁；C13 內部身分錯誤分層；C14-S 伺服器權威未讀查詢。A25、W21／W22 本版範圍外。
+- **正常流程：** 驗證欄位存在性、null／省略、方法／路徑、status、關聯、授權、排序分頁及事件對應。C8–C14 使用跨語言 Schema／測試樣例驗收：C8 `validateAccess` 可信 `user_id` 用於 W02；C9/C10 已核驗附件版本及對話授權；C11/C12 排序與 REST 分頁；C13 內部身分錯誤分層；C14-S 伺服器權威未讀查詢。A23–A25、W21／W22 本版範圍外，僅保留 ID，不做 Schema／樣例驗收。
 - **失敗流程：** 欄位不符、事件錯配、以摘要代詳細資料或洩漏 subject_id 均為契約失敗。
 - **驗收條件：** 每個消費端參照同一契約並通過對應 Schema／測試樣例；不要求跨語言共用程式碼型別。
 - **交接：** 結構描述／報告發現交給 [FA-01](frontend-a.md#fa-01)、[FB-01](frontend-b.md#fb-01)、[BA-01](backend-a.md#ba-01)、[BB-01](backend-b.md#bb-01)。
@@ -50,7 +50,7 @@
 - **失敗流程：** 正常 A03 最多自動刷新一次；結果 10 秒仍不明、401 或刷新失敗時，停止 WSS／自動刷新、清除本機可用認證狀態並提示重新登入。舊 Cookie 寬限 0 秒、不重播舊刷新請求、不做跨分頁接班；RATE_LIMITED 僅依有效 `retry_after_ms` 等待後最多再試一次，否則停止自動刷新。服務錯誤不得誤報帳密錯誤。M2 活動租約、W21／W22 本版範圍外；保留 WSS 心跳、斷線重連及 Page Visibility 已讀判斷。
 - **驗收條件：** 驗收單操作分頁限制、刷新／登出撤銷及錯誤分流；不測活動租約或多分頁同步刷新。
 - **補充案例：** AC-N19–N24 改驗單操作分頁限制；AC-N23 依簡化 C6 流程；AC-N28 驗必要瀏覽器能力不足時拒絕啟用聊天。
-- **交接：** 狀態轉換案例交給 FB-02、FA-07、BA-01、BB-01、BB-08。
+- **交接：** 狀態轉換案例交給 FB-02、FA-01／FA-02、BA-01／BA-02、BB-01；FA-07、BB-08 本版範圍外，不交接。
 
 <a id="qa-03"></a>
 <a id="qa-03--snapshotfeed-recovery-and-cursor-isolation"></a>
