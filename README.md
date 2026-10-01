@@ -1,6 +1,6 @@
 # HINE
 
-HINE 是以軟體工程期末專案形式開發的跨平台即時通訊系統。
+HINE 是以軟體工程期末專案形式開發的跨平台即時通訊系統。（2026-10-01 PM 決議）
 
 <a id="project-goals"></a>
 ## 專案目標
@@ -10,8 +10,9 @@ HINE 是以軟體工程期末專案形式開發的跨平台即時通訊系統。
 - 訊息持久保存與歷史紀錄
 - 離線同步與重複資料防護
 - 圖片與檔案傳輸
-- 推播通知整合
 - 持續整合／持續交付、監控、測試及負載測試
+
+> 本版不含 Web Push 或 iOS／Android 原生推播（本版範圍外，2026-10-01 PM 決議）；關閉網頁後不保證通知。
 
 <a id="repository-structure"></a>
 ## 儲存庫結構
@@ -45,14 +46,13 @@ Hine/
 - PostgreSQL
 - Redis／Redis 發布／訂閱（Pub/Sub）
 - Google Cloud Storage
-- Firebase Cloud Messaging (FCM)
-- Apple 推播通知服務（APNs）
-- Google Cloud Platform
+- 單台 GCP Compute Engine VM＋Docker Compose；`api` 與 `realtime` 各一實例
+- 各模組負責人自選熟悉的程式語言／框架，以 HTTP／JSON、WebSocket 事件格式及共用介面文件／Schema／測試樣例整合
 - GitHub Actions
 - Prometheus / Grafana
-- 使用 JMeter 或 Artillery 進行負載測試
+- 負載測試工具由 QA 選擇一套 HTTP＋WebSocket 工具或語言，於 `tests/load/README.md` 記錄
 
-> 前後端框架尚未鎖定。採用任何重大技術決策前，應先完成文件記錄。
+> 本版不納入 FCM／APNs、推播工作程序及推播憑證（本版範圍外，2026-10-01 PM 決議）。上述為決議方向，尚未實作或測試。
 
 <a id="collaboration"></a>
 ## 協作方式

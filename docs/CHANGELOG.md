@@ -1,5 +1,14 @@
 # HINE 文件變更紀錄
 
+## 2026-10-01 — PM 決議整合
+
+- Notion「HINE 待 PM 批准項目（HINE-IC-0.4）」共 32 項均已由 PM 決定；`docs/decisions.md` 改為現行決議登錄，不再表示仍待批准。已批准及需修改後採用的政策依決議更新；已否決／本版不做的推播、活動租約等明確標示為本版範圍外。
+- 現行方向包括單一 GCP Compute Engine VM＋Docker Compose、依模組自選語言／框架，以及 QA 選定一套負載測試工具；README 與文件導覽同步更新推播範圍及角色摘要。
+- 共同契約：C1–C6（C6 簡化為單次刷新後重登）、C8–C13、C14-S、E1（S＝15 秒）、G1–G3、S1–S2 改為現行規格；新增[加入界線](contracts/interface-contract.md#join-boundary)與[內部呼叫憑證](contracts/interface-contract.md#internal-caller-credential)；A23–A25、W21／W22、C7、活動租約、Web／原生推播標示本版範圍外（ID 與錨點保留）。
+- 前端：M1 改為同一瀏覽器設定檔單一可操作分頁（Web Lock `hine-session`），移除多分頁交接；B1 驗收瀏覽器為 Chrome／Edge 桌面與 Android Chrome；Web/RWD 只有 768 CSS px 一個斷點；V3／V4 已讀、鍵盤、根路徑與本機篩選定案。
+- 數值：REST 20／50、W14 每頁 100、W16 每批 100／掃描 1000、心跳 30／90 秒、訊息每秒 5 則（突發 10）、登入每帳號每分鐘 10 次／每 IP 每分鐘 60 次、群組 50 人、附件 JPEG／PNG／PDF ≤10 MiB、上傳授權 10 分鐘、下載授權 5 分鐘；課程效能基線為 50 使用者／50 條 WSS。驗收矩陣 N19–N24、N23、N27、N28、AC-R04、AC-R09、AC-R10 依決議改寫，未新增 ID。
+- 此次僅整合文件決議，沒有實作產品功能、部署或執行測試／壓測；相關數值與效能目標仍未量測。
+
 ## HINE-IC-0.4 — 獨立文件提案，待批准
 
 - 現行提案文件分為[獨立共用介面契約](contracts/interface-contract.md)、[網頁／響應式規格](ui/web-rwd.md)、[`prd/`](prd/) 下六份獨立角色需求文件、獨立[驗收矩陣](testing/acceptance-matrix.md)及中央[待決策事項登錄表](decisions.md)。
