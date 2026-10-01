@@ -7,46 +7,64 @@
 <a id="web-rwd"></a>
 ## Web / RWD 共用 UI 規格
 
-### [CONFIRMED] Web delivery model and shared runtime
+<a id="confirmed-web-delivery-model-and-shared-runtime"></a>
+### [已確認] Web 傳遞模式與共用執行環境
 
-- HINE is one Web application used in desktop, tablet, and mobile browsers; this scope does not infer a native App or PWA.
-- Frontend A and Frontend B are feature areas in the same Web project, not separate desktop/mobile clients. They share one SessionContext owner (FB), public REST API, WSS events/models, and one app-scoped WSS owner (FA).
-- Responsive layout is presentation only: it does not create another login/session, socket, account SyncCursor, or business API. BA/BB do not expose duplicated desktop/mobile APIs or schemas.
+- HINE 是一個供桌面、平板與行動瀏覽器使用的 Web 應用程式；此範圍不推定支援原生應用程式或 PWA。
+- 前端 A 與前端 B 是同一 Web 專案中的功能區域，不是分開的桌面／行動用戶端。兩者共用一個 SessionContext 負責者（FB）、公開 REST API、WSS 事件／模型，以及一個應用程式範圍的 WSS 負責者（FA）。
+- 響應式版面僅影響呈現：不會建立另一個登入／工作階段、連線、帳戶 SyncCursor 或業務 API。BA/BB 不提供重複的桌面／行動 API 或結構描述。
 
-### [PROPOSED] Responsive page and shared-component rules
+<a id="proposed-responsive-page-and-shared-component-rules"></a>
+### [提案] 響應式頁面與共用元件規則
 
-This is one reviewable candidate layout, not an approved design. The width bands below are defined only here; all later references use the band names.
+這是一份供審閱的候選版面，尚非已核准設計。以下寬度區間僅於此處定義；後續參照均使用區間名稱。
 
-| Available Web viewport width | Layout band |
+| 可用 Web 視窗寬度 | 版面區間 |
 |---|---|
-| `320 <= w < 768` CSS px | Narrow |
-| `768 <= w < 1200` CSS px | Medium |
-| `w >= 1200` CSS px | Wide |
+| `320 <= w < 768` CSS px | 窄版 |
+| `768 <= w < 1200` CSS px | 中版 |
+| `w >= 1200` CSS px | 寬版 |
 
-Candidate UI-only routes are `/login`, `/register`, `/contacts`, `/chats`, `/chats/{conversation_id}`, `/profile`, and `/groups/{conversation_id}/manage`. They add no backend route or API. Login/register are public; protected routes wait for authorization and disclose no protected content before it. After login, return only to an authorized requested UI route. Browser back/forward restores the prior UI route/state; direct deep links and refresh enter the same guard/return flow. Image/file preview is an in-app surface opened from an authorized page, not a new route in this candidate.
+候選 UI 專用路由為根路徑 `/`（僅導向，見下方）、`/login`、`/register`、`/contacts`、`/chats`、`/chats/{conversation_id}`、`/profile` 與 `/groups/{conversation_id}/manage`。這些路由不新增後端路由或 API。登入／註冊頁為公開頁面；受保護路由須等待授權，授權前不得揭露受保護內容。登入後僅返回已授權的請求 UI 路由。瀏覽器上一頁／下一頁會還原先前的 UI 路由／狀態；直接深層連結與重新整理皆進入相同的守衛／返回流程。圖片／檔案預覽是在已授權頁面開啟的應用程式內介面，並非此候選方案中的新路由。
 
-| Page family | Narrow | Medium | Wide |
+<a id="rwd-root-route"></a>**根路徑 `/`［候選］：** `/` 不是內容頁，只負責導向，不新增後端路由或 API，並納入 DO 的頁面路由回退允許清單。**初始化中**（FB 尚未判定認證狀態）顯示載入狀態，不渲染受保護內容，除 FB 既有認證流程外不發出其他 API 請求；**判定未登入**後以取代目前歷史紀錄的方式導向 `/login`，不留下可返回的空白頁；**判定已登入**後同樣以取代方式導向 `/chats`。重新整理或直接開啟 `/` 都重跑同一判定；判定失敗依 FB 既有錯誤處理顯示，不猜測登入狀態。
+
+| 頁面類別 | 窄版 | 中版 | 寬版 |
 |---|---|---|---|
-| Login and registration | One full-height, single-column form surface; form and submit action remain visible while scrolling. | Centered form surface with compact brand/header area and one-column fields. | Two columns: brand/information pane and readable-width form pane; form remains the primary action area. |
-| Contacts/directory | One surface with header, search/filter, and full-height contact list; selecting a contact opens its detail as a drill-in with back action. | App navigation rail beside contacts content; selected contact details occupy a second content pane when selected. | App navigation, contacts list, and selected contact details are three persistent panes. |
-| Chat list (`/chats`) | One surface with conversation list/search; selecting a conversation navigates to its thread. | App navigation rail plus chat list/content area; no empty third pane is required. | App navigation, conversation list, and thread are three panes once a conversation is selected. |
-| Chat thread and composer | Thread is the sole content surface with explicit back-to-list action; composer stays above the virtual keyboard and within the visible viewport. | Chat list and thread are the two chat panes; composer is fixed to the thread's visible bottom. | Chat list and thread remain side by side; composer stays in the thread's visible bottom region. |
-| Profile/avatar | One-column profile form with avatar preview and explicit save/cancel actions. | App navigation rail beside a centered, readable-width profile form with avatar preview. | App navigation and profile form; avatar preview/actions occupy a contextual side pane. |
-| Group management | One section at a time in a single surface; section selection drills into details with back action and persistent save/cancel actions. | App navigation rail, group-management section list, and active section content in two work panes. | App navigation, section list, and active settings/member content are three panes. |
-| Image/file preview | Full-screen viewer with top close/action bar; metadata/details open as a dismissible bottom sheet. | Viewer in the content area with collapsible details panel. | Centered constrained viewer with persistent metadata/details side panel. |
+| 登入與註冊 | 單一全高單欄表單介面；捲動時表單與送出操作仍保持可見。 | 置中的表單介面，搭配精簡品牌／頁首區與單欄欄位。 | 雙欄：品牌／資訊窗格與適合閱讀寬度的表單窗格；表單仍是主要操作區。 |
+| 聯絡人／目錄 | 單一介面包含頁首、搜尋／篩選與全高聯絡人清單；選取聯絡人後以深入檢視方式開啟其詳細資料，並提供返回操作。 | 應用程式導覽列位於聯絡人內容旁；選取聯絡人時，其詳細資料顯示於第二個內容窗格。 | 應用程式導覽、聯絡人清單與已選聯絡人詳細資料分置於三個常駐窗格。 |
+| 聊天清單（`/chats`） | 單一介面顯示對話清單／搜尋；選取對話後導覽至其對話串。 | 應用程式導覽列加上聊天清單／內容區；不要求空白的第三窗格。 | 選取對話後，以三個窗格顯示應用程式導覽、對話清單與對話串。 |
+| 對話串與撰寫區 | 對話串是唯一內容介面，並明確提供返回清單操作；撰寫區保持在虛擬鍵盤上方且位於可視視窗內。 | 聊天清單與對話串是兩個聊天窗格；撰寫區固定於對話串可視區域的底部。 | 聊天清單與對話串並列；撰寫區留在對話串可視區域的底部。 |
+| 個人檔案／頭像 | 單欄個人檔案表單，含頭像預覽及明確的儲存／取消操作。 | 應用程式導覽列旁為置中且適合閱讀寬度的個人檔案表單，含頭像預覽。 | 應用程式導覽與個人檔案表單分區；頭像預覽／操作位於情境側窗格。 |
+| 群組管理 | 單一介面一次顯示一個區段；選取區段後深入檢視詳細資料，提供返回操作，並持續提供儲存／取消操作。 | 應用程式導覽列、群組管理區段清單與目前區段內容置於兩個工作窗格。 | 應用程式導覽、區段清單與目前設定／成員內容分置於三個窗格。 |
+| 圖片／檔案預覽 | 全螢幕檢視器，頂端有關閉／操作列；中繼資料／詳細資料以可關閉的底部抽屜開啟。 | 檢視器位於內容區，搭配可收合的詳細資料面板。 | 置中的受限尺寸檢視器，搭配常駐中繼資料／詳細資料側面板。 |
 
-- **Shared forms and controls:** Every field has a programmatic and visible label. Validation messages identify the field and corrective action; invalid submission focuses the first invalid field. Submit, disabled, loading, success, empty, and error states are distinct. Empty/error surfaces offer an appropriate next action (for example, create/search, retry, or return). Toasts are non-blocking, announced accessibly, and never replace inline validation or critical recovery.
-- **Touch, focus, and overlays [candidate]:** Minimum touch target is 44 CSS px, pending approval. On narrow, modal content uses an edge-to-edge sheet/dialog and navigation drawers use a full-height drawer; on medium/wide, dialogs are centered and navigation/context drawers are docked or side panels. A modal/drawer traps focus only while modal, Escape closes the topmost dismissible overlay, close returns focus to its trigger, and route changes place focus at the new page heading. Keep visible keyboard focus and logical tab order.
-- **Content bounds:** Text uses `overflow-wrap:anywhere` where needed; media, metadata, and file names have `max-width:100%` and cannot widen the page or chat thread. Images remain inspectable within the viewer bounds; signed storage URLs are never displayed as UI text.
-- **Navigation and return:** The listed route patterns are the candidate allowlist for Web-shell fallback. Keep browser history meaningful for route entry, chat selection, and preview open/close; do not intercept normal back/forward. This is UI routing only: no route change creates another login/session, WSS, SyncCursor, or business API.
+- **共用表單與控制項：** 每個欄位皆有程式可識別及可見的標籤。驗證訊息指出欄位與修正方式；提交無效資料時，焦點移至第一個無效欄位。提交、停用、載入、成功、空白與錯誤狀態彼此區分。空白／錯誤介面提供適當的下一步操作（例如建立／搜尋、重試或返回）。提示訊息不阻斷操作、以無障礙方式公告，且不取代欄內驗證或重要復原機制。
+- **觸控、焦點與覆蓋層［候選］：** 最小觸控目標為 44 CSS px，待批准。窄版使用貼齊邊緣的頁片／對話框呈現模態內容，導覽抽屜使用全高抽屜；中版／寬版的對話框置中，導覽／情境抽屜則停駐或呈現為側面板。模態視窗／抽屜僅在模態期間限制焦點；Escape 關閉最上層可關閉的覆蓋層，關閉後焦點返回觸發項目，路由變更後焦點移至新頁面標題。保持鍵盤焦點可見且 Tab 順序合乎邏輯。
+- **內容界限：** 必要時文字使用 `overflow-wrap:anywhere`；媒體、中繼資料與檔名設定 `max-width:100%`，不得撐寬頁面或對話串。圖片須可在檢視器界限內檢視；簽署儲存網址不得以 UI 文字顯示。
+- <a id="rwd-local-filter"></a>**搜尋／篩選［候選］：** 聯絡人與聊天清單中的「搜尋」只是對本機已載入項目（已取得的 A08 聯絡人摘要、A11 對話摘要）依顯示名稱或對話標題做文字篩選，不呼叫 A07、不送伺服器查詢，也不代表已搜尋尚未載入的頁面；清單仍有下一頁時標示「只篩選已載入項目」並可繼續載入。新增聯絡人仍用 A07 已知公開 ID 查詢；關鍵字找人不在本輪範圍。
+- **導覽與返回：** 列出的路由樣式是 頁面路由回退（伺服器對列出的 UI 路徑回傳同一 Web 應用程式入口，不是備援服務）的候選允許清單。讓瀏覽器歷史記錄能反映路由進入、選取聊天及開啟／關閉預覽；不得攔截一般上一頁／下一頁操作。這僅是 UI 路由：路由變更不會建立另一個登入／工作階段、WSS、SyncCursor 或業務 API。
 
-### [PROPOSED] FA chat input, scroll, and read behavior
+<a id="proposed-fa-chat-input-scroll-and-read-behavior"></a>
+### [提案] FA 聊天輸入、捲動與已讀行為
 
-- Physical keyboard behavior is width-independent: Enter sends and Shift+Enter inserts a newline. With a soft keyboard, Enter inserts a newline and an explicit Send button submits. Set an IME-composing guard on `compositionstart`; suppress Enter-to-send while the guard or `event.isComposing` is true, and consume the Enter used to commit composition as composition input, not as send. Release the guard on `compositionend`; composition Enter MUST NOT submit.
-- Track `visualViewport` height/offset so the composer remains visible above the virtual keyboard without losing draft, thread, or focus. Resizing/orientation preserves each conversation's draft and pending C1 state.
-- Preserve the reading anchor as `message_id` plus its pixel offset through resize/orientation and when older history is prepended. Do not force scroll to bottom during history browsing. Auto-follow a new message only when the user is within a candidate 48 CSS px of the bottom; otherwise preserve position and show an unread count / Jump to latest action.
-- W08 may be sent after durable local receipt independent of read state. Candidate W09 eligibility requires a visible browser, that conversation active, and the actual message intersecting at least 50% continuously for 500 ms. These visibility thresholds are proposed pending product/QA approval; thread open or W08 alone never establishes read.
+- 實體鍵盤行為不受寬度影響：Enter 送出，Shift+Enter 插入換行。使用軟體鍵盤時，Enter 插入換行，並由明確的「送出」按鈕提交。於 `compositionstart` 設定 IME 組字保護；保護啟用或 `event.isComposing` 為 `true` 時禁止 Enter 送出，並將提交組字所用的 Enter 視為組字輸入而非送出。在 `compositionend` 解除保護；組字期間的 Enter 絕不可提交。
+- <a id="rwd-keyboard"></a>**鍵盤類型判別［候選］：** 只依輸入能力訊號判斷，例如 `(any-pointer: fine)`、`(any-hover: hover)`，以及撰寫區聚焦時 `visualViewport` 是否因虛擬鍵盤縮小；**不以視窗寬度或版面區間推定輸入來源**。無法判別或訊號互相矛盾（例如平板外接鍵盤）時採保守行為：Enter 插入換行、明確的「送出」按鈕一律可見，另提供 Ctrl+Enter／⌘+Enter 送出；IME 組字保護不變。
+- 追蹤 `visualViewport` 高度／偏移，使撰寫區保持在虛擬鍵盤上方可見，且不遺失草稿、對話串或焦點。調整大小／方向時保留各對話的草稿與待處理 C1 狀態。
+- 透過 `message_id` 與其像素偏移量保存閱讀錨點，使視窗調整大小／方向及前置較舊歷史訊息時都能維持位置。瀏覽歷史時不得強制捲至底部。僅在使用者距離底部不超過候選 48 CSS px 時自動跟隨新訊息；否則保留位置，並顯示「新訊息提示」與「跳至最新」操作。新訊息提示是 FA 的本機計數（不在底部期間新到、尚未捲入可視區的訊息數），不是聊天清單的 `unread_count`，也不代表已讀（見 [C14](../contracts/interface-contract.md#unread-count)）。
+- <a id="rwd-read-rule"></a>**已讀判定［候選，門檻待產品／品質驗證核准］：** W08 在已收訊息及其識別資訊完成本機持久保存後送出，與已讀無關。W09 只對他人所發、尚未回報已讀的訊息送出；自己的訊息不送 W09。
+  - **觀察單位：** 每則訊息的內容元素（訊息泡泡，含文字、附件預覽及其所屬的標題列），以 CSS px 計算；瀏覽器縮放時分子與分母同比例變化。
+  - **有效可視區 V：** 對話串捲動容器的可見矩形與 `visualViewport` 目前可視矩形的交集，再扣除覆蓋其上的固定元素（頂列、撰寫區、非模態面板），寬 `Vw`、高 `Vh`。虛擬鍵盤遮住的部分不在 `visualViewport` 內，自然排除。V 本身**不**按泡泡寬度裁切；寬度差異由下方分母處理。
+  - **門檻：** 泡泡寬 `Bw`、高 `Bh`；`I` 為泡泡與 V 交集的面積。分母是該泡泡在 V 內**可能達到的最大交集面積** `Imax = min(Bw, Vw) × min(Bh, Vh)`；可見比例 = `I ÷ Imax` ≥ 50%。
+    - 一般訊息（`Bw ≤ Vw`、`Bh ≤ Vh`）：`Imax` 等於泡泡面積，即「泡泡至少一半可見」。
+    - 超長訊息（`Bh > Vh`）：`Imax = Bw × Vh`，即「泡泡寬度範圍內至少佔滿可視區一半高度」。例：V 為 800×400、泡泡 200×1000，`Imax = 200×400 = 80000`；泡泡填滿 V 高度時 `I = 80000`，比例 100%；只露出 160 px 高時 `I = 32000`，比例 40%，不成立。舊式分母 min(泡泡面積 200000, V 面積 320000) = 200000 會使最大比例只有 40%、永遠無法成立，故不採用。
+    - 過寬訊息（`Bw > Vw`，例如 200% 縮放）同理以 `Vw` 為上限；虛擬鍵盤縮小 `Vh` 時，分母隨之縮小，仍可成立。
+  - **語意界線：** 達到門檻與停留時間只代表候選的「已實際顯示足夠時間」條件，用於送出 W09；**不宣稱使用者已讀完全文**，超長訊息也不要求捲過整則。
+  - **連續 500 ms：** 門檻與下列前提必須同時成立並連續滿 500 ms 才送 W09；任一前提中斷就歸零重算，不累加中斷前的時間。
+  - **前提：** `document.visibilityState === "visible"`；該訊息所屬對話是目前路由開啟、正在顯示的對話串；沒有模態預覽、對話框或模態抽屜覆蓋對話串（模態開啟期間停止累計並歸零）；不以視窗 `focus`／`blur` 判斷。
+  - 只開啟對話串、訊息只出現在清單摘要、收到推播或送出 W08，都不代表已讀。正向與反向驗收案例見 [REQ-20 詳細驗收](../testing/acceptance-matrix.md#req-20-detail)。
 
-### [PROPOSED] Web push scope
+<a id="proposed-web-push-scope"></a>
+### [提案] Web Push 範圍
 
-A23/A24 and `DeviceTokenStatus.platform` remain `ios|android`; they do not define browser subscription/provider payloads. Any Web Push provider, subscription lifecycle, permission, foreground suppression, and service-worker behavior require an explicit product/provider contract and approval. This PRD defines governance and acceptance only: do not ship fake browser-push behavior or infer native App/PWA support from the existing push-token API.
+A23/A24 與 `DeviceTokenStatus.platform` 維持 `ios|android`；它們未定義瀏覽器訂閱／供應商承載資料。任何 Web Push 供應商、訂閱生命週期、權限、前景抑制及 Service Worker 行為，都須有明確的產品／供應商契約並經批准。本 PRD 僅定義治理與驗收：不得推出虛構的瀏覽器推播行為，也不得由既有推播權杖 API 推定支援原生應用程式／PWA。

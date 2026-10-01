@@ -1,9 +1,10 @@
-# Profile
+<a id="profile"></a>
+# 個人資料
 
-Frontend B responsibility area.
+前端 B 的責任範圍。
 
-Main scope:
-- User profile
-- Profile editing
-- Account settings
-- Personal preferences
+主要範圍：
+- 使用者個人資料
+- 編輯個人資料
+- 帳號設定
+- 個人偏好

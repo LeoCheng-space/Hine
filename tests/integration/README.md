@@ -1,3 +1,4 @@
-# Integration Tests
+<a id="integration-tests"></a>
+# 整合測試
 
-Tests covering interactions between API, PostgreSQL, Redis, Cloud Storage, and push services.
+涵蓋 API、PostgreSQL、Redis、Cloud Storage 與推播服務之間互動的測試。

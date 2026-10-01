@@ -1,31 +1,36 @@
 ---
-name: Bug report
-about: Report a reproducible problem
-title: "[Bug] "
+name: 錯誤回報
+about: 回報可重現的問題
+title: "[錯誤] "
 labels: bug
 ---
 
-## Problem
+<a id="problem"></a>
+## 問題
 
-Describe the problem.
+說明問題。
 
-## Steps to Reproduce
+<a id="steps-to-reproduce"></a>
+## 重現步驟
 
 1.
 2.
 3.
 
-## Expected Result
+<a id="expected-result"></a>
+## 預期結果
 
-What should happen?
+原本應該發生什麼？
 
-## Actual Result
+<a id="actual-result"></a>
+## 實際結果
 
-What actually happened?
+實際發生了什麼？
 
-## Environment
+<a id="environment"></a>
+## 環境
 
-- Branch:
-- Browser / App:
-- Backend version:
-- Other:
+- 分支：
+- 瀏覽器／應用程式：
+- 後端版本：
+- 其他：

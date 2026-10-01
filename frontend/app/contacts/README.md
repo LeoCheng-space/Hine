@@ -1,9 +1,10 @@
-# Contacts
+<a id="contacts"></a>
+# 聯絡人
 
-Frontend B responsibility area.
+前端 B 的責任範圍。
 
-Main scope:
-- Contact list
-- Search users
-- Add / remove contacts
-- Contact-related states and errors
+主要範圍：
+- 聯絡人清單
+- 查找使用者
+- 新增／移除聯絡人
+- 聯絡人相關狀態與錯誤

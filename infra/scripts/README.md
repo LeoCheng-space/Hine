@@ -1,3 +1,4 @@
-# Scripts
+<a id="scripts"></a>
+# 指令稿
 
-Operational, deployment, setup, and maintenance scripts.
+維運、部署、環境設定與維護用指令稿。

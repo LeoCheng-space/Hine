@@ -1,58 +1,64 @@
-# Contributing to HINE
+<a id="contributing-to-hine"></a>
+# HINE 協作指南
 
-This workflow is intentionally simple for team members who are still learning Git.
+此流程刻意保持簡單，方便仍在學習 Git 的組員使用。
 
-## Daily Workflow
+<a id="daily-workflow"></a>
+## 日常工作流程
 
-1. Update your local repository from `main`.
-2. Create a new branch for one task only.
-3. Make your changes.
-4. Commit with a clear message.
-5. Push the branch.
-6. Open a Pull Request.
-7. Wait for review and CI checks.
-8. Merge only after approval.
+1. 從 `main` 更新本機儲存庫。
+2. 為單一工作建立新分支。
+3. 完成變更。
+4. 使用清楚的訊息提交。
+5. 推送分支。
+6. 建立合併請求（PR）。
+7. 等待審查與持續整合檢查。
+8. 僅在批准後合併。
 
-## Branch Naming
+<a id="branch-naming"></a>
+## 分支命名
 
-Use one of these patterns:
+使用以下任一格式：
 
 - `feature/<short-name>`
 - `fix/<short-name>`
 - `docs/<short-name>`
 - `chore/<short-name>`
 
-Examples:
+範例：
 
 - `feature/chat-ui`
 - `feature/websocket-heartbeat`
 - `fix/login-token-expiry`
 - `docs/api-contract`
 
-## Important Rules
+<a id="important-rules"></a>
+## 重要規則
 
-- Do not push directly to `main`.
-- Do not force-push shared branches.
-- Pull the latest `main` before starting new work.
-- Keep each branch focused on one task.
-- Do not resolve merge conflicts by blindly accepting all changes.
-- Never commit passwords, API keys, tokens, certificates, or private user data.
+- 不得直接推送至 `main`。
+- 不得強制推送共用分支。
+- 開始新工作前，先拉取最新的 `main`。
+- 每個分支只處理一項工作。
+- 不得盲目接受所有變更來解決合併衝突。
+- 不得提交密碼、API 金鑰、權杖、憑證或使用者私密資料。
 
-## Pull Request Checklist
+<a id="pull-request-checklist"></a>
+## 合併請求檢查清單
 
-Before opening a PR:
+建立合併請求前，確認：
 
-- The code runs locally.
-- Related tests pass.
-- Debug code and temporary files are removed.
-- API / WebSocket / database changes are documented.
-- No secrets are included.
-- The PR explains what changed and how to test it.
+- 程式碼可在本機執行。
+- 相關測試通過。
+- 已移除除錯程式碼與暫存檔。
+- 已記錄 API／WebSocket／資料庫變更。
+- 不含機密資訊。
+- 合併請求說明了變更內容與驗證方式。
 
-## Commit Message Examples
+<a id="commit-message-examples"></a>
+## 提交訊息範例
 
-- `feat: add websocket reconnect handling`
-- `fix: prevent duplicate message insert`
-- `docs: add REST API contract`
-- `test: add message sync integration test`
-- `chore: update github actions workflow`
+- `feat: 新增 WebSocket 重連處理`
+- `fix: 防止重複寫入訊息`
+- `docs: 新增 REST API 契約`
+- `test: 新增訊息同步整合測試`
+- `chore: 更新 GitHub Actions 工作流程`

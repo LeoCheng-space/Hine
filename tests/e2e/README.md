@@ -1,3 +1,4 @@
-# E2E Tests
+<a id="e2e-tests"></a>
+# 端對端測試
 
-End-to-end user flows such as login, contacts, messaging, group chat, upload, reconnect, and offline synchronization.
+登入、聯絡人、傳訊、群聊、上傳、重連與離線同步等端對端使用流程。

@@ -1,3 +1,4 @@
-# Frontend App
+<a id="frontend-app"></a>
+# 前端應用程式
 
-Application source code will live here after the frontend framework is finalized.
+前端框架確定後，應用程式原始碼將放在此目錄。

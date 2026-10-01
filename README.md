@@ -1,18 +1,20 @@
 # HINE
 
-HINE is a cross-platform real-time communication system developed as a software engineering final project.
+HINE 是以軟體工程期末專案形式開發的跨平台即時通訊系統。
 
-## Project Goals
+<a id="project-goals"></a>
+## 專案目標
 
-- Real-time one-to-one and group messaging
-- WebSocket-based bidirectional communication
-- Message persistence and history
-- Offline synchronization and duplicate prevention
-- Image and file transfer
-- Push notification integration
-- CI/CD, monitoring, testing, and load testing
+- 即時一對一與群組訊息
+- 基於 WebSocket 的雙向通訊
+- 訊息持久保存與歷史紀錄
+- 離線同步與重複資料防護
+- 圖片與檔案傳輸
+- 推播通知整合
+- 持續整合／持續交付、監控、測試及負載測試
 
-## Repository Structure
+<a id="repository-structure"></a>
+## 儲存庫結構
 
 ```text
 Hine/
@@ -24,55 +26,59 @@ Hine/
 └── .github/
 ```
 
-### Main Areas
+<a id="main-areas"></a>
+### 主要區域
 
-- `docs/` — architecture, API, WebSocket, database, deployment, and testing documentation
-- `frontend/` — client application
-- `backend/api/` — REST API and business data services
-- `backend/realtime/` — WebSocket and real-time messaging services
-- `backend/common/` — shared backend code
-- `infra/` — Docker, GCP, monitoring, and operational scripts
-- `tests/` — integration, E2E, and load tests
-- `.github/` — GitHub Actions and collaboration templates
+- `docs/` — 架構、API、WebSocket、資料庫、部署及測試文件
+- `frontend/` — 用戶端應用程式
+- `backend/api/` — REST API 與業務資料服務
+- `backend/realtime/` — WebSocket 與即時訊息服務
+- `backend/common/` — 後端共用程式碼
+- `infra/` — Docker、GCP、監控及維運指令稿
+- `tests/` — 整合、端對端及負載測試
+- `.github/` — GitHub Actions 與協作範本
 
-## Core Technology Direction
+<a id="core-technology-direction"></a>
+## 核心技術方向
 
 - WebSocket / WSS
 - PostgreSQL
-- Redis / Redis Pub/Sub
+- Redis／Redis 發布／訂閱（Pub/Sub）
 - Google Cloud Storage
 - Firebase Cloud Messaging (FCM)
-- Apple Push Notification service (APNs)
+- Apple 推播通知服務（APNs）
 - Google Cloud Platform
 - GitHub Actions
 - Prometheus / Grafana
-- JMeter or Artillery for load testing
+- 使用 JMeter 或 Artillery 進行負載測試
 
-> Frontend and backend frameworks are not locked yet. Any major technology decision should be documented before adoption.
+> 前後端框架尚未鎖定。採用任何重大技術決策前，應先完成文件記錄。
 
-## Collaboration
+<a id="collaboration"></a>
+## 協作方式
 
-This repository uses a simple workflow designed for a six-person student team:
+此儲存庫採用適合六人學生團隊的簡易流程：
 
-1. Pull the latest `main`
-2. Create a `feature/<name>` or `fix/<name>` branch
-3. Make one focused change
-4. Commit and push
-5. Open a Pull Request
-6. Wait for review and CI
-7. Merge only after checks pass
+1. 拉取最新的 `main`
+2. 建立 `feature/<name>` 或 `fix/<name>` 分支
+3. 完成一項聚焦的變更
+4. 提交並推送
+5. 建立合併請求（PR）
+6. 等待審查與持續整合檢查
+7. 僅在檢查通過後合併
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the team workflow.
+團隊工作流程請參閱[協作指南](CONTRIBUTING.md)。
 
-## Team Areas
+<a id="team-areas"></a>
+## 團隊職責
 
-- Frontend A — chat UI and real-time interaction
-- Frontend B — authentication, contacts, profile, routing
-- Backend A — WebSocket and real-time communication
-- Backend B — REST API and database
-- PM / DevOps — architecture, CI/CD, infrastructure, integration
-- QA — integration, E2E, load, regression, and acceptance testing
+- 前端 A — 聊天介面與即時互動
+- 前端 B — 認證、聯絡人、個人資料及路由
+- 後端 A — WebSocket 與即時通訊
+- 後端 B — REST API 與資料庫
+- 專案管理／維運 — 架構、持續整合／持續交付、基礎設施及整合
+- 品質驗證 — 整合、端對端、負載、迴歸及驗收測試
 
 ## 團隊文件入口
 
-請從 [HINE-IC-0.4 文件地圖](docs/README.md) 依角色閱讀，並先讀[系統架構](docs/architecture/README.md)。角色 PRD：[Frontend A](docs/prd/frontend-a.md) · [Frontend B](docs/prd/frontend-b.md) · [Backend A](docs/prd/backend-a.md) · [Backend B](docs/prd/backend-b.md) · [DevOps](docs/prd/devops.md) · [QA](docs/prd/qa.md)。
+請從 [HINE-IC-0.4 文件地圖](docs/README.md)依角色閱讀，並先讀[系統架構](docs/architecture/README.md)。角色需求文件：[前端 A](docs/prd/frontend-a.md) · [前端 B](docs/prd/frontend-b.md) · [後端 A](docs/prd/backend-a.md) · [後端 B](docs/prd/backend-b.md) · [維運](docs/prd/devops.md) · [品質驗證](docs/prd/qa.md)。

@@ -1,8 +1,9 @@
-# Frontend
+<a id="frontend"></a>
+# 前端
 
-Cross-platform client application.
+跨平台用戶端應用程式。
 
-Suggested responsibility split:
+建議職責劃分：
 
-- Frontend A: chat UI, WebSocket lifecycle, real-time message rendering
-- Frontend B: authentication, contacts, profile, routing, surrounding UI
+- 前端 A：聊天介面、WebSocket 生命週期、即時訊息呈現。
+- 前端 B：認證、聯絡人、個人資料、路由及周邊介面。

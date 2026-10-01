@@ -1,12 +1,13 @@
-# Chat
+<a id="chat"></a>
+# 聊天
 
-Frontend A responsibility area.
+前端 A 的責任範圍。
 
-Main scope:
-- Chat room UI
-- Message list and composer
-- Real-time message rendering
-- WebSocket connection state
-- Reconnect UX
-- Message delivery/read status
-- Image and file message presentation
+主要範圍：
+- 聊天室介面
+- 訊息清單與輸入區
+- 即時訊息呈現
+- WebSocket 連線狀態
+- 重新連線時的使用體驗
+- 訊息送達／已讀狀態
+- 圖片與檔案訊息呈現

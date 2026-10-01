@@ -1,11 +1,12 @@
-# Auth
+<a id="auth"></a>
+# 認證
 
-Frontend B responsibility area.
+前端 B 的責任範圍。
 
-Main scope:
-- Login
-- Registration
-- Authentication state
-- JWT-related client flow
-- Route protection
-- Session expiration UX
+主要範圍：
+- 登入
+- 註冊
+- 認證狀態
+- JWT 相關用戶端流程
+- 路由保護
+- 工作階段到期時的使用體驗

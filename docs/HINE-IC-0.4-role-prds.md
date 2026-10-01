@@ -1,469 +1,579 @@
-# HINE-IC-0.4 — Six Role PRDs
+<a id="hine-ic-04--six-role-prds"></a>
+# HINE-IC-0.4 — 六個角色 PRD
 
-**Status:** Role ownership and acceptance specification, pending product approval. This document pairs with [the HINE-IC-0.4 shared interface contract](HINE-IC-0.4-contract.md), which is the sole source for field types, nullability, REST envelopes, WSS envelopes, error codes, and candidate limits. These are six role PRDs, one for each delivery role; this document does not claim implementation, deployment, product testing, or load-test results.
+**狀態：**角色職責與驗收規格，待產品批准。本文件搭配[HINE-IC-0.4 共用介面契約](HINE-IC-0.4-contract.md)，該契約是欄位型別、可為 null 性、REST 封套、WSS 封套、錯誤代碼及候選限制的唯一依據。本文包含六份角色 PRD，分別對應六個交付角色；不表示已實作、部署、產品測試或負載測試。
 
+<a id="hine-ic-04-six-role-prds"></a>
 <a id="web-rwd"></a>
 ## Web / RWD 共用 UI 規格
 
-### [CONFIRMED] Web delivery model and shared runtime
+<a id="confirmed-web-delivery-model-and-shared-runtime"></a>
+### [已確認] Web 交付模式與共用執行環境
 
-- HINE is one Web application used in desktop, tablet, and mobile browsers; this scope does not infer a native App or PWA.
-- Frontend A and Frontend B are feature areas in the same Web project, not separate desktop/mobile clients. They share one SessionContext owner (FB), public REST API, WSS events/models, and one app-scoped WSS owner (FA).
-- Responsive layout is presentation only: it does not create another login/session, socket, account SyncCursor, or business API. BA/BB do not expose duplicated desktop/mobile APIs or schemas.
+- HINE 是一個供桌面、平板及行動瀏覽器使用的 Web 應用程式；此範圍不推定存在原生應用程式或 PWA。
+- 前端 A 與前端 B 是同一 Web 專案中的功能區，而非分離的桌面／行動用戶端。兩者共用一個 SessionContext 擁有者（FB）、公開 REST API、WSS 事件／模型，以及一個應用程式範圍的 WSS 擁有者（FA）。
+- 響應式版面僅影響呈現，不會建立另一個登入／工作階段、連線、帳戶 SyncCursor 或業務 API。BA/BB 不提供重複的桌面／行動 API 或結構描述。
 
-### [PROPOSED] Responsive page and shared-component rules
+<a id="proposed-responsive-page-and-shared-component-rules"></a>
+### [提案] 響應式頁面與共用元件規則
 
-This is one reviewable candidate layout, not an approved design. The width bands below are defined only here; all later references use the band names.
+這是供審查的候選版面，並非已批准設計。以下寬度範圍僅在此處定義；之後均使用範圍名稱。
 
-| Available Web viewport width | Layout band |
+| 可用 Web 視窗寬度 | 版面範圍 |
 |---|---|
-| `320 <= w < 768` CSS px | Narrow |
-| `768 <= w < 1200` CSS px | Medium |
-| `w >= 1200` CSS px | Wide |
+| `320 <= w < 768` CSS px | 窄幅 |
+| `768 <= w < 1200` CSS px | 中幅 |
+| `w >= 1200` CSS px | 寬幅 |
 
-Candidate UI-only routes are `/login`, `/register`, `/contacts`, `/chats`, `/chats/{conversation_id}`, `/profile`, and `/groups/{conversation_id}/manage`. They add no backend route or API. Login/register are public; protected routes wait for authorization and disclose no protected content before it. After login, return only to an authorized requested UI route. Browser back/forward restores the prior UI route/state; direct deep links and refresh enter the same guard/return flow. Image/file preview is an in-app surface opened from an authorized page, not a new route in this candidate.
+候選 UI 路由為 `/login`、`/register`、`/contacts`、`/chats`、`/chats/{conversation_id}`、`/profile` 及 `/groups/{conversation_id}/manage`。這些路由不新增後端路由或 API。登入／註冊為公開頁；受保護路由須等待授權，且授權前不得揭露受保護內容。登入後只返回已授權的原請求 UI 路由。瀏覽器上一頁／下一頁會還原先前 UI 路由／狀態；直接深層連結及重新整理會進入相同的守衛／返回流程。此候選方案中的圖片／檔案預覽，是從已授權頁面開啟的應用程式內介面，而非新路由。
 
-| Page family | Narrow | Medium | Wide |
+| 頁面類別 | 窄幅 | 中幅 | 寬幅 |
 |---|---|---|---|
-| Login and registration | One full-height, single-column form surface; form and submit action remain visible while scrolling. | Centered form surface with compact brand/header area and one-column fields. | Two columns: brand/information pane and readable-width form pane; form remains the primary action area. |
-| Contacts/directory | One surface with header, search/filter, and full-height contact list; selecting a contact opens its detail as a drill-in with back action. | App navigation rail beside contacts content; selected contact details occupy a second content pane when selected. | App navigation, contacts list, and selected contact details are three persistent panes. |
-| Chat list (`/chats`) | One surface with conversation list/search; selecting a conversation navigates to its thread. | App navigation rail plus chat list/content area; no empty third pane is required. | App navigation, conversation list, and thread are three panes once a conversation is selected. |
-| Chat thread and composer | Thread is the sole content surface with explicit back-to-list action; composer stays above the virtual keyboard and within the visible viewport. | Chat list and thread are the two chat panes; composer is fixed to the thread's visible bottom. | Chat list and thread remain side by side; composer stays in the thread's visible bottom region. |
-| Profile/avatar | One-column profile form with avatar preview and explicit save/cancel actions. | App navigation rail beside a centered, readable-width profile form with avatar preview. | App navigation and profile form; avatar preview/actions occupy a contextual side pane. |
-| Group management | One section at a time in a single surface; section selection drills into details with back action and persistent save/cancel actions. | App navigation rail, group-management section list, and active section content in two work panes. | App navigation, section list, and active settings/member content are three panes. |
-| Image/file preview | Full-screen viewer with top close/action bar; metadata/details open as a dismissible bottom sheet. | Viewer in the content area with collapsible details panel. | Centered constrained viewer with persistent metadata/details side panel. |
-
-- **Shared forms and controls:** Every field has a programmatic and visible label. Validation messages identify the field and corrective action; invalid submission focuses the first invalid field. Submit, disabled, loading, success, empty, and error states are distinct. Empty/error surfaces offer an appropriate next action (for example, create/search, retry, or return). Toasts are non-blocking, announced accessibly, and never replace inline validation or critical recovery.
-- **Touch, focus, and overlays [candidate]:** Minimum touch target is 44 CSS px, pending approval. On narrow, modal content uses an edge-to-edge sheet/dialog and navigation drawers use a full-height drawer; on medium/wide, dialogs are centered and navigation/context drawers are docked or side panels. A modal/drawer traps focus only while modal, Escape closes the topmost dismissible overlay, close returns focus to its trigger, and route changes place focus at the new page heading. Keep visible keyboard focus and logical tab order.
-- **Content bounds:** Text uses `overflow-wrap:anywhere` where needed; media, metadata, and file names have `max-width:100%` and cannot widen the page or chat thread. Images remain inspectable within the viewer bounds; signed storage URLs are never displayed as UI text.
-- **Navigation and return:** The listed route patterns are the candidate allowlist for Web-shell fallback. Keep browser history meaningful for route entry, chat selection, and preview open/close; do not intercept normal back/forward. This is UI routing only: no route change creates another login/session, WSS, SyncCursor, or business API.
-
-### [PROPOSED] FA chat input, scroll, and read behavior
-
-- Physical keyboard behavior is width-independent: Enter sends and Shift+Enter inserts a newline. With a soft keyboard, Enter inserts a newline and an explicit Send button submits. Set an IME-composing guard on `compositionstart`; suppress Enter-to-send while the guard or `event.isComposing` is true, and consume the Enter used to commit composition as composition input, not as send. Release the guard on `compositionend`; composition Enter MUST NOT submit.
-- Track `visualViewport` height/offset so the composer remains visible above the virtual keyboard without losing draft, thread, or focus. Resizing/orientation preserves each conversation's draft and pending C1 state.
-- Preserve the reading anchor as `message_id` plus its pixel offset through resize/orientation and when older history is prepended. Do not force scroll to bottom during history browsing. Auto-follow a new message only when the user is within a candidate 48 CSS px of the bottom; otherwise preserve position and show an unread count / Jump to latest action.
-- W08 may be sent after durable local receipt independent of read state. Candidate W09 eligibility requires a visible browser, that conversation active, and the actual message intersecting at least 50% continuously for 500 ms. These visibility thresholds are proposed pending product/QA approval; thread open or W08 alone never establishes read.
-
-### [PROPOSED] Web push scope
-
-A23/A24 and `DeviceTokenStatus.platform` remain `ios|android`; they do not define browser subscription/provider payloads. Any Web Push provider, subscription lifecycle, permission, foreground suppression, and service-worker behavior require an explicit product/provider contract and approval. This PRD defines governance and acceptance only: do not ship fake browser-push behavior or infer native App/PWA support from the existing push-token API.
-
-## Shared delivery rules
-
-- IDs and interface names refer to the shared contract; do not introduce role-specific schema variants.
-- Backend B/PostgreSQL is authoritative. Backend A Redis/Pub/Sub is ephemeral. Persisted ACK follows the complete message/C1/feed commit. Live events never advance the cursor; FE-A applies sync projection and candidate cursor atomically.
-- Frontend B owns the only SessionContext and app route owner; Frontend A owns the only app-scoped WSS and chat surface. `openChat(conversation_id)` is provided by FA and called by FB.
-- A03 refresh means FB publishes the fresh AccessSession, FA closes the old WSS, establishes a new WSS with W01/W02, reports initial W21, and resumes from saved cursor. A04 logs out the current device session and stops its socket.
-- Every scenario below defines future acceptance behavior, not a test already executed. Numeric limits remain candidates unless separately approved.
-
-## 1. Frontend A (FA) — Chat, real-time, and synchronization
-
-**Purpose/boundary:** Own chat UI, app-scoped WSS, message state, and local sync projection. Provide `openChat(conversation_id)`. Do not own refresh cookies, issue JWTs, sign GCS URLs, or send push notifications.
-
-### FA-01 — WSS session establishment and state
-**Trace:** REQ-01, REQ-02, REQ-15; W01–W04, W17, W21.
-- **Precondition:** FB supplies the current authenticated SessionContext (public user_id, device_id, access token, generation).
-- **Normal flow:** Establish the unique WSS; send W01 as first business frame; validate W02 identity/device/generation; use W02 `heartbeat_interval_seconds` to schedule W03 and `heartbeat_timeout_seconds` to detect missing W04; after successful auth report initial W21.
-- **Failure flow:** On W17, disconnect, expiry, or revoked session, stop sending business commands; ask FB to refresh/re-authenticate. Do not preserve a second socket as fallback.
-- **Acceptance:** Route changes do not create another socket. A03 handoff causes a new socket, not same-socket authentication. A04 promptly tears down the current connection and clears account-local auth state.
-- **Handoff:** SessionContext/authentication transition with FB; W01/W02 and session validation with BA/BB.
-
-### FA-02 — Token refresh and logout teardown
-**Trace:** REQ-02; A03/A04, W01/W02, W13–W17.
-- **Precondition:** Existing WSS and saved user feed cursor.
-- **Normal flow:** After FB publishes A03's new AccessSession, stop business frames on old socket, close it, open a new socket, send W01/receive W02, send W21, and resume from the saved cursor. On A04, close the socket and clear the current account's active projection.
-- **Failure flow:** Refresh failure does not trigger same-socket W01; a disconnect retains any unconfirmed send's original C1.
-- **Acceptance:** No same-socket reauthentication path; refresh uses a new connection and saved cursor, while logout tears down current-account realtime state.
-- **Handoff:** Connection replacement state machine with FB; authentication/session enforcement with BA; lifecycle scenarios with QA.
-
-### FA-03 — Realtime send and persisted ACK
-**Trace:** REQ-06, REQ-07; W05–W07, W17.
-- **Precondition:** Authorized conversation and authenticated socket.
-- **Normal flow:** Persist a pending local send with stable C1; issue W05; merge W06 and sender W07 into the same visible message M1.
-- **Failure flow:** On lost ACK, disconnect, or OUTCOME_UNCONFIRMED, keep and retry the original C1 and payload. A different payload with the same C1 surfaces conflict; never silently mint a replacement C1 for the same intent.
-- **Acceptance:** Same C1 yields one visible/persisted M1; `persisted` is not rendered as delivered/read. ACK can arrive before or after W07 without duplication. A known rollback is not shown as success.
-- **Handoff:** W05–W07 sequencing with BA; atomic persistence result with BB; failure scenarios with QA.
-
-### FA-04 — Delivery and read receipts
-**Trace:** REQ-12; W08–W10, W19, W16.
-- **Precondition:** Authorized message is durably stored locally; actual read occurs before marking read.
-- **Normal flow:** Send W08 after durable receipt; send W09 only after user views message; reconcile W19 and W10.
-- **Failure flow:** Repeated receipt is idempotent; delayed older status does not move read backward. On reconnect, sync restores status.
-- **Acceptance:** Client never reports read merely because a message arrived; `read` is monotonic and implies delivered. Receipt status can recover when no new message is sent.
-- **Handoff:** W08/W09 transition to BA and canonical receipt with BB.
-
-### FA-05 — Chat navigation, history, bootstrap, and synchronization
-**Trace:** REQ-04 and REQ-08–REQ-11; A12, A19, `openChat`, W07, W11–W17.
-- **Precondition:** FB routes an authorized conversation ID to FA, or the authenticated client has a saved feed cursor/first-login state.
-- **Normal flow:** Provide `openChat(conversation_id)` for FB to call; mount/switch chat UI, obtain detail with A12, and load newest-to-oldest history with A19. Separately request W13/W14 snapshot, stage all pages for one snapshot_id, merge concurrently received live items, atomically switch the local projection, and only then install start_cursor. Use W15/W16 for reconnect, foreground, and reconciliation; use A19 for older history outside snapshot window.
-- **Failure flow:** A12 denial removes inaccessible view. A19 cursor failure restarts only its history query and never invokes W13. Never save start_cursor after partial pages; retain already observed live E41/C1 through snapshot switch; advance W16 cursor only with atomically applied projection. A WSS feed reset requests fresh W13; revoked content stays filtered without blocking other feed rows.
-- **Acceptance:** FB owns routing and calls FA's `openChat`; FA owns chat display and uses one app-scoped socket. History/list cursors remain local; no gap across H, no duplicate after merging live and snapshot data, and no unauthorized post-revocation body. Responsive chat layout follows the [central Web/RWD chapter](#web-rwd).
-- **Handoff:** `openChat` and detail/history with FB/BB; W13–W16 safe scan and projection barrier with BA/BB; cursor atomicity and recovery with QA.
-
-### FA-06 — Conversation attachments, renewal, and downloads
-**Trace:** REQ-13; A20–A22, A25, W05/W07.
-- **Precondition:** Current authorization for conversation and selected supported file.
-- **Normal flow:** A20 with `scope=conversation`, upload bytes to signed URL, A21 complete, then send attachment W05. Obtain a short-lived URL through A22 for permitted display/download.
-- **Failure flow:** An expired URL uses A25 with a new idempotency key; old attempt cannot complete. Hash/type/size mismatch or lost authorization blocks use; do not send an unready attachment.
-- **Acceptance:** Binary bytes do not travel over WSS. Message uses the same C1/ACK/sync guarantees as text. No signed URL is placed in messages or logs; current conversation permission is rechecked on download. Responsive image/file preview follows the central Web/RWD chapter.
-- **Handoff:** Grant/metadata lifecycle with BB; transfer and runtime config with DevOps.
-
-### FA-07 — App activity and lease renewal
-**Trace:** REQ-14, REQ-15; W02, W18, W21/W22, W15/W16.
-- **Precondition:** W02 accepted the active device/session generation.
-- **Normal flow:** Report initial W21 after W02; report foreground/background transition; renew before W22 valid_until; reconcile feed when returning foreground.
-- **Failure flow:** Lost background frame, expired lease, or Redis uncertainty is shown as unknown, not foreground. Ignore late activity acknowledgements for an older session generation.
-- **Acceptance:** Backend can decide push eligibility per device; heartbeat is not foreground state; opening app triggers normal authorized sync.
-- **Handoff:** App lifecycle lease to BA; FB provides generation/token updates; BB consumes per-device state for push.
-
-### FA-08 — Responsive Web chat interaction
-**Trace:** REQ-19/20; shared UI chapter, A12, A19, W08/W09.
-- **Precondition:** Authenticated Web session, available chat route, and one app-scoped WSS.
-- **Normal flow:** Apply the shared Web/RWD chat behavior. On a narrow layout, conversation-list selection opens a thread with a back action. Preserve per-conversation draft, pending C1, and read position through resize/orientation. Keep the composer usable with a virtual keyboard; wide keyboard sends with Enter/newline with Shift+Enter, narrow layout offers explicit send. IME composition Enter MUST NOT send. Keep history browsing position, constrain long content/media/file names, and send W09 only for actually visible content in an active, visible browser.
-- **Failure flow:** Layout changes never log in again, open another WSS, or change/reset the SyncCursor. W08 may be sent after durable local receipt without sending W09. If visibility state is uncertain, do not infer that a message was read.
-- **Acceptance:** Interaction follows the single shared UI chapter; C1 pending state and read position survive reflow; W08 and W09 remain distinct. Visibility threshold/dwell time for W09 are proposed and require product/QA approval.
-- **Handoff:** Shared UI decisions and `openChat` with FB; W08/W09/read model with BA/BB; browser input/visibility cases with QA.
-
-## 2. Frontend B (FB) — Authentication, contacts, routing, and push token
-
-**Purpose/boundary:** Sole frontend SessionContext, auth-cookie, profile/contact/group-entry, push-token, and top-level route owner. Calls FA `openChat`. Does not own `subject_id`, create another WSS, or redefine wire format.
-
-### FB-01 — Registration, login, and device binding
-**Trace:** REQ-01; A01/A02, W01/W02.
-- **Precondition:** Logged out; DeviceStore may have a DeviceID for this same account or none on a new install.
-- **Normal flow:** A01 registers and returns UserProfile only. A02 sends the same-account DeviceStore DeviceID when present, or `device_id:null` for first-install issuance; save the returned DeviceID back to that account's DeviceStore and keep the returned AccessSession/refresh cookie in FB-owned session state, then give FA the authenticated context. Logout clears SessionContext, not the separate installation-scoped DeviceStore.
-- **Failure flow:** If the stored ID is lost or the server refuses reuse, adopt returned server DeviceID. DeviceID is not authentication; errors and login throttling are surfaced without account enumeration.
-- **Acceptance:** A02 user_id, W02 user_id, and A05 UserProfile.id agree as the public identity; A02 AccessSession device_id/generation match W02. The logged_out SessionContext remains all-null while DeviceStore is separate. Internal subject_id never enters SessionContext.
-- **Handoff:** AccessSession to FA; account/session/device binding with BB/BA.
-
-### FB-02 — Refresh and logout
-**Trace:** REQ-02; A03/A04, FA handoff, W01/W02/W21.
-- **Precondition:** Current authenticated SessionContext.
-- **Normal flow:** A03 refreshes cookie and publishes new access session/generation to FA; A04 completes, clears current device auth, and tells FA to stop WSS.
-- **Failure flow:** If refresh fails, require re-login and do not let FA use stale credentials. Resolve A03/A04 race according to Backend B session result.
-- **Acceptance:** Refresh always replaces old socket and uses saved cursor; logout revokes current device and push binding under proposal and does not log out unrelated devices.
-- **Handoff:** New generation and teardown ordering to FA/BA; serialized session outcome with BB.
-
-### FB-03 — Profile and avatar, including zero-conversation account
-**Trace:** REQ-03; A05/A06/A20–A22/A25.
-- **Precondition:** Logged-in owner; no conversation is required.
-- **Normal flow:** Read/update profile; upload avatar with A20 `scope=avatar,conversation_id:null`, transfer, complete A21, assign ready attachment through A06; retrieve with A22.
-- **Failure flow:** Renew an expired grant through A25/new key. Do not assign an unready or non-owned attachment. Null avatar assignment removes it.
-- **Acceptance:** Avatar upload and display work for an account with no chats; private email stays self-only; attachment URL is short-lived. The responsive profile/avatar surface follows the central Web/RWD chapter.
-- **Handoff:** Profile/attachment authorization with BB, transfer setup with DevOps.
-
-### FB-04 — Contacts, directory, and local cursor recovery
-**Trace:** REQ-03; A07–A10.
-- **Precondition:** Authenticated user.
-- **Normal flow:** Find authorized summaries, page contacts, add/remove contact, display explicit online/offline/unknown presence.
-- **Failure flow:** A08 REST cursor error refetches only first contacts page; it does not request W13 or clear FA feed. Unknown presence is shown as unknown.
-- **Acceptance:** No email disclosure through summaries; duplicate add does not create duplicate contacts; removal does not delete conversation history. Responsive contacts/directory layout follows the central Web/RWD chapter.
-- **Handoff:** Contact projection/authorization with BB; ephemeral presence with BA/FA.
-
-### FB-05 — Conversation navigation and group management
-**Trace:** REQ-04, REQ-05, REQ-11; A11–A18, W11/W12/W20, `openChat`.
-- **Precondition:** Authenticated user; admin-only actions require current admin authorization.
-- **Normal flow:** List/direct-create/group-create/update members through REST. For opening a chat, FB updates app route and calls FA-provided `openChat`. REST caller updates its own successful operation; other devices consume post-commit events.
-- **Failure flow:** A11 REST cursor error restarts only the conversation list. Membership version gap is reconciled by A12. On own removal, clear group route after A18 success/minimal W12.
-- **Acceptance:** A14/A16→W11, A15/A17→W20, A18→W12. No ban endpoint or behavior. Unauthorized member cannot continue to fetch detail/history/content; responsive group controls follow the central Web/RWD chapter.
-- **Handoff:** REST group operation to BB; group event distribution to FA; route interface to FA.
-
-### FB-06 — Push-token registration and cleanup
-**Trace:** REQ-14; A02/A04/A23/A24.
-- **Precondition:** Authenticated device and OS notification permission/provider token.
-- **Normal flow:** Register/update token for AccessSession.device_id with A23; revoke with A24 when disabled.
-- **Failure flow:** Do not expose token in UI/logs. A04 current-device logout removes its binding per proposal; other devices remain registered.
-- **Acceptance:** Token registration is bound to current account/device; push is only a hint and opening it invokes normal authenticated sync.
-- **Handoff:** Device/session checks and token storage with BB; lifecycle/activity from FA/BA.
-
-### FB-07 — Responsive Web shell, non-chat pages, and route return
-**Trace:** REQ-19/21; shared UI chapter, A01–A18, `openChat`.
-- **Precondition:** One Web build shared by FA and FB; routes and existing auth state are available.
-- **Normal flow:** Apply the shared shell/layout to registration/login, contacts/directory, profile/avatar, and group management. Own browser history, protected route guard, deep-link route entry, post-login return, and call FA's `openChat` for chat content.
-- **Failure flow:** Unauthenticated/unauthorized deep links do not render protected data; login returns only to the authorized requested route. Reflow does not create another session or WSS. Preserve existing API/event/model contracts across layouts.
-- **Acceptance:** Browser navigation and responsive non-chat pages share one SessionContext/router policy; FA remains chat UI owner. Use the central shared UI chapter without restating its viewport bands.
-- **Handoff:** Route and login-return behavior with FA; authorization with BB; browser route/fallback with DO; matrix cases with QA.
-
-## 3. Backend A (BA) — Realtime messaging service
-
-**Purpose/boundary:** WSS handshake, connection/heartbeat, ephemeral Redis/presence, activity leases, event routing, and sync ingress. Backend B owns JWT/session authority, authorization decisions, durable state, and PostgreSQL schema. Browser layout does not create a separate realtime API, event model, connection, or cursor.
-
-### BA-01 — WSS authentication and session termination
-**Trace:** REQ-01/02; W01/W02/W17, `validateAccess`.
-- **Precondition:** New WSS connection.
-- **Normal flow:** Require W01 first; validate token with BB, verify W01 device binding, return W02 public user/device/session generation and configured heartbeat values.
-- **Failure flow:** Reject expired, revoked, wrong-device, or stale-generation session; stop new operations and close old socket when A03/A04 revocation takes effect. W17 may be sent before close but is not guaranteed.
-- **Acceptance:** Never trust client subject_id; successful refreshed auth uses a new connection; a single device failure does not revoke other devices.
-- **Handoff:** `validateAccess`/session state with BB; session replacement notification with FA/FB.
-
-### BA-02 — Heartbeat and user-level presence
-**Trace:** REQ-15; W03/W04/W18, `getDevicePresence`.
-- **Precondition:** Authenticated socket.
-- **Normal flow:** W03/W04 track connection liveness. Aggregate valid user connections for W18 online transitions; query device/activity separately.
-- **Failure flow:** Heartbeat timeout clears that socket only. Redis unavailable means presence unknown, not offline/online certainty.
-- **Acceptance:** Presence describes aggregate connectivity and never implies app foreground or message receipt.
-- **Handoff:** Presence query with BB and display with FA/FB.
-
-### BA-03 — Message ingress and persisted ACK
-**Trace:** REQ-06/07; W05–W07/W17, `authorize`, `persistIfAbsent`.
-- **Precondition:** Authenticated principal, authorized conversation, valid message C1.
-- **Normal flow:** Validate type/content, authorize, call transactional persistence; emit W06 only after complete persisted result; route W07 to authorized recipients.
-- **Failure flow:** Known rollback yields no successful ACK; unknown result is OUTCOME_UNCONFIRMED; lost ACK is recovered by same C1. Redis publication failure is recoverable through W16.
-- **Acceptance:** The ACK never precedes message+C1 mapping+required feeds commit. Same C1 maps to same M1/event; changed payload conflicts.
-- **Handoff:** Persistence transaction output and recipient list with BB; UI retry/merge with FA/QA.
-
-### BA-04 — Delivery/read receipt forwarding
-**Trace:** REQ-12; W08–W10/W19, `persistReceipt`.
-- **Precondition:** Authenticated device and authorized message recipient.
-- **Normal flow:** Persist monotonic receipt through BB; correlate W19 to requesting W08/W09; fan out W10 to permitted observers and allow feed recovery.
-- **Failure flow:** Reject spoofed/unrelated receipt; duplicate reports are no-ops; `read` cannot regress.
-- **Acceptance:** W19 request result is distinct from W10 projection; canonical state is BB.
-- **Handoff:** Receipt projection/audience with BB and FA.
-
-### BA-05 — Cross-node fanout and group event routing
-**Trace:** REQ-05/08/11; W07/W11/W12/W20.
-- **Precondition:** BB transaction committed message or membership change.
-- **Normal flow:** Redis Pub/Sub accelerates event delivery to currently authorized sockets; preserve recipient-specific event identity.
-- **Failure flow:** Lost publication is repaired through W16. Recheck authorization at delivery; revoked member receives only own minimal W12 and no later body.
-- **Acceptance:** Group mutation event mapping is exact; ephemeral broker data is never treated as durable success.
-- **Handoff:** Committed membership/feed rows with BB; inter-node behavior with DevOps.
-
-### BA-06 — Bootstrap and feed sync ingress
-**Trace:** REQ-09–REQ-11; W13–W17, `readBootstrap`, `readFeed`.
-- **Precondition:** Valid authenticated principal.
-- **Normal flow:** W13/W14 proxy consistent snapshot pages; W15/W16 proxy pinned safe feed batches.
-- **Failure flow:** Expired user SyncCursor returns W17 SYNC_RESET_REQUIRED. Do not reset for A08/A11/A19 REST cursors. A page sequence with incomplete snapshot must not claim start cursor installed.
-- **Acceptance:** Hidden positions can safely advance; unauthorized content is filtered; one revoked conversation cannot stall the rest of the feed.
-- **Handoff:** Read contracts and auth-filtered event rows with BB; cursor commit protocol with FA/QA.
-
-### BA-07 — Device activity leases
-**Trace:** REQ-14/15; W21/W22, `recordActivity`, `getDevicePresence`.
-- **Precondition:** W02 accepted active session and device.
-- **Normal flow:** Verify W21 device and generation; record current foreground/background state; reply W22 with server validity deadline. Expose device-level query to BB.
-- **Failure flow:** Reject stale session generation; duplicate state report is idempotent; Redis failure/expiry yields unknown.
-- **Acceptance:** Activity never grants chat permission, is not heartbeat, and can safely inform per-device push audience.
-- **Handoff:** W21/W22 lifecycle with FA; push decision with BB.
-
-### BA-08 — Rate limiting, frame defense, and WSS errors
-**Trace:** REQ-16; W17 and shared candidate limits.
-- **Precondition:** Any unauthenticated/authenticated frame.
-- **Normal flow:** Enforce approved limits and frame constraints; emit shared W17 code/message/retryable/correlation shape.
-- **Failure flow:** Bound per-socket output for slow consumers; on disconnected socket do not claim error was delivered; never log token or body.
-- **Acceptance:** No successful outcome is fabricated; all eventual numeric limits remain configurable and unapproved until PM/QA decision.
-- **Handoff:** Security/error fields with QA and operational settings with DevOps.
-
-## 4. Backend B (BB) — REST API and database
-
-**Purpose/boundary:** A01–A25, account/session authority, PostgreSQL canonical state, object metadata/GCS grants, durable feed and push intents. Does not own client sockets and does not use Redis as message storage. All browser layouts use the same REST contracts, models, authorization, and durable feeds; do not duplicate business APIs by device form factor.
-
-### BB-01 — Accounts, session, and device identity
-**Trace:** REQ-01/02; A01–A04, AccessSession, internal `validateAccess`.
-- **Precondition:** Registration/login/refresh/logout request.
-- **Normal flow:** Persist account credentials safely; authenticate A02; bind or issue device_id; issue AccessSession; advance session generation on A03; revoke current device/session on A04.
-- **Failure flow:** Serialize refresh/logout race; stale/revoked cookie cannot issue a still-valid socket session. Device ID alone cannot authenticate or cross-bind another user.
-- **Acceptance:** A05 `UserProfile.id` equals only the public `user_id` in the current A02/A03 AccessSession and W02. Compare `device_id` and `session_generation` strictly between the matching A02/A03 AccessSession and W02; A05 has neither field. Never expose `subject_id`.
-- **Handoff:** AccessSession to FB; session validation to BA.
-
-### BB-02 — Profiles and contacts
-**Trace:** REQ-03; A05–A10, UserProfile/UserSummary/ContactView.
-- **Precondition:** Authenticated caller and relevant user/contact authorization.
-- **Normal flow:** Maintain own profile/contacts, return distinct self Profile vs public Summary, require ready own avatar on A06.
-- **Failure flow:** Prevent email or hidden avatar disclosure; report unknown transient presence as unknown; invalid list cursor affects only its REST query.
-- **Acceptance:** Required projection fields/nullability match common dictionary; contact duplicate does not duplicate row; removal does not erase conversation data.
-- **Handoff:** Profile/contact responses to FB; summaries to FA; ephemeral presence via BA.
-
-### BB-03 — Conversations, groups, and authorization
-**Trace:** REQ-04/05/11; A11–A18 and W11/W12/W20.
-- **Precondition:** Current member/admin/self-leave policy for requested operation.
-- **Normal flow:** Read direct/group projections; create unique direct conversation; transact membership/title/role and required feed updates.
-- **Failure flow:** Reject unauthorized operation, protect last-admin invariant, enforce post-removal authorization on history/download and future feed. No ban state/operation.
-- **Acceptance:** A14/A16 emit W11, A15/A17 W20, A18 W12. Membership version and REST response correspond to committed state; feed mutation is committed before Pub/Sub.
-- **Handoff:** REST projection to FB; committed events to BA/FA; policy decisions to PM.
-
-### BB-04 — Transactional messages, idempotency, and durable push intent
-**Trace:** REQ-06–REQ-08/14; `persistIfAbsent`, W05–W07.
-- **Precondition:** Authorized sender, message shape, stable C1.
-- **Normal flow:** Transactionally write canonical message, C1 mapping, every required per-user feed row, and eligible per-device push intent. Return `created` or `existing_same` with persisted result.
-- **Failure flow:** Different payload under same C1 is conflict; distinguish known rollback from uncertain outcome; never write successful ACK evidence before required rows commit.
-- **Acceptance:** Retried send produces same M1 and stable event ID; push provider failure cannot alter message/receipt state.
-- **Handoff:** Transaction contract with BA; C1 merge with FA; fault outcomes with QA.
-
-### BB-05 — History and receipt authority
-**Trace:** REQ-09/12; A19, W08–W10/W19, `persistReceipt`.
-- **Precondition:** Current permission to read message/history or report receipt.
-- **Normal flow:** Query history by separate history cursor; persist delivery/read monotonically; include old-message status corrections in feed/bootstrap projection.
-- **Failure flow:** A19 cursor error affects only that history view; authorization loss blocks further content. Duplicate receipt does not create redundant status event.
-- **Acceptance:** Same canonical message ID appears in live, history, and sync; A19 order is independent of user feed cursor.
-- **Handoff:** Message/receipt projection to FA/BA.
-
-### BB-06 — Snapshot and durable user feed
-**Trace:** REQ-09–REQ-11; `readBootstrap`, `readFeed`, W13–W16.
-- **Precondition:** Authenticated subject and supported snapshot/feed cursor.
-- **Normal flow:** Read authorized snapshot content and H from one consistent view; paginate by same snapshot id; scan per-user feed in safe committed order with pinned continuation boundary.
-- **Failure flow:** Snapshot expiry creates a fresh consistent snapshot; do not install H before all pages and local switch. Filter revoked body while allowing safe advancement and other conversation rows.
-- **Acceptance:** The agreed bounded bootstrap scope and current state at H are represented by the completed snapshot; later durable feed positions remain accessible through W16, and older authorized history remains available through A19. REST cursor errors do not reset the feed.
-- **Handoff:** Sync read semantics with BA and cursor application with FA/QA.
-
-### BB-07 — Attachments, avatars, and signed transfer
-**Trace:** REQ-03/13; A06, A20–A22, A25.
-- **Precondition:** Owner and valid scope; conversation authorization where applicable.
-- **Normal flow:** Store metadata, create short-lived GCS upload/download grant, verify bytes and hash on completion, permit ready attachment use; renewal preserves attachment ID and creates current attempt.
-- **Failure flow:** Reject old attempts, wrong metadata/type/size and unauthorized downloads. Avatar scope must have null conversation_id and work without a chat.
-- **Acceptance:** A22 reauthorizes each retrieval; signed URL and GCS object key remain private; failed upload does not become ready.
-- **Handoff:** Transfer and metadata contract with FE-A/FE-B; bucket and secret config with DevOps.
-
-### BB-08 — Push token store and background dispatch
-**Trace:** REQ-14; A23/A24, `getDevicePresence`, `dispatchPushIntent`.
-- **Precondition:** Valid bound device token and committed eligible message.
-- **Normal flow:** Store token securely; after durable commit evaluate each recipient device activity; suppress fresh foreground, send generic hint for background/unknown.
-- **Failure flow:** Provider failure retries durable intent; permanent invalid token retires binding. A04 current-device logout revokes binding per proposal. No message body in push; no receipt mutation.
-- **Acceptance:** Push is a hint, not delivery/read evidence; opening notification gets authorized content through sync. A23/A24 remain the iOS/android token contract; browser push has no subscription/provider schema here and is pending the Web-push policy/contract decision, not an implied implementation.
-- **Handoff:** Activity state to BA; token workflow to FB; credentials/monitoring to DevOps.
-
-## 5. DevOps (DO) — Infrastructure and delivery
-
-**Purpose/boundary:** Provide the specified host routing, configuration/secret bindings, delivery pipeline, monitoring, and repeatable verification environment. GCP compute architecture is not selected; do not assume Kubernetes.
-
-### DO-01 — Domain, TLS, ingress, and routes
-**Trace:** REQ-17; REST/WSS base routes and internal health paths.
-- **Precondition:** Approved domain and target environment.
-- **Normal flow:** Route public HTTPS REST `/api/v1` and WSS `/ws/v1` under `hine.run.place`; keep probes internal.
-- **Failure flow:** TLS, routing, or required dependency failure prevents readiness/deployment acceptance.
-- **Acceptance:** Single public contract; internal health is not exposed as user API. Web-shell refresh fallback is limited to approved UI paths and preserves API/WSS routes.
-- **Handoff:** Required ports/health behavior with BA/BB; smoke specification with QA.
-
-### DO-02 — Typed environment and secret management
-**Trace:** REQ-17; contract §6 setting names.
-- **Precondition:** Approved environment inventory and least-privilege ownership.
-- **Normal flow:** Inject typed config and secret references per service/environment; only BB receives JWT signing authority; protect GCS and push provider credentials.
-- **Failure flow:** Missing required config fails closed or readiness; never substitute fake credentials or log secret material.
-- **Acceptance:** Each setting has service owner, sensitivity, requirement, and missing-value behavior. Secret values do not enter PRDs/logs.
-- **Handoff:** Required config with BA/BB; test-matrix with QA.
-
-### DO-03 — GitHub Actions delivery
-**Trace:** REQ-17; GitHub Actions.
-- **Precondition:** Approved quality gates and controlled deployment environment.
-- **Normal flow:** PR checks → controlled test deployment → health/REST/WSS smoke → authorized production promotion with recoverable version.
-- **Failure flow:** Missing config or failed check stops promotion and retains traceable artifact/version.
-- **Acceptance:** GitHub Actions is the CI/CD baseline (not GitLab); pipeline specification identifies inputs, outputs, approvals, and rollback artifact. This PRD does not claim it is implemented.
-- **Handoff:** Build/runtime requirements across six roles.
-
-### DO-04 — Health, monitoring, alerting, and log privacy
-**Trace:** REQ-16/17; HealthResponse and `/health/live`/`/health/ready`.
-- **Precondition:** BA/BB expose health and non-sensitive metrics.
-- **Normal flow:** Distinguish liveness from dependency readiness; monitor ACK, live delivery, recovery, activity expiry, and push failures.
-- **Failure flow:** Missing config reason is diagnosable (e.g. CONFIG_MISSING) without exposing secrets, body, token, or high-cardinality public user-ID labels.
-- **Acceptance:** Dependency failure returns unready/503; logs and metric labels remain privacy-safe.
-- **Handoff:** Health dependencies with BA/BB; alert thresholds and acceptance with QA.
-
-### DO-05 — Reproducible performance-verification environment
-**Trace:** REQ-18; approved operational configuration.
-- **Precondition:** QA workload and PM thresholds are specified.
-- **Normal flow:** Record software version, compute/resource, network, DB pool, Redis, and config references needed to reproduce a run.
-- **Failure flow:** Incomparable environments do not share capacity conclusions; untested scale is never reported passed.
-- **Acceptance:** Environment description is sufficient to reproduce future measurements; no performance result is claimed in this spec.
-- **Handoff:** Environment record to QA.
-
-### DO-06 — Web assets and protected deep-route fallback
-**Trace:** REQ-21; Web UI route inventory, auth-guard/route-return behavior, `/api/v1`, `/ws/v1`.
-- **Precondition:** Approved Web asset build and known UI route namespace.
-- **Normal flow:** Serve the same Web project assets and allow refresh/deep-link fallback only for the listed candidate UI route patterns: `/login`, `/register`, `/contacts`, `/chats`, `/chats/{conversation_id}`, `/profile`, and `/groups/{conversation_id}/manage`. Retain `/api/v1` REST and `/ws/v1` WSS routing as separate backend routes.
-- **Failure flow:** Never rewrite `/api/v1` or `/ws/v1` paths or failures to the Web shell. Unknown UI routes show controlled not-found state; protected routes wait for authorization and do not disclose content.
-- **Acceptance:** Refresh/direct navigation to each listed UI route reaches the same auth guard and authorized route return; the Web-shell fallback is restricted to those UI route patterns, and API/WSS paths and status behavior remain unchanged.
-- **Handoff:** Route namespace with FB; origin/ingress rules with BA/BB; deep-link matrix with QA.
-
-## 6. QA — Test and acceptance
-
-**Purpose/boundary:** Define behavior, schema, privacy, recovery, and performance acceptance. Only run product tests once an implementation and approved test environment exist; this PRD records no test execution.
-
-### QA-01 — Interface contract and schema compliance
-**Trace:** REQ-01–REQ-06 and A01–A25/W01–W22.
-- **Precondition:** One version of common dictionary, endpoint/event registry, and sample payloads.
-- **Normal flow:** Validate required fields, nullability, method/path, response status, correlation, authorization, and event mapping.
-- **Failure flow:** Missing/extra wrong-state fields, wrong event mapping, summary used in place of detail, or leaked subject_id are contract failures.
-- **Acceptance:** Every consumer references the shared contract and the central Web/RWD chapter; no role duplicates its layout bands or creates platform-specific business schemas.
-- **Handoff:** Schema/report findings to FA/FB/BA/BB.
-
-### QA-02 — Session, refresh, activity, and multi-device behavior
-**Trace:** REQ-01/02/14/15; A02–A04, W01/W02/W21/W22.
-- **Precondition:** Valid account, two device sessions, controllable socket lifecycle.
-- **Normal flow:** Verify login/session binding; refresh, close old socket, create new W01/W02, send first W21, and resume saved cursor; exercise background/foreground and lease renewal.
-- **Failure flow:** Exercise refresh/logout race, old-generation late activity, missed background frame, lease expiry, and Redis uncertainty.
-- **Acceptance:** No same-socket reauthentication; stale session cannot resume; lease expiry becomes unknown; failure of one device does not log out another.
-- **Handoff:** State transition cases to FB/FA/BA/BB.
-
-### QA-03 — Snapshot/feed recovery and cursor isolation
-**Trace:** REQ-09–REQ-11; A08/A11/A19 and W13–W17.
-- **Precondition:** Multi-page snapshot with one snapshot_id and independent REST list/history cursors.
-- **Normal flow:** Ensure intermediate page does not install H; after all staged pages and atomic local switch, install H and continue feed. Exercise hidden filtered positions.
-- **Failure flow:** Expire each REST cursor independently, then expire user feed cursor.
-- **Acceptance:** Each A08/A11/A19 failure refetches only its own query; only WSS feed reset triggers W13. No missed authorized event or unauthorized body; a revoked conversation does not block another.
-- **Handoff:** Cursor boundaries and expected local state to FA/FB/BA/BB.
-
-### QA-04 — Cross-module behavior and failure injection
-**Trace:** REQ-03–REQ-08, REQ-12–REQ-14; A01–A25/W05–W22.
-- **Precondition:** Isolated users, conversations, attachment storage, and push provider test setup.
-- **Normal flow:** Exercise zero-conversation avatar, A25 renewal, group A14–A18 mappings, ACK recovery, receipt recovery, background hint, and return-to-app sync.
-- **Failure flow:** Inject known rollback, commit-before-ACK loss, ACK-before-publication interruption, stale upload attempt, wrong MIME, revoked membership, and provider failure.
-- **Acceptance:** Original C1 recovers one M1; complete commit precedes ACK; A14/A16→W11, A15/A17→W20, A18→W12; provider errors do not alter receipts.
-- **Handoff:** Reproducible failure checkpoints with FA/BA/BB.
-
-### QA-05 — Privacy, configuration, and performance acceptance
-**Trace:** REQ-16–REQ-18; common errors, health, metrics, and approved limits.
-- **Precondition:** PM-approved operating values/workload and isolated credentials.
-- **Normal flow:** Validate missing-config/readiness response, privacy-safe logs, and independently measured ACK, end-to-end delivery, reconnect, sync recovery, and feed contention.
-- **Failure flow:** Reject secret/body leakage, false healthy state, and untested scale claims. Keep unapproved historical SLOs out of pass/fail criteria.
-- **Acceptance:** Results state exact environment/workload; no capacity claim without measurement. No product test or performance result is asserted by these PRDs.
-- **Handoff:** Findings to PM, DevOps, BA, BB.
-
-### QA-06 — Web responsive, input, route, and push-policy acceptance
-**Trace:** REQ-19–REQ-22; shared UI chapter, W08/W09, A23/A24 and existing route/session behavior.
-- **Precondition:** One shared Web build, candidate-supported browsers, controllable viewport/input/orientation, test accounts, and proposed acceptance criteria.
-- **Normal flow:** Run browser/version × sample viewport × orientation × zoom cases, using mouse/touch and physical/virtual keyboard plus Chinese IME on applicable controls. Sample viewports are 320, 375, 767, 768, 1024, 1199, 1200, and 1440 CSS px (test sizes, not breakpoint definitions); include portrait/landscape, 200% zoom, all page families and candidate UI deep links/auth return. Exercise composer visibility, anchor preservation through orientation/history prepend, candidate auto-follow/read visibility thresholds, and browser-push scope as governance only. Browser/version selections are candidates pending product/QA approval and must be recorded.
-- **Failure flow:** Verify no second WSS/session/cursor on reflow, no IME accidental send, no forced history scroll, no W09 without the candidate actual-visibility conditions, no protected data before authorization, and no API/WSS path handled by Web-shell fallback. Do not infer browser push from A23/A24 or native App/PWA behavior.
-- **Acceptance:** Record browser/version, viewport/orientation/zoom, input modality, route, and observed layout/state per case. Distinguish proposed layout and interaction thresholds from approved behavior; W08 remains independent of W09, and REQ-22 remains a browser-push approval/contract prerequisite. No product test result is asserted here.
-- **Handoff:** Browser/width/input/state findings and policy prerequisites to FA/FB/DO/BA/BB and PM.
-
-## 7. Cross-module REQ acceptance and ownership matrix
-
-Rows describe observable future acceptance. Primary owner precedes collaborators.
-
-| Requirement | Primary / collaborators | Interfaces | Acceptance summary |
+| 登入與註冊 | 單一全高單欄表單介面；捲動時表單與提交操作仍可見。 | 居中表單介面，搭配精簡品牌／頁首區與單欄欄位。 | 雙欄：品牌／資訊窗格與適合閱讀寬度的表單窗格；表單仍是主要操作區。 |
+| 聯絡人／目錄 | 單一介面包含頁首、搜尋／篩選及全高聯絡人清單；選取聯絡人後以返回操作深入檢視其詳細資料。 | 應用程式導覽列位於聯絡人內容旁；選取後，聯絡人詳細資料置於第二內容窗格。 | 應用程式導覽、聯絡人清單及所選聯絡人詳細資料分為三個固定窗格。 |
+| 聊天清單 (`/chats`) | 單一介面包含對話清單／搜尋；選取對話後導向其訊息串。 | 應用程式導覽列加上聊天清單／內容區；不要求空白的第三窗格。 | 選取對話後，應用程式導覽、對話清單及訊息串分為三個窗格。 |
+| 聊天訊息串與撰寫框 | 訊息串是唯一內容介面，並提供明確的返回清單操作；撰寫框維持在虛擬鍵盤上方及可視範圍內。 | 聊天清單與訊息串構成兩個聊天窗格；撰寫框固定於訊息串可見底部。 | 聊天清單與訊息串並排；撰寫框維持在訊息串可見底部區域。 |
+| 個人資料／頭像 | 單欄個人資料表單，含頭像預覽及明確的儲存／取消操作。 | 應用程式導覽列旁設置居中且寬度適合閱讀的個人資料表單，含頭像預覽。 | 應用程式導覽與個人資料表單；頭像預覽／操作置於情境側窗格。 |
+| 群組管理 | 單一介面一次顯示一個區段；選取區段後深入檢視詳細資料，並提供返回及固定的儲存／取消操作。 | 應用程式導覽列、群組管理區段清單及作用中區段內容，分置於兩個工作窗格。 | 應用程式導覽、區段清單及作用中的設定／成員內容分為三個窗格。 |
+| 圖片／檔案預覽 | 全螢幕檢視器，附頂部關閉／操作列；中繼資料／詳細資料於可關閉的底部工作表開啟。 | 檢視器置於內容區，並附可收合的詳細資料面板。 | 居中的受限尺寸檢視器，搭配固定中繼資料／詳細資料側面板。 |
+
+- **共用表單與控制項：**每個欄位皆有程式可識別及畫面可見的標籤。驗證訊息指出欄位及修正方式；提交無效內容時，焦點移至第一個無效欄位。提交、停用、載入、成功、空白及錯誤狀態彼此有別。空白／錯誤介面提供適當的後續操作（例如建立／搜尋、重試或返回）。提示訊息不阻斷操作，並以無障礙方式播報，且不得取代欄位內驗證或關鍵復原機制。
+- **觸控、焦點與覆蓋介面 [候選]：**最小觸控目標為 44 CSS px，待批准。窄幅時，對話框內容採全寬工作表／對話框，導覽抽屜採全高抽屜；中／寬幅時，對話框居中，導覽／情境抽屜採停靠式抽屜或側面板。覆蓋介面僅在模態期間限制焦點；Escape 關閉最上層可關閉覆蓋介面，關閉後焦點返回觸發項目，路由變更後焦點移至新頁面標題。鍵盤焦點須清晰可見，Tab 順序須合乎邏輯。
+- **內容邊界：**必要時文字使用 `overflow-wrap:anywhere`；媒體、中繼資料及檔名限制為 `max-width:100%`，不得撐寬頁面或聊天訊息串。圖片須能在檢視器範圍內檢視；簽署儲存網址不得顯示為 UI 文字。
+- **導覽與返回：**所列路由模式是 Web 殼層備援的候選允許清單。瀏覽器歷程須保留路由進入、聊天選取及預覽開啟／關閉的意義；不得攔截一般上一頁／下一頁操作。這僅涉及 UI 路由：路由變更不會建立另一個登入／工作階段、WSS、SyncCursor 或業務 API。
+
+<a id="proposed-fa-chat-input-scroll-and-read-behavior"></a>
+### [提案] FA 聊天輸入、捲動與已讀行為
+
+- 實體鍵盤行為不受寬度影響：Enter 傳送，Shift+Enter 插入換行。使用軟體鍵盤時，Enter 插入換行，明確的傳送按鈕負責提交。於 `compositionstart` 設定 IME 組字守衛；守衛啟用或 `event.isComposing` 為 `true` 時，停用 Enter 傳送，並將用於提交組字的 Enter 視為組字輸入而非傳送。於 `compositionend` 解除守衛；組字期間的 Enter 不得提交。
+- 追蹤 `visualViewport` 高度／偏移，使撰寫框在虛擬鍵盤上方保持可見，且不遺失草稿、訊息串或焦點。調整尺寸／方向時，各對話草稿及待處理 C1 狀態均須保留。
+- 以 `message_id` 及其像素偏移量作為閱讀錨點，在調整尺寸／方向及前置載入較舊歷史訊息時予以保留。瀏覽歷史訊息時不得強制捲至底部。只有使用者距離底部在候選 48 CSS px 內時，才自動跟隨新訊息；否則保留位置並顯示未讀數量／「跳至最新」動作。
+- W08 可在本機持久接收後傳送，不受已讀狀態影響。候選 W09 條件為瀏覽器可見、該對話作用中，且實際訊息連續至少 500 ms 有 50% 以上相交可見。這些可見性門檻仍是提案，待產品／QA 批准；開啟訊息串或單獨收到 W08 均不代表已讀。
+
+<a id="proposed-web-push-scope"></a>
+### [提案] Web Push 範圍
+
+A23/A24 及 `DeviceTokenStatus.platform` 維持 `ios|android`；它們未定義瀏覽器訂閱／供應商承載資料。任何 Web Push 供應商、訂閱生命週期、權限、前景抑制及 Service Worker 行為，均須有明確的產品／供應商契約並經批准。本 PRD 僅定義治理與驗收：不得推出虛假的瀏覽器推播行為，也不得從既有推播權杖 API 推定支援原生應用程式/PWA。
+
+<a id="shared-delivery-rules"></a>
+## 共用交付規則
+
+- ID 與介面名稱皆參照共用契約；不得引入角色專屬的結構描述變體。
+- 後端 B/PostgreSQL 為權威來源。後端 A Redis/Pub/Sub 為暫存資料。持久化 ACK 須在完整訊息／C1／事件流提交後才發出。即時事件不會推進游標；FE-A 以原子方式套用同步投影及候選游標。
+- 前端 B 擁有唯一的 SessionContext 與應用程式路由擁有者；前端 A 擁有唯一的應用程式範圍 WSS 與聊天介面。`openChat(conversation_id)` 由 FA 提供並由 FB 呼叫。
+- A03 更新表示 FB 發佈新 AccessSession、FA 關閉舊 WSS、以 W01/W02 建立新 WSS、回報初始 W21，並從已儲存游標繼續。A04 登出目前裝置工作階段並停止其連線。
+- 以下每個情境定義的是未來驗收行為，不代表已執行測試。除非另行批准，數值限制均為候選值。
+
+
+<a id="1-frontend-a-fa-chat-real-time-and-synchronization"></a>
+<a id="1-frontend-a-fa--chat-real-time-and-synchronization"></a>
+## 1. 前端 A (FA) — 聊天、即時通訊與同步
+
+**目的／界線：**負責聊天 UI、應用程式範圍的 WSS、訊息狀態及本機同步投影。提供 `openChat(conversation_id)`。不負責更新憑證 Cookie、簽發 JWT、簽署 GCS 網址或傳送推播通知。
+
+<a id="fa-01-wss-session-establishment-and-state"></a>
+<a id="fa-01--wss-session-establishment-and-state"></a>
+### FA-01 — WSS 工作階段建立與狀態
+**追溯：**REQ-01、REQ-02、REQ-15；W01–W04、W17、W21。
+- **前置條件：**FB 提供目前已驗證的 SessionContext（公開 user_id、device_id、存取權杖、世代）。
+- **正常流程：**建立唯一 WSS；將 W01 作為第一個業務訊框傳送；驗證 W02 身分／裝置／世代；使用 W02 `heartbeat_interval_seconds` 排程 W03，並以 `heartbeat_timeout_seconds` 偵測缺少的 W04；驗證成功後回報初始 W21。
+- **失敗流程：**收到 W17、連線中斷、工作階段到期或遭撤銷時，停止傳送業務命令；要求 FB 更新／重新驗證。不得保留第二個連線作為備援。
+- **驗收條件：**路由變更不會建立另一個連線。A03 交接會建立新連線，而非在同一連線上驗證。A04 會迅速拆除目前連線並清除帳戶本機驗證狀態。
+- **交接：**與 FB 協調 SessionContext／驗證轉換；與 BA/BB 協調 W01/W02 及工作階段驗證。
+
+<a id="fa-02-token-refresh-and-logout-teardown"></a>
+<a id="fa-02--token-refresh-and-logout-teardown"></a>
+### FA-02 — 權杖更新與登出拆除
+**追溯：**REQ-02；A03/A04、W01/W02、W13–W17。
+- **前置條件：**既有 WSS 與已儲存的使用者事件流游標。
+- **正常流程：**FB 發佈 A03 的新 AccessSession 後，停止舊連線上的業務訊框、關閉舊連線、開啟新連線、傳送 W01／接收 W02、傳送 W21，並從已儲存游標繼續。A04 發生時關閉連線，並清除目前帳戶的作用中投影。
+- **失敗流程：**更新失敗不得觸發同一連線的 W01；若連線中斷，任何尚未確認的傳送均保留原始 C1。
+- **驗收條件：**不得在同一連線上重新驗證；更新須使用新連線及已儲存游標，登出則拆除目前帳戶的即時狀態。
+- **交接：**與 FB 協調連線替換狀態機；與 BA 協調驗證／工作階段執行；與 QA 協調生命週期情境。
+
+<a id="fa-03-realtime-send-and-persisted-ack"></a>
+<a id="fa-03--realtime-send-and-persisted-ack"></a>
+### FA-03 — 即時傳送與持久化 ACK
+**追溯：**REQ-06、REQ-07；W05–W07、W17。
+- **前置條件：**已授權的對話及已驗證連線。
+- **正常流程：**以穩定 C1 將待處理傳送持久化於本機；發出 W05；將 W06 與傳送者的 W07 合併為同一個可見訊息 M1。
+- **失敗流程：**ACK 遺失、連線中斷或結果為 OUTCOME_UNCONFIRMED 時，保留並以原始 C1 與承載資料重試。同一 C1 搭配不同承載資料時顯示衝突；同一意圖不得悄悄產生替代 C1。
+- **驗收條件：**相同 C1 只產生一個可見／持久化 M1；不得將 `persisted` 呈現為已送達／已讀。ACK 可先於或晚於 W07 抵達，但不得重複。已知回復不得顯示為成功。
+- **交接：**與 BA 協調 W05–W07 順序；與 BB 協調原子持久化結果；與 QA 協調失敗情境。
+
+<a id="fa-04-delivery-and-read-receipts"></a>
+<a id="fa-04--delivery-and-read-receipts"></a>
+### FA-04 — 送達與已讀回條
+**追溯：**REQ-12；W08–W10、W19、W16。
+- **前置條件：**已授權訊息已持久儲存於本機；只有實際閱讀後才標記已讀。
+- **正常流程：**持久接收後傳送 W08；僅在使用者檢視訊息後傳送 W09；對帳 W19 與 W10。
+- **失敗流程：**重複回條具冪等性；較舊的延遲狀態不得使已讀狀態倒退。重新連線時由同步還原狀態。
+- **驗收條件：**用戶端不得僅因訊息抵達就回報已讀；`read` 單調遞增並代表已送達。即使沒有傳送新訊息，回條狀態仍可復原。
+- **交接：**將 W08/W09 狀態轉換交接給 BA，並與 BB 協調標準回條。
+
+<a id="fa-05-chat-navigation-history-bootstrap-and-synchronization"></a>
+<a id="fa-05--chat-navigation-history-bootstrap-and-synchronization"></a>
+### FA-05 — 聊天導覽、歷史、初始載入與同步
+**追溯：**REQ-04、REQ-08–REQ-11；A12、A19、`openChat`、W07、W11–W17。
+- **前置條件：**FB 將已授權的對話 ID 路由給 FA，或已驗證用戶端具有已儲存的事件流游標／首次登入狀態。
+- **正常流程：**提供 `openChat(conversation_id)` 供 FB 呼叫；掛載／切換聊天 UI，以 A12 取得詳細資料，並以 A19 載入由新至舊的歷史訊息。另行要求 W13/W14 快照，暫存同一 snapshot_id 的所有頁面，合併同期收到的即時項目，以原子方式切換本機投影，之後才安裝 start_cursor。重新連線、回到前景及對帳時使用 W15/W16；快照範圍以外的較舊歷史使用 A19。
+- **失敗流程：**A12 拒絕時移除無法存取的檢視。A19 游標失敗僅重新開始其歷史查詢，絕不呼叫 W13。頁面未完整前不得儲存 start_cursor；切換快照時保留已觀察到的即時 E41/C1；只有原子套用投影時才能推進 W16 游標。WSS 事件流重設時要求新的 W13；遭撤銷內容持續過濾，但不得阻塞其他事件流資料列。
+- **驗收條件：**FB 負責路由並呼叫 FA 的 `openChat`；FA 負責聊天顯示並使用單一應用程式範圍連線。歷史／清單游標維持本機；跨越 H 不得有缺口，即時與快照資料合併後不得重複，撤銷後不得出現未授權內文。響應式聊天版面依循[中央 Web/RWD 章節](#web-rwd)。
+- **交接：**與 FB/BB 協調 `openChat` 及詳細資料／歷史；與 BA/BB 協調 W13–W16 安全掃描及投影屏障；與 QA 協調游標原子性及復原。
+
+<a id="fa-06-conversation-attachments-renewal-and-downloads"></a>
+<a id="fa-06--conversation-attachments-renewal-and-downloads"></a>
+### FA-06 — 對話附件、更新與下載
+**追溯：**REQ-13；A20–A22、A25、W05/W07。
+- **前置條件：**目前具備對話授權，且選取了受支援檔案。
+- **正常流程：**以 `scope=conversation` 呼叫 A20，將位元組上傳至簽署網址，透過 A21 完成，然後以 W05 傳送附件。透過 A22 取得短效網址，以供允許的顯示／下載。
+- **失敗流程：**網址過期時以 A25 搭配新的冪等鍵；舊嘗試不得完成。雜湊／型別／大小不符或授權失效時禁止使用；不得傳送尚未就緒的附件。
+- **驗收條件：**二進位資料不得經 WSS 傳輸。訊息享有與文字相同的 C1/ACK/同步保證。訊息或記錄不得包含簽署網址；下載時重新檢查目前對話權限。響應式圖片／檔案預覽依循中央 Web/RWD 章節。
+- **交接：**與 BB 協調授權憑證／中繼資料生命週期；與維運協調傳輸及執行環境設定。
+
+<a id="fa-07-app-activity-and-lease-renewal"></a>
+<a id="fa-07--app-activity-and-lease-renewal"></a>
+### FA-07 — 應用程式活動狀態與租約更新
+**追溯：**REQ-14、REQ-15；W02、W18、W21/W22、W15/W16。
+- **前置條件：**W02 已接受作用中的裝置／工作階段世代。
+- **正常流程：**W02 之後回報初始 W21；回報前景／背景轉換；在 W22 valid_until 到期前更新；返回前景時對帳事件流。
+- **失敗流程：**背景訊框遺失、租約到期或 Redis 狀態不確定時顯示為未知，而非前景。忽略較舊工作階段世代的延遲活動確認。
+- **驗收條件：**後端可按裝置決定推播資格；心跳不代表前景狀態；開啟應用程式會觸發一般授權同步。
+- **交接：**將應用程式生命週期租約交接 BA；FB 提供世代／權杖更新；BB 使用各裝置狀態處理推播。
+
+<a id="fa-08-responsive-web-chat-interaction"></a>
+<a id="fa-08--responsive-web-chat-interaction"></a>
+### FA-08 — 響應式 Web 聊天互動
+**追溯：**REQ-19/20；共用 UI 章節、A12、A19、W08/W09。
+- **前置條件：**已驗證 Web 工作階段、可用聊天路由及單一應用程式範圍 WSS。
+- **正常流程：**套用共用 Web/RWD 聊天行為。窄幅版面中，從對話清單選取項目會開啟訊息串並提供返回操作。調整尺寸／方向時保留各對話草稿、待處理 C1 及閱讀位置。虛擬鍵盤開啟時撰寫框仍可操作；寬幅實體鍵盤以 Enter 傳送、Shift+Enter 換行，窄幅提供明確的傳送操作。IME 組字期間的 Enter 不得傳送。保留瀏覽歷史時的位置，限制長內容／媒體／檔名，且僅在作用中的可見瀏覽器中，對實際可見內容傳送 W09。
+- **失敗流程：**版面變更不得重新登入、開啟另一個 WSS 或變更／重設 SyncCursor。在本機持久化接收後可傳送 W08 而不傳送 W09。可見性狀態不確定時，不得推定訊息已讀。
+- **驗收條件：**互動遵循單一共用 UI 章節；重排後保留 C1 待處理狀態及閱讀位置；W08 與 W09 維持不同。W09 可見性門檻／停留時間為提案，待產品／QA 批准。
+- **交接：**與 FB 協調共用 UI 決策及 `openChat`；與 BA/BB 協調 W08/W09／已讀模型；與 QA 協調瀏覽器輸入／可見性案例。
+
+<a id="2-frontend-b-fb-authentication-contacts-routing-and-push-token"></a>
+<a id="2-frontend-b-fb--authentication-contacts-routing-and-push-token"></a>
+## 2. 前端 B (FB) — 驗證、聯絡人、路由與推播權杖
+
+**目的／界線：**前端唯一的 SessionContext、驗證 Cookie、個人資料／聯絡人／群組入口、推播權杖及頂層路由擁有者。呼叫 FA 的 `openChat`。不擁有 `subject_id`，不建立另一個 WSS，也不重新定義線路格式。
+
+<a id="fb-01-registration-login-and-device-binding"></a>
+<a id="fb-01--registration-login-and-device-binding"></a>
+### FB-01 — 註冊、登入與裝置綁定
+**追溯：**REQ-01；A01/A02、W01/W02。
+- **前置條件：**已登出；DeviceStore 可能存有此帳戶的 DeviceID，或新安裝時尚無 ID。
+- **正常流程：**A01 註冊並僅回傳 UserProfile。A02 若存在同帳戶 DeviceStore DeviceID，則傳送該 ID；首次安裝簽發時傳送 `device_id:null`。將回傳的 DeviceID 存回該帳戶 DeviceStore，並將回傳的 AccessSession／更新憑證 Cookie 保存在 FB 擁有的工作階段狀態，再將已驗證情境交給 FA。登出會清除 SessionContext，不清除獨立且以安裝為範圍的 DeviceStore。
+- **失敗流程：**若儲存的 ID 遺失或伺服器拒絕重用，採用伺服器回傳的 DeviceID。DeviceID 不等同驗證；顯示錯誤及登入節流，但不得洩漏帳戶是否存在。
+- **驗收條件：**A02 user_id、W02 user_id 與 A05 UserProfile.id 的公開身分一致；A02 AccessSession device_id／世代與 W02 相符。已登出的 SessionContext 維持全 null，DeviceStore 則彼此獨立。內部 subject_id 絕不進入 SessionContext。
+- **交接：**將 AccessSession 交給 FA；與 BB/BA 協調帳戶／工作階段／裝置綁定。
+
+<a id="fb-02-refresh-and-logout"></a>
+<a id="fb-02--refresh-and-logout"></a>
+### FB-02 — 更新與登出
+**追溯：**REQ-02；A03/A04、FA 交接、W01/W02/W21。
+- **前置條件：**目前已驗證的 SessionContext。
+- **正常流程：**A03 更新 Cookie，並將新的存取工作階段／世代發佈給 FA；A04 完成後清除目前裝置驗證並通知 FA 停止 WSS。
+- **失敗流程：**更新失敗時要求重新登入，且不得讓 FA 使用過期憑證。A03/A04 競態依後端 B 工作階段結果處理。
+- **驗收條件：**更新一律替換舊連線並使用已儲存游標；依提案，登出會撤銷目前裝置及推播綁定，但不登出無關裝置。
+- **交接：**將新世代及拆除順序交接 FA/BA；與 BB 協調序列化後的工作階段結果。
+
+<a id="fb-03-profile-and-avatar-including-zero-conversation-account"></a>
+<a id="fb-03--profile-and-avatar-including-zero-conversation-account"></a>
+### FB-03 — 個人資料與頭像（含零對話帳戶）
+**追溯：**REQ-03；A05/A06/A20–A22/A25。
+- **前置條件：**已登入的擁有者；不要求存在對話。
+- **正常流程：**讀取／更新個人資料；使用 A20 `scope=avatar,conversation_id:null` 上傳頭像、傳輸並以 A21 完成，再透過 A06 指派已就緒附件；以 A22 取回。
+- **失敗流程：**透過 A25／新鍵更新過期授權憑證。不得指派未就緒或非本人擁有的附件。指派 null 頭像會移除頭像。
+- **驗收條件：**沒有聊天的帳戶也能上傳及顯示頭像；私人電子郵件僅本人可見；附件網址為短效。響應式個人資料／頭像介面依循中央 Web/RWD 章節。
+- **交接：**與 BB 協調個人資料／附件授權；與維運協調傳輸設定。
+
+<a id="fb-04-contacts-directory-and-local-cursor-recovery"></a>
+<a id="fb-04--contacts-directory-and-local-cursor-recovery"></a>
+### FB-04 — 聯絡人、目錄與本機游標復原
+**追溯：**REQ-03；A07–A10。
+- **前置條件：**已驗證使用者。
+- **正常流程：**查找已授權摘要、分頁載入聯絡人、新增／移除聯絡人，並明確顯示線上／離線／未知狀態。
+- **失敗流程：**A08 REST 游標錯誤僅重新取得第一頁聯絡人；不得要求 W13 或清除 FA 事件流。未知狀態須顯示為未知。
+- **驗收條件：**摘要不得揭露電子郵件；重複新增不得產生重複聯絡人；移除聯絡人不得刪除對話歷史。響應式聯絡人／目錄版面依循中央 Web/RWD 章節。
+- **交接：**與 BB 協調聯絡人投影／授權；與 BA/FA 協調暫存狀態。
+
+<a id="fb-05-conversation-navigation-and-group-management"></a>
+<a id="fb-05--conversation-navigation-and-group-management"></a>
+### FB-05 — 對話導覽與群組管理
+**追溯：**REQ-04、REQ-05、REQ-11；A11–A18、W11/W12/W20、`openChat`。
+- **前置條件：**已驗證使用者；僅限管理員的操作須具備目前管理員授權。
+- **正常流程：**透過 REST 列出／建立直接對話／建立群組／更新成員。開啟聊天時，FB 更新應用程式路由並呼叫 FA 提供的 `openChat`。REST 呼叫端更新自身成功操作；其他裝置消費提交後事件。
+- **失敗流程：**A11 REST 游標錯誤僅重啟對話清單查詢。成員版本缺口由 A12 對帳。使用者本人遭移除時，於 A18 成功／最簡 W12 後清除群組路由。
+- **驗收條件：**A14/A16→W11、A15/A17→W20、A18→W12。沒有禁用端點或行為。未獲授權的成員不得繼續取得詳細資料／歷史／內容；響應式群組控制項依循中央 Web/RWD 章節。
+- **交接：**將 REST 群組操作交接 BB；群組事件分發交接 FA；路由介面交接 FA。
+
+<a id="fb-06-push-token-registration-and-cleanup"></a>
+<a id="fb-06--push-token-registration-and-cleanup"></a>
+### FB-06 — 推播權杖註冊與清除
+**追溯：**REQ-14；A02/A04/A23/A24。
+- **前置條件：**已驗證裝置及 OS 通知權限／供應商權杖。
+- **正常流程：**以 A23 為 AccessSession.device_id 註冊／更新權杖；停用時以 A24 撤銷。
+- **失敗流程：**不得在 UI／記錄中暴露權杖。依提案，A04 目前裝置登出會移除其綁定；其他裝置維持註冊。
+- **驗收條件：**權杖註冊綁定目前帳戶／裝置；推播僅為提示，開啟推播會執行一般已驗證同步。
+- **交接：**與 BB 協調裝置／工作階段檢查及權杖儲存；生命週期／活動由 FA/BA 提供。
+
+<a id="fb-07-responsive-web-shell-non-chat-pages-and-route-return"></a>
+<a id="fb-07--responsive-web-shell-non-chat-pages-and-route-return"></a>
+### FB-07 — 響應式 Web 殼層、非聊天頁面與路由返回
+**追溯：**REQ-19/21；共用 UI 章節、A01–A18、`openChat`。
+- **前置條件：**FA 與 FB 共用一個 Web 建置版本；路由及既有驗證狀態可用。
+- **正常流程：**將共用殼層／版面套用至註冊／登入、聯絡人／目錄、個人資料／頭像及群組管理。負責瀏覽器歷程、受保護路由守衛、深層連結路由進入、登入後返回，並為聊天內容呼叫 FA 的 `openChat`。
+- **失敗流程：**未驗證／未授權的深層連結不得呈現受保護資料；登入後只返回已授權的原請求路由。重排不得建立另一個工作階段或 WSS。不同版面間維持既有 API／事件／模型契約。
+- **驗收條件：**瀏覽器導覽及響應式非聊天頁面共用一套 SessionContext／路由器政策；FA 仍是聊天 UI 擁有者。使用中央共用 UI 章節，不重複列出視窗寬度範圍。
+- **交接：**與 FA 協調路由及登入返回行為；與 BB 協調授權；與維運協調瀏覽器路由／頁面路由回退；與 QA 協調矩陣案例。
+
+<a id="3-backend-a-ba-realtime-messaging-service"></a>
+<a id="3-backend-a-ba--realtime-messaging-service"></a>
+## 3. 後端 A (BA) — 即時訊息服務
+
+**目的／界線：**負責 WSS 交握、連線／心跳、暫存 Redis／狀態、活動租約、事件路由及同步入口。後端 B 負責 JWT／工作階段權威、授權決策、持久狀態及 PostgreSQL 結構描述。瀏覽器版面不會建立獨立即時 API、事件模型、連線或游標。
+
+<a id="ba-01-wss-authentication-and-session-termination"></a>
+<a id="ba-01--wss-authentication-and-session-termination"></a>
+### BA-01 — WSS 驗證與工作階段終止
+**追溯：**REQ-01/02；W01/W02/W17、`validateAccess`。
+- **前置條件：**新的 WSS 連線。
+- **正常流程：**要求第一個訊框必須是 W01；向 BB 驗證權杖，確認 W01 裝置綁定，回傳 W02 公開使用者／裝置／工作階段世代及已設定的心跳值。
+- **失敗流程：**拒絕過期、遭撤銷、裝置錯誤或世代過期的工作階段；A03/A04 撤銷生效時停止新操作並關閉舊連線。關閉前可傳送 W17，但不保證一定傳送。
+- **驗收條件：**絕不信任用戶端 subject_id；更新後成功驗證須使用新連線；單一裝置失敗不得撤銷其他裝置。
+- **交接：**與 BB 協調 `validateAccess`／工作階段狀態；與 FA/FB 協調工作階段替換通知。
+
+<a id="ba-02-heartbeat-and-user-level-presence"></a>
+<a id="ba-02--heartbeat-and-user-level-presence"></a>
+### BA-02 — 心跳與使用者層級狀態
+**追溯：**REQ-15；W03/W04/W18、`getDevicePresence`。
+- **前置條件：**已驗證連線。
+- **正常流程：**W03/W04 追蹤連線存活狀態。彙整有效使用者連線以產生 W18 線上狀態轉換；另行查詢裝置／活動狀態。
+- **失敗流程：**心跳逾時僅清除該連線。Redis 無法使用時，狀態為未知，不得確定判定為離線／線上。
+- **驗收條件：**狀態描述彙總連線情形，絕不代表應用程式位於前景或訊息已接收。
+- **交接：**與 BB 協調狀態查詢，與 FA/FB 協調顯示。
+
+<a id="ba-03-message-ingress-and-persisted-ack"></a>
+<a id="ba-03--message-ingress-and-persisted-ack"></a>
+### BA-03 — 訊息入口與持久化 ACK
+**追溯：**REQ-06/07；W05–W07/W17、`authorize`、`persistIfAbsent`。
+- **前置條件：**已驗證主體、已授權對話及有效訊息 C1。
+- **正常流程：**驗證型別／內容、執行授權並呼叫交易式持久化；完整持久化結果完成後才發出 W06；將 W07 路由至已授權收件者。
+- **失敗流程：**已知回復不得產生成功 ACK；結果不確定時為 OUTCOME_UNCONFIRMED；ACK 遺失時以相同 C1 復原。Redis 發佈失敗可透過 W16 復原。
+- **驗收條件：**ACK 不得早於訊息、C1 對應及必要事件流的提交。相同 C1 對應相同 M1／事件；承載資料變更時發生衝突。
+- **交接：**與 BB 協調持久化交易輸出及收件者清單；與 FA/QA 協調 UI 重試／合併。
+
+<a id="ba-04-delivery-read-receipt-forwarding"></a>
+<a id="ba-04--deliveryread-receipt-forwarding"></a>
+### BA-04 — 送達／已讀回條轉送
+**追溯：**REQ-12；W08–W10/W19、`persistReceipt`。
+- **前置條件：**已驗證裝置及已授權訊息收件者。
+- **正常流程：**透過 BB 持久化單調回條；將 W19 與發起的 W08/W09 關聯；向允許的觀察者分送 W10，並支援事件流復原。
+- **失敗流程：**拒絕偽造／無關回條；重複回報不產生操作；`read` 不得倒退。
+- **驗收條件：**W19 請求結果與 W10 投影彼此不同；標準狀態由 BB 管理。
+- **交接：**與 BB 及 FA 協調回條投影／接收對象。
+
+<a id="ba-05-cross-node-fanout-and-group-event-routing"></a>
+<a id="ba-05--cross-node-fanout-and-group-event-routing"></a>
+### BA-05 — 跨節點分送與群組事件路由
+**追溯：**REQ-05/08/11；W07/W11/W12/W20。
+- **前置條件：**BB 已提交訊息或成員變更交易。
+- **正常流程：**Redis Pub/Sub 加速向目前已授權連線傳遞事件；保留各收件者專屬的事件身分。
+- **失敗流程：**發佈遺失時透過 W16 修復。傳遞時重新檢查授權；遭撤銷成員僅收到自己的最簡 W12，且不會收到後續內文。
+- **驗收條件：**群組變更事件對應精確；不得將訊息代理中的暫態資料視為持久成功。
+- **交接：**與 BB 協調已提交的成員／事件流資料列；與維運協調節點間行為。
+
+<a id="ba-06-bootstrap-and-feed-sync-ingress"></a>
+<a id="ba-06--bootstrap-and-feed-sync-ingress"></a>
+### BA-06 — 初始載入與事件流同步入口
+**追溯：**REQ-09–REQ-11；W13–W17、`readBootstrap`、`readFeed`。
+- **前置條件：**有效且已驗證的主體。
+- **正常流程：**W13/W14 代理一致快照頁面；W15/W16 代理已固定邊界的安全事件流批次。
+- **失敗流程：**使用者 SyncCursor 過期時回傳 W17 SYNC_RESET_REQUIRED。A08/A11/A19 REST 游標不得觸發重設。快照未完整的頁面序列不得宣稱已安裝起始游標。
+- **驗收條件：**隱藏位置可安全推進；未授權內容會過濾；單一遭撤銷對話不得阻塞事件流其餘部分。
+- **交接：**與 BB 協調讀取契約及經授權篩選的事件資料列；與 FA/QA 協調游標提交協定。
+
+<a id="ba-07-device-activity-leases"></a>
+<a id="ba-07--device-activity-leases"></a>
+### BA-07 — 裝置活動租約
+**追溯：**REQ-14/15；W21/W22、`recordActivity`、`getDevicePresence`。
+- **前置條件：**W02 已接受作用中的工作階段及裝置。
+- **正常流程：**驗證 W21 裝置及世代；記錄目前前景／背景狀態；以伺服器有效期限回覆 W22。向 BB 提供裝置層級查詢。
+- **失敗流程：**拒絕過期工作階段世代；重複狀態回報具冪等性；Redis 失敗／到期時狀態為未知。
+- **驗收條件：**活動狀態不授予聊天權限，也不是心跳，且可安全供各裝置推播對象決策參考。
+- **交接：**與 FA 協調 W21/W22 生命週期；與 BB 協調推播決策。
+
+<a id="ba-08-rate-limiting-frame-defense-and-wss-errors"></a>
+<a id="ba-08--rate-limiting-frame-defense-and-wss-errors"></a>
+### BA-08 — 速率限制、訊框防護與 WSS 錯誤
+**追溯：**REQ-16；W17 及共用候選限制。
+- **前置條件：**任何未驗證／已驗證訊框。
+- **正常流程：**執行已批准的限制及訊框約束；依共用 W17 的 `code`／`message`／`retryable`／`correlation_id` 格式發出錯誤。
+- **失敗流程：**限制慢速消費者各連線的輸出；連線已中斷時不得宣稱錯誤已送達；絕不記錄權杖或內文。
+- **驗收條件：**不得捏造成功結果；所有最終數值限制均保持可設定，且在 PM/QA 決策前尚未批准。
+- **交接：**與 QA 協調安全／錯誤欄位；與維運協調操作設定。
+
+<a id="4-backend-b-bb-rest-api-and-database"></a>
+<a id="4-backend-b-bb--rest-api-and-database"></a>
+## 4. 後端 B (BB) — REST API 與資料庫
+
+**目的／界線：**負責 A01–A25、帳戶／工作階段權威、PostgreSQL 標準狀態、物件中繼資料／GCS 授權憑證、持久事件流及推播意圖。不擁有用戶端連線，也不使用 Redis 儲存訊息。所有瀏覽器版面使用相同 REST 契約、模型、授權及持久事件流；不得依裝置外型重複業務 API。
+
+<a id="bb-01-accounts-session-and-device-identity"></a>
+<a id="bb-01--accounts-session-and-device-identity"></a>
+### BB-01 — 帳戶、工作階段與裝置身分
+**追溯：**REQ-01/02；A01–A04、AccessSession、內部 `validateAccess`。
+- **前置條件：**註冊／登入／更新／登出請求。
+- **正常流程：**安全持久化帳戶憑證；驗證 A02；綁定或簽發 device_id；簽發 AccessSession；A03 時遞增工作階段世代；A04 時撤銷目前裝置／工作階段。
+- **失敗流程：**序列化更新／登出競態；過期／遭撤銷 Cookie 不得簽發仍有效的連線工作階段。單靠裝置 ID 不能驗證身分或跨綁定其他使用者。
+- **驗收條件：**A05 `UserProfile.id` 僅等於目前 A02/A03 AccessSession 與 W02 中公開的 `user_id`。嚴格比對相符 A02/A03 AccessSession 與 W02 的 `device_id` 及 `session_generation`；A05 不含任一欄位。絕不暴露 `subject_id`。
+- **交接：**將 AccessSession 交給 FB；將工作階段驗證交給 BA。
+
+<a id="bb-02-profiles-and-contacts"></a>
+<a id="bb-02--profiles-and-contacts"></a>
+### BB-02 — 個人資料與聯絡人
+**追溯：**REQ-03；A05–A10、UserProfile/UserSummary/ContactView。
+- **前置條件：**已驗證呼叫者及相關使用者／聯絡人授權。
+- **正常流程：**維護本人個人資料／聯絡人，分別回傳本人個人資料與公開摘要，且 A06 要求頭像為本人所有且已就緒。
+- **失敗流程：**避免揭露電子郵件或隱藏頭像；暫態線上狀態未知時回報為未知；無效清單游標僅影響其 REST 查詢。
+- **驗收條件：**必要投影欄位／可為 null 性符合共用字典；聯絡人不得重複建列；移除聯絡人不會刪除對話資料。
+- **交接：**將個人資料／聯絡人回應交給 FB；摘要交給 FA；透過 BA 提供暫態線上狀態。
+
+<a id="bb-03-conversations-groups-and-authorization"></a>
+<a id="bb-03--conversations-groups-and-authorization"></a>
+### BB-03 — 對話、群組與授權
+**追溯：**REQ-04/05/11；A11–A18 及 W11/W12/W20。
+- **前置條件：**所請求操作符合目前成員／管理員／自行退出政策。
+- **正常流程：**讀取一對一／群組投影；建立唯一的直接對話；以交易方式更新成員／標題／角色及必要事件流。
+- **失敗流程：**拒絕未授權操作、維護至少一名管理員的不變條件，並在移除後對歷史／下載及後續事件流執行授權。沒有封鎖狀態／操作。
+- **驗收條件：**A14/A16 發出 W11、A15/A17 發出 W20、A18 發出 W12。成員版本及 REST 回應須對應已提交狀態；事件流變更須先於 Pub/Sub 提交。
+- **交接：**將 REST 投影交給 FB；已提交事件交給 BA/FA；政策決策交給 PM。
+
+<a id="bb-04-transactional-messages-idempotency-and-durable-push-intent"></a>
+<a id="bb-04--transactional-messages-idempotency-and-durable-push-intent"></a>
+### BB-04 — 交易式訊息、冪等性與持久推播意圖
+**追溯：**REQ-06–REQ-08/14；`persistIfAbsent`、W05–W07。
+- **前置條件：**已授權傳送者、訊息格式及穩定 C1。
+- **正常流程：**以交易方式寫入標準訊息、C1 對應、所有必要的逐使用者事件流資料列及符合條件的逐裝置推播意圖。回傳 `created` 或 `existing_same`，並附上已持久化的結果。
+- **失敗流程：**同一 C1 使用不同承載資料時視為衝突；區分已知回復與結果不確定；必要資料列提交前絕不寫入成功 ACK 證據。
+- **驗收條件：**重試傳送會產生相同 M1 及穩定事件 ID；推播供應商失敗不會改變訊息／回條狀態。
+- **交接：**與 BA 協調交易契約；與 FA 協調 C1 合併；與 QA 協調故障結果。
+
+<a id="bb-05-history-and-receipt-authority"></a>
+<a id="bb-05--history-and-receipt-authority"></a>
+### BB-05 — 歷史與回條權威
+**追溯：**REQ-09/12；A19、W08–W10/W19、`persistReceipt`。
+- **前置條件：**目前具備讀取訊息／歷史或回報回條的權限。
+- **正常流程：**以獨立歷史游標查詢歷史；單調持久化送達／已讀狀態；將舊訊息狀態修正納入事件流／初始載入投影。
+- **失敗流程：**A19 游標錯誤僅影響該歷史檢視；授權失效時禁止繼續讀取內容。重複回條不得建立多餘狀態事件。
+- **驗收條件：**即時、歷史及同步中出現相同標準訊息 ID；A19 順序獨立於使用者事件流游標。
+- **交接：**將訊息／回條投影交給 FA/BA。
+
+<a id="bb-06-snapshot-and-durable-user-feed"></a>
+<a id="bb-06--snapshot-and-durable-user-feed"></a>
+### BB-06 — 快照與持久使用者事件流
+**追溯：**REQ-09–REQ-11；`readBootstrap`、`readFeed`、W13–W16。
+- **前置條件：**已驗證主體及受支援的快照／事件流游標。
+- **正常流程：**從同一一致檢視讀取已授權快照內容及 H；以相同快照 id 分頁；依安全且已提交的順序掃描逐使用者事件流，並固定續傳邊界。
+- **失敗流程：**快照過期時建立新的、一致的快照；所有頁面完成且本機切換前不得安裝 H。過濾遭撤銷內文，同時允許安全推進及處理其他對話資料列。
+- **驗收條件：**已完成快照呈現雙方同意且有界的初始載入範圍，以及 H 時點的目前狀態；之後的持久事件流位置可透過 W16 取得，較舊且已授權的歷史仍可透過 A19 取得。REST 游標錯誤不會重設事件流。
+- **交接：**與 BA 協調同步讀取語意；與 FA/QA 協調游標套用。
+
+<a id="bb-07-attachments-avatars-and-signed-transfer"></a>
+<a id="bb-07--attachments-avatars-and-signed-transfer"></a>
+### BB-07 — 附件、頭像與簽署傳輸
+**追溯：**REQ-03/13；A06、A20–A22、A25。
+- **前置條件：**擁有者及有效範圍；適用時須具備對話授權。
+- **正常流程：**儲存中繼資料、建立短效 GCS 上傳／下載授權憑證、完成時驗證位元組及雜湊，並允許使用已就緒附件；更新時保留附件 ID 並建立目前嘗試。
+- **失敗流程：**拒絕舊嘗試、錯誤中繼資料／型別／大小及未授權下載。頭像範圍的 conversation_id 必須為 null，且無聊天時仍可使用。
+- **驗收條件：**A22 每次取回均重新授權；簽署網址及 GCS 物件鍵維持私有；失敗上傳不得成為已就緒。
+- **交接：**與 FE-A/FE-B 協調傳輸／中繼資料契約；與維運協調儲存桶及密鑰設定。
+
+<a id="bb-08-push-token-store-and-background-dispatch"></a>
+<a id="bb-08--push-token-store-and-background-dispatch"></a>
+### BB-08 — 推播權杖儲存與背景派送
+**追溯：**REQ-14；A23/A24、`getDevicePresence`、`dispatchPushIntent`。
+- **前置條件：**有效且已綁定的裝置權杖及已提交、符合條件的訊息。
+- **正常流程：**安全儲存權杖；持久提交後評估每個收件者裝置活動；抑制近期處於前景的裝置，對背景／未知狀態傳送一般提示。
+- **失敗流程：**供應商失敗時重試持久意圖；永久無效權杖會解除綁定。依提案，A04 目前裝置登出會撤銷綁定。推播不得包含訊息內文；不得變更回條。
+- **驗收條件：**推播是提示，不是送達／已讀證據；開啟通知後透過同步取得已授權內容。A23/A24 維持 `ios`／`android` 權杖契約；此處沒有瀏覽器推播訂閱／供應商結構描述，須等待 Web Push 政策／契約決策，不得視為默示實作。
+- **交接：**活動狀態交由 BA；權杖流程交由 FB；憑證／監控交由維運。
+
+<a id="5-devops-do-infrastructure-and-delivery"></a>
+<a id="5-devops-do--infrastructure-and-delivery"></a>
+## 5. 維運 (DO) — 基礎設施與交付
+
+**目的／界線：**提供指定的主機路由、設定／密鑰綁定、交付管線、監控及可重複驗證環境。尚未選定 GCP 計算架構；不得假設使用 Kubernetes。
+
+<a id="do-01-domain-tls-ingress-and-routes"></a>
+<a id="do-01--domain-tls-ingress-and-routes"></a>
+### DO-01 — 網域、TLS、入口與路由
+**追溯：**REQ-17；REST/WSS 基礎路由及內部健康檢查路徑。
+- **前置條件：**已批准的網域及目標環境。
+- **正常流程：**在 `hine.run.place` 下路由公開 HTTPS REST `/api/v1` 及 WSS `/ws/v1`；探測端點維持內部使用。
+- **失敗流程：**TLS、路由或必要相依項目失敗時，不符合就緒／部署驗收條件。
+- **驗收條件：**只有一套公開契約；內部健康檢查不得暴露為使用者 API。Web 殼層的頁面路由回退僅限已批准 UI 路徑，且保留 API/WSS 路由。
+- **交接：**與 BA/BB 協調必要連接埠／健康行為；與 QA 協調冒煙測試規格。
+
+<a id="do-02-typed-environment-and-secret-management"></a>
+<a id="do-02--typed-environment-and-secret-management"></a>
+### DO-02 — 型別化環境與密鑰管理
+**追溯：**REQ-17；契約 §6 設定名稱。
+- **前置條件：**已批准的環境清冊及最小權限職責。
+- **正常流程：**依服務／環境注入型別化設定及密鑰參照；僅 BB 取得 JWT 簽署權限；保護 GCS 及推播供應商憑證。
+- **失敗流程：**缺少必要設定時安全拒絕或無法就緒；絕不代入假憑證或記錄密鑰內容。
+- **驗收條件：**每項設定皆有服務負責人、敏感度、必要性及缺值行為。密鑰值不得出現在 PRD／記錄中。
+- **交接：**與 BA/BB 協調必要設定；與 QA 協調測試矩陣。
+
+<a id="do-03-github-actions-delivery"></a>
+<a id="do-03--github-actions-delivery"></a>
+### DO-03 — GitHub Actions 交付
+**追溯：**REQ-17；GitHub Actions。
+- **前置條件：**已批准的品質閘門及受控部署環境。
+- **正常流程：**PR 檢查 → 受控測試部署 → 健康／REST/WSS 冒煙測試 → 經授權推進至正式環境並保留可復原版本。
+- **失敗流程：**缺少設定或檢查失敗時停止推進，並保留可追溯產物／版本。
+- **驗收條件：**GitHub Actions 是 CI/CD 基準（不是 GitLab）；管線規格須指出輸入、輸出、批准及回復產物。本 PRD 不宣稱此流程已實作。
+- **交接：**六個角色間的建置／執行環境需求。
+
+<a id="do-04-health-monitoring-alerting-and-log-privacy"></a>
+<a id="do-04--health-monitoring-alerting-and-log-privacy"></a>
+### DO-04 — 健康狀態、監控、警示與記錄隱私
+**追溯：**REQ-16/17；HealthResponse 及 `/health/live`／`/health/ready`。
+- **前置條件：**BA/BB 提供健康狀態及非敏感指標。
+- **正常流程：**區分存活狀態與相依項目就緒狀態；監控 ACK、即時傳遞、復原、活動到期及推播失敗。
+- **失敗流程：**可診斷缺少設定的原因（例如 CONFIG_MISSING），但不得暴露密鑰、內文、權杖或高基數公開使用者 ID 標籤。
+- **驗收條件：**相依項目失敗時回傳未就緒／503；記錄及指標標籤維持隱私安全。
+- **交接：**與 BA/BB 協調健康檢查相依項目；與 QA 協調警示門檻及驗收。
+
+<a id="do-05-reproducible-performance-verification-environment"></a>
+<a id="do-05--reproducible-performance-verification-environment"></a>
+### DO-05 — 可重現的效能驗證環境
+**追溯：**REQ-18；已批准操作設定。
+- **前置條件：**已指定 QA 工作負載及 PM 門檻。
+- **正常流程：**記錄重現執行所需的軟體版本、計算資源、網路、DB 連線池、Redis 及設定參照。
+- **失敗流程：**不可比較的環境不得共用容量結論；未測試的規模不得回報為通過。
+- **驗收條件：**環境說明足以重現未來測量；本規格不宣稱任何效能結果。
+- **交接：**將環境紀錄交給 QA。
+
+<a id="do-06-web-assets-and-protected-deep-route-fallback"></a>
+<a id="do-06--web-assets-and-protected-deep-route-fallback"></a>
+<a id="do-06--web-資產與受保護深層路由備援"></a>
+### DO-06 — Web 資產與受保護深層連結的頁面路由回退
+**追溯：**REQ-21；Web UI 路由清單、驗證守衛／路由返回行為、`/api/v1`、`/ws/v1`。
+- **前置條件：**已批准 Web 資產建置及已知 UI 路由命名空間。
+- **正常流程：**提供相同 Web 專案資產，僅允許下列候選 UI 路由模式重新整理／深層連結的頁面路由回退：`/login`、`/register`、`/contacts`、`/chats`、`/chats/{conversation_id}`、`/profile` 及 `/groups/{conversation_id}/manage`。保留 `/api/v1` REST 及 `/ws/v1` WSS 為獨立後端路由。
+- **失敗流程：**絕不將 `/api/v1` 或 `/ws/v1` 路徑／失敗改寫至 Web 殼層。未知 UI 路由顯示受控的找不到頁面狀態；受保護路由須等待授權且不得揭露內容。
+- **驗收條件：**重新整理／直接導覽至每個所列 UI 路由時，皆進入相同驗證守衛及已授權路由返回流程；頁面路由回退僅限這些 UI 路由模式，API/WSS 路徑及狀態行為維持不變。
+- **交接：**與 FB 協調路由命名空間；與 BA/BB 協調來源／入口規則；與 QA 協調深層連結矩陣。
+
+<a id="6-qa-test-and-acceptance"></a>
+<a id="6-qa--test-and-acceptance"></a>
+## 6. 品質驗證（QA）— 測試與驗收
+
+**目的／界線：**定義行為、結構描述、隱私、復原及效能驗收。只有在實作及已批准測試環境存在後才執行產品測試；本 PRD 未記錄任何測試執行。
+
+<a id="qa-01-interface-contract-and-schema-compliance"></a>
+<a id="qa-01--interface-contract-and-schema-compliance"></a>
+### QA-01 — 介面契約與結構描述相符性
+**追溯：**REQ-01–REQ-06 及 A01–A25/W01–W22。
+- **前置條件：**共用字典、端點／事件登錄表及範例承載資料均使用同一版本。
+- **正常流程：**驗證必填欄位、可為 null 性、方法／路徑、回應狀態、關聯資訊、授權及事件對應。
+- **失敗流程：**缺少／多出／狀態錯誤的欄位、事件對應錯誤、以摘要代替詳細資料，或洩漏 subject_id，皆屬契約失敗。
+- **驗收條件：**每個消費端皆參照共用契約及中央 Web/RWD 章節；角色不得重複定義版面範圍或建立平台專屬業務結構描述。
+- **交接：**將結構描述／報告發現交給 FA/FB/BA/BB。
+
+<a id="qa-02-session-refresh-activity-and-multi-device-behavior"></a>
+<a id="qa-02--session-refresh-activity-and-multi-device-behavior"></a>
+### QA-02 — 工作階段、更新、活動與多裝置行為
+**追溯：**REQ-01/02/14/15；A02–A04、W01/W02/W21/W22。
+- **前置條件：**有效帳戶、兩個裝置工作階段及可控制的連線生命週期。
+- **正常流程：**驗證登入／工作階段綁定；更新、關閉舊連線、建立新的 W01/W02、傳送第一個 W21，並從已儲存游標繼續；測試背景／前景及租約更新。
+- **失敗流程：**測試更新／登出競態、舊世代的延遲活動、背景訊框遺失、租約到期及 Redis 狀態不確定。
+- **驗收條件：**不得在同一連線重新驗證；過期工作階段不得繼續；租約到期時狀態變為未知；單一裝置失敗不得登出另一裝置。
+- **交接：**將狀態轉換案例交給 FB/FA/BA/BB。
+
+<a id="qa-03-snapshot-feed-recovery-and-cursor-isolation"></a>
+<a id="qa-03--snapshotfeed-recovery-and-cursor-isolation"></a>
+### QA-03 — 快照／事件流復原與游標隔離
+**追溯：**REQ-09–REQ-11；A08/A11/A19 及 W13–W17。
+- **前置條件：**具有單一 snapshot_id 的多頁快照，以及彼此獨立的 REST 清單／歷史游標。
+- **正常流程：**確保中間頁不會安裝 H；所有頁面暫存完成並原子切換本機狀態後，才安裝 H 並繼續事件流。測試隱藏且已過濾的位置。
+- **失敗流程：**分別讓每個 REST 游標過期，再讓使用者事件流游標過期。
+- **驗收條件：**每個 A08/A11/A19 失敗僅重新取得自己的查詢；只有 WSS 事件流重設會觸發 W13。不得漏掉已授權事件或出現未授權內文；遭撤銷對話不得阻塞其他對話。
+- **交接：**將游標邊界及預期本機狀態交給 FA/FB/BA/BB。
+
+<a id="qa-04-cross-module-behavior-and-failure-injection"></a>
+<a id="qa-04--cross-module-behavior-and-failure-injection"></a>
+### QA-04 — 跨模組行為與故障注入
+**追溯：**REQ-03–REQ-08、REQ-12–REQ-14；A01–A25/W05–W22。
+- **前置條件：**隔離的使用者、對話、附件儲存及推播供應商測試設定。
+- **正常流程：**測試零對話頭像、A25 更新、群組 A14–A18 對應、ACK 復原、回條復原、背景提示及返回應用程式後同步。
+- **失敗流程：**注入已知回復、提交後／ACK 前遺失、ACK 後／發佈前中斷、過期上傳嘗試、錯誤 MIME、成員授權遭撤銷及供應商失敗。
+- **驗收條件：**原始 C1 復原出一個 M1；完整提交先於 ACK；A14/A16→W11、A15/A17→W20、A18→W12；供應商錯誤不改變回條。
+- **交接：**與 FA/BA/BB 協調可重現的故障檢查點。
+
+<a id="qa-05-privacy-configuration-and-performance-acceptance"></a>
+<a id="qa-05--privacy-configuration-and-performance-acceptance"></a>
+### QA-05 — 隱私、設定與效能驗收
+**追溯：**REQ-16–REQ-18；共用錯誤、健康狀態、指標及已批准限制。
+- **前置條件：**PM 已批准的操作值／工作負載及隔離憑證。
+- **正常流程：**驗證缺少設定／就緒回應、隱私安全記錄，以及獨立測量的 ACK、端對端送達、重新連線、同步復原及事件流競爭。
+- **失敗流程：**拒絕密鑰／內文洩漏、錯誤健康狀態及未測規模的聲稱。未批准的歷史 SLO 不得納入通過／失敗標準。
+- **驗收條件：**結果註明確切環境／工作負載；未經測量不得提出容量主張。這些 PRD 未宣稱任何產品測試或效能結果。
+- **交接：**將發現交給 PM、維運、BA、BB。
+
+<a id="qa-06-web-responsive-input-route-and-push-policy-acceptance"></a>
+<a id="qa-06--web-responsive-input-route-and-push-policy-acceptance"></a>
+### QA-06 — Web 響應式、輸入、路由與推播政策驗收
+**追溯：**REQ-19–REQ-22；共用 UI 章節、W08/W09、A23/A24 及既有路由／工作階段行為。
+- **前置條件：**單一共用 Web 建置版本、候選支援瀏覽器、可控制的視窗／輸入／方向、測試帳戶及候選驗收條件。
+- **正常流程：**以瀏覽器／版本 × 範例視窗 × 方向 × 縮放組合執行案例；適用控制項使用滑鼠／觸控、實體／虛擬鍵盤及中文 IME。範例視窗為 320、375、767、768、1024、1199、1200 及 1440 CSS px（測試尺寸，不是斷點定義）；涵蓋直向／橫向、200% 縮放、所有頁面類別及候選 UI 深層連結／驗證返回。測試撰寫框可見性、方向變更／前置載入歷史期間的錨點保留、候選自動跟隨／已讀可見性門檻，以及僅作治理議題的瀏覽器推播範圍。瀏覽器／版本選項仍是候選值，待產品／QA 批准，且須記錄。
+- **失敗流程：**確認重排時不會出現第二個 WSS／工作階段／游標、不會因 IME 意外傳送、不會強制捲動歷史、不會在未符合候選實際可見條件時傳送 W09、不會在授權前顯示受保護資料，且 頁面路由回退不處理 API/WSS 路徑。不得從 A23/A24 或原生應用程式／PWA 行為推定瀏覽器推播。
+- **驗收條件：**逐案例記錄瀏覽器／版本、視窗／方向／縮放、輸入方式、路由及觀察到的版面／狀態。區分提議版面與互動門檻和已批准行為；W08 獨立於 W09，REQ-22 仍是瀏覽器推播的批准／契約前置條件。本文未宣稱任何產品測試結果。
+- **交接：**將瀏覽器／寬度／輸入／狀態發現及政策前置事項交給 FA/FB/DO/BA/BB 與 PM。
+
+<a id="7-cross-module-req-acceptance-and-ownership-matrix"></a>
+## 7. 跨模組 REQ 驗收與職責矩陣
+
+各列描述可觀察的未來驗收行為。主要負責人列於協作者之前。
+
+| 需求 | 主要負責人／協作者 | 介面 | 驗收摘要 |
 |---|---|---|---|
-| REQ-01 Account verification and login identity | FB / BB, BA, FA, QA | A01/A02, W01/W02 | First-device login binds server device; A02, W02, A05 public user identity agrees; internal subject_id stays server-side. |
-| REQ-02 Credential refresh and logout transition | FB / FA, BB, BA, QA | A03/A04, W01/W02/W21 | Refresh closes old WSS, opens new one, sends initial activity, resumes saved cursor; logout stops current device and has no same-socket reauth. |
-| REQ-03 Profile, avatar, and contacts | FB / BB, FA, DevOps | A05–A10, A20–A22, A25 | A zero-conversation account can upload/assign/read avatar; contact cursors recover locally; no email/avatar disclosure beyond policy. |
-| REQ-04 Direct-chat navigation and creation | FB / FA, BB | A11–A13, `openChat` | Repeated direct creation returns the unique pair conversation; FB routes to FA chat without another socket. |
-| REQ-05 Group management, permissions, and membership changes | BB / FB, BA, FA | A14–A18, W11/W12/W20 | Exact mapping A14/A16→W11, A15/A17→W20, A18→W12; unauthorized actions/content blocked. |
-| REQ-06 Text messaging and durable ACK | BA / BB, FA | W05–W07, A19 | ACK follows complete transaction; sender and recipient converge on same M1; message appears in history. |
-| REQ-07 Lost ACK, retry, and deduplication | BB / BA, FA, QA | W05–W07, W17 | Known rollback has no success ACK; committed-but-unacknowledged send retries same C1 and returns same M1; changed content conflicts. |
-| REQ-08 Cross-node live broadcast and missed-delivery recovery | BA / BB, FA, DevOps | W07, W15/W16 | Dropped Pub/Sub notice is recovered by feed reconciliation; UI displays one message. |
-| REQ-09 First login, authorized snapshot, and history separation | BB / BA, FA, QA | W13–W16, A19 | Multi-page same-snapshot bootstrap installs H only after complete projection; the agreed bounded bootstrap scope/current state at H is represented, >H feed positions are accessible, and older authorized history remains A19. |
-| REQ-10 Snapshot switch and live projection merge | FA / BA, BB | W07, W13–W16 | Concurrently observed C1/event survives switch; candidate cursor advances only atomically with projection. |
-| REQ-11 Revocation filtering, self-notice, and multi-group sync | BB / BA, FA, FB | A18, W12/W16, A19/A22 | No unauthorized body after removal; user sees own minimal W12 and can continue other authorized feed rows. |
-| REQ-12 Delivered/read receipt state machine | BB / BA, FA | W08–W10/W19/W16 | Durable receipt is monotonic, recovered after reconnect, and does not mark read merely on receipt. |
-| REQ-13 Images, files, and upload renewal | BB / FA, FB, DevOps | A20–A22/A25, W05/W07 | New key creates new attempt for same attachment; old attempt cannot complete; ready authorized file can be sent/downloaded. |
-| REQ-14 Device activity and background push | BB / FA, FB, BA, DevOps, QA | A23/A24, W21/W22, W15/W16 | Per-device foreground suppresses push; background/unknown receives generic body-free hint; push never upgrades receipt; notification open syncs. |
-| REQ-15 Presence and multi-device liveness | BA / FA, BB, QA | W03/W04/W18/W21/W22, A08 | One device loss does not make all devices offline; user online and device foreground remain distinct; uncertainty is unknown. |
-| REQ-16 Unified errors and privacy protection | QA / BA, BB, FA, FB, DevOps | Common error, W17, A22 | Error/correlation meanings are consistent; no credentials, signed URL, body, SQL, or private user identifiers leak. |
-| REQ-17 Infrastructure, health probes, and CI delivery | DevOps / BA, BB, QA | routes, health, A01/W01, GitHub Actions | Public routes and private probes match contract; missing dependencies/config fail readiness; GitHub Actions is delivery baseline. |
-| REQ-18 Performance validation and capacity boundaries | QA / PM, BA, BB, DevOps | W05–W16, A19, metrics | PM approves workload/thresholds; measure ACK/end-to-end/recovery independently and report only tested environment and scale. |
-| REQ-19 Shared responsive Web pages | FB / FA, DO, QA | Central Web/RWD page-family matrix and candidate UI routes | One shared Web project and SessionContext; the proposed band-by-page layout and shared controls are consistent across supported browsers. |
-| REQ-20 Responsive chat interaction and read state | FA / FB, BA, BB, QA | Central Web/RWD chat rules; A12/A19; W08/W09 | Input/IME, composer, draft/C1, message_id+offset anchor, conditional auto-follow, and candidate W09 visibility policy follow the central chapter; W08 remains independent. |
-| REQ-21 Web deep links and authorized route return | FB / DO, FA, BB, QA | Candidate UI route allowlist; `openChat`; A12/A13; `/api/v1`, `/ws/v1` | Listed UI routes use auth guard and authorized return; only those UI routes fall back to Web shell; API/WSS paths never do. |
-| REQ-22 Web Push policy scope and acceptance governance | PM / BB, FB, DO, QA | Policy record; A23/A24 are iOS/android only; no browser subscription API/event is defined | Approve browser/provider/subscription scope and acceptance contract before implementation; do not fake browser push or infer App/PWA behavior. |
+| REQ-01 帳戶驗證與登入身分 | FB / BB、BA、FA、QA | A01/A02、W01/W02 | 首次裝置登入綁定伺服器裝置；A02、W02、A05 公開使用者身分一致；內部 subject_id 留在伺服器端。 |
+| REQ-02 憑證更新與登出轉換 | FB / FA、BB、BA、QA | A03/A04、W01/W02/W21 | 更新時關閉舊 WSS、開啟新連線、傳送初始活動並繼續已儲存游標；登出停止目前裝置，且不得在同一連線重新驗證。 |
+| REQ-03 個人資料、頭像與聯絡人 | FB / BB、FA、維運 | A05–A10、A20–A22、A25 | 零對話帳戶能上傳／指派／讀取頭像；聯絡人游標可在本機復原；不得超出政策揭露電子郵件／頭像。 |
+| REQ-04 一對一聊天導覽與建立 | FB / FA、BB | A11–A13、`openChat` | 重複建立直接對話皆回傳唯一的雙人對話；FB 將路由交給 FA 聊天，且不建立另一個連線。 |
+| REQ-05 群組管理、權限與成員變更 | BB / FB、BA、FA | A14–A18、W11/W12/W20 | 對應精確為 A14/A16→W11、A15/A17→W20、A18→W12；阻擋未授權操作／內容。 |
+| REQ-06 文字訊息與持久 ACK | BA / BB、FA | W05–W07、A19 | 完整交易完成後才發出 ACK；傳送者與收件者收到相同 M1；訊息出現在歷史中。 |
+| REQ-07 ACK 遺失、重試與去重 | BB / BA、FA、QA | W05–W07、W17 | 已知回復不得成功 ACK；已提交但未確認的傳送以相同 C1 重試並回傳相同 M1；內容變更時衝突。 |
+| REQ-08 跨節點即時廣播與漏送復原 | BA / BB、FA、維運 | W07、W15/W16 | 遺失的 Pub/Sub 通知可透過事件流對帳復原；UI 僅顯示一則訊息。 |
+| REQ-09 首次登入、授權快照與歷史區隔 | BB / BA、FA、QA | W13–W16、A19 | 同一快照的多頁初始載入須等完整投影後才安裝 H；快照呈現雙方同意且有界的初始載入範圍／H 時點狀態，可存取 >H 事件流位置，較舊授權歷史仍由 A19 提供。 |
+| REQ-10 快照切換與即時投影合併 | FA / BA、BB | W07、W13–W16 | 切換時保留同期觀察到的 C1／事件；候選游標僅能與投影一併以原子方式推進。 |
+| REQ-11 撤銷過濾、自身通知與多群組同步 | BB / BA、FA、FB | A18、W12/W16、A19/A22 | 移除後不出現未授權內文；使用者看到自己的最簡 W12，並可繼續取得其他已授權事件流資料列。 |
+| REQ-12 已送達／已讀回條狀態機 | BB / BA、FA | W08–W10/W19/W16 | 持久回條具單調性，可於重新連線後復原，且不會僅因收到訊息就標記已讀。 |
+| REQ-13 圖片、檔案與上傳更新 | BB / FA、FB、維運 | A20–A22/A25、W05/W07 | 新鍵為同一附件建立新嘗試；舊嘗試不得完成；已就緒且已授權的檔案可傳送／下載。 |
+| REQ-14 裝置活動與背景推播 | BB / FA、FB、BA、維運、QA | A23/A24、W21/W22、W15/W16 | 各裝置前景狀態會抑制推播；背景／未知狀態接收不含內文的一般提示；推播不會提升回條狀態；開啟通知後同步。 |
+| REQ-15 狀態與多裝置存活狀態 | BA / FA、BB、QA | W03/W04/W18/W21/W22、A08 | 單一裝置失效不會令所有裝置離線；使用者線上狀態與裝置前景狀態不同；不確定性顯示為未知。 |
+| REQ-16 統一錯誤與隱私保護 | QA / BA、BB、FA、FB、維運 | 共用錯誤、W17、A22 | 錯誤／關聯資訊語意一致；不得洩漏憑證、簽署網址、內文、SQL 或私人使用者識別資訊。 |
+| REQ-17 基礎設施、健康探測與 CI 交付 | 維運 / BA、BB、QA | 路由、健康檢查、A01/W01、GitHub Actions | 公開路由與私有探測符合契約；缺少相依項目／設定時無法就緒；GitHub Actions 為交付基準。 |
+| REQ-18 效能驗證與容量界線 | QA / PM、BA、BB、維運 | W05–W16、A19、指標 | PM 批准工作負載／門檻；分別測量 ACK／端對端／復原，且只回報已測試環境及規模。 |
+| REQ-19 共用響應式 Web 頁面 | FB / FA、DO、QA | 中央 Web/RWD 頁面類別矩陣及候選 UI 路由 | 共用單一 Web 專案及 SessionContext；各支援瀏覽器均遵循提議的斷點區間 × 頁面版面及共用控制項。 |
+| REQ-20 響應式聊天互動與已讀狀態 | FA / FB、BA、BB、QA | 中央 Web/RWD 聊天規則；A12/A19；W08/W09 | 輸入／IME、撰寫框、草稿／C1、`message_id`＋偏移量錨點、條件式自動跟隨及候選 W09 可見性政策均依循中央章節；W08 維持獨立。 |
+| REQ-21 Web 深層連結與已授權路由返回 | FB / DO、FA、BB、QA | 候選 UI 路由允許清單；`openChat`；A12/A13；`/api/v1`、`/ws/v1` | 所列 UI 路由使用驗證守衛並返回已授權路由；僅這些 UI 路由備援至 Web 殼層；API/WSS 路徑一律不備援至 Web 殼層。 |
+| REQ-22 Web Push 政策範圍與驗收治理 | PM / BB、FB、DO、QA | 政策紀錄；A23/A24 僅限 iOS/android；未定義瀏覽器訂閱 API／事件 | 實作前須批准瀏覽器／供應商／訂閱範圍及驗收契約；不得偽造瀏覽器推播或推定應用程式/PWA 行為。 |
 
+<a id="req-19-req-22-detailed-web-acceptance"></a>
+<a id="req-19req-22-detailed-web-acceptance"></a>
+### REQ-19–REQ-22 Web 詳細驗收
 
-### REQ-19–REQ-22 detailed Web acceptance
-
-| Requirement | Owner | Collaborators | Interfaces | Precondition | Action | Expected |
+| 需求 | 負責人 | 協作者 | 介面 | 前置條件 | 動作 | 預期結果 |
 |---|---|---|---|---|---|---|
-| REQ-19 Shared responsive Web pages | FB | FA, DO, QA | Central Web/RWD chapter; candidate UI route allowlist; existing REST/API models | One shared Web build and authorized UI routes | Exercise every page family in each named layout band and candidate route/deep-link behavior | Each band uses the prescribed page-family layout; shared session/API/event/model contracts remain unchanged; responsive reflow is presentation only. |
-| REQ-20 Responsive chat interaction and read state | FA | FB, BA, BB, QA | Central Web/RWD chapter; A12/A19; W08/W09 | Authenticated browser, active conversation, saved draft/pending C1/read anchor | Exercise keyboard/soft-keyboard/IME input, resize/orient, prepend history, and vary actual message intersection/visibility | Physical and soft-keyboard rules hold; draft/C1 and message_id+offset survive; older-history anchoring is stable; auto-follow/read conditions follow the candidate policy; W08 is independent. |
-| REQ-21 Web deep links and authorized route return | FB | DO, FA, BB, QA | Candidate UI route allowlist; `openChat`, A12/A13, `/api/v1`, `/ws/v1` | Logged-out and authenticated route cases; known UI route namespace | Load/refresh each candidate deep link, complete auth, navigate back/forward, and request API/WSS paths | Return only to authorized UI route; only candidate UI paths reach Web shell; API/WSS paths and failures remain backend-owned and unchanged. |
-| REQ-22 Web Push policy scope and acceptance governance | PM | BB, FB, DO, QA | Existing A23/A24 and iOS/android DeviceTokenStatus only; browser subscription/provider contract is not defined | Product/provider/legal/permission scope is reviewed before any browser-push implementation | Record whether Web Push is in scope, its browser/provider/subscription lifecycle and acceptance contract, or explicitly defer it | No fake browser-push feature or implied native App/PWA support; A23/A24 and existing native push policy remain unchanged until a separately approved contract exists. |
+| REQ-19 共用響應式 Web 頁面 | FB | FA、DO、QA | 中央 Web/RWD 章節；候選 UI 路由允許清單；既有 REST/API 模型 | 單一共用 Web 建置版本及已授權 UI 路由 | 在每個命名版面範圍測試所有頁面類別，以及候選路由／深層連結行為 | 各範圍使用規定的頁面類別版面；共用工作階段／API／事件／模型契約維持不變；響應式重排僅影響呈現。 |
+| REQ-20 響應式聊天互動與已讀狀態 | FA | FB、BA、BB、QA | 中央 Web/RWD 章節；A12/A19；W08/W09 | 已驗證瀏覽器、作用中對話、已儲存草稿／待處理 C1／閱讀錨點 | 測試鍵盤／軟體鍵盤／IME 輸入、尺寸／方向變更、前置載入歷史，並改變訊息實際相交／可見狀態 | 實體與軟體鍵盤規則均生效；草稿／C1 及 `message_id`＋偏移量均保留；較舊歷史錨點穩定；自動跟隨／已讀條件遵循候選政策；W08 獨立。 |
+| REQ-21 Web 深層連結與已授權路由返回 | FB | DO、FA、BB、QA | 候選 UI 路由允許清單；`openChat`、A12/A13、`/api/v1`、`/ws/v1` | 已登出及已驗證路由案例；已知 UI 路由命名空間 | 載入／重新整理每個候選深層連結、完成驗證、上一頁／下一頁導覽，並請求 API/WSS 路徑 | 僅返回已授權 UI 路由；僅候選 UI 路徑進入 Web 殼層；API/WSS 路徑及失敗仍由後端負責且維持不變。 |
+| REQ-22 Web Push 政策範圍與驗收治理 | PM | BB、FB、DO、QA | 僅有既存 A23/A24 與 iOS/android DeviceTokenStatus；未定義瀏覽器訂閱／供應商契約 | 任何瀏覽器推播實作前，先審查產品／供應商／法律／權限範圍 | 記錄 Web Push 是否納入範圍、其瀏覽器／供應商／訂閱生命週期及驗收契約，或明確延後 | 不得建立虛假的瀏覽器推播功能或暗示支援原生應用程式/PWA；另有獨立批准契約之前，A23/A24 及既有原生推播政策維持不變。 |
 
-## 8. Shared decisions and change ledger
+<a id="8-shared-decisions-and-change-ledger"></a>
+## 8. 共用決策與變更紀錄
 
-Pending approval: DeviceID issue/reuse across reinstall/account switch; W21/W22 lease and unknown-state push behavior; Web/RWD layout and accessibility thresholds; production sync/file/heartbeat/rate values; group limits and role policy; group receipt visibility; history before joining/after leaving; supported attachment policy; Web Push provider/subscription scope; and validity of prior performance/reconnect objectives. The added Web feature IDs are FA-08, FB-07, DO-06, QA-06 and the added documented requirements are REQ-19–REQ-22; none adds or renames a REST API/WSS event. A01–A25/W01–W22 names and IDs remain unchanged. This document contains requirements, not verification results.
+待批准：重新安裝／切換帳戶時 DeviceID 的簽發／重用；W21/W22 租約及未知狀態推播行為；Web/RWD 版面與無障礙門檻；正式環境同步／檔案／心跳／速率值；群組限制與角色政策；群組回條可見性；加入前／離開後歷史；支援的附件政策；Web Push 供應商／訂閱範圍；以及先前效能／重新連線目標的有效性。新增的 Web 功能 ID 為 FA-08、FB-07、DO-06、QA-06，新增文件化需求為 REQ-19–REQ-22；均未新增或重新命名 REST API/WSS 事件。A01–A25/W01–W22 名稱及 ID 維持不變。本文件列出需求，並非驗證結果。

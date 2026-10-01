@@ -1,23 +1,27 @@
 ---
-name: Feature request
-about: Propose a project feature
-title: "[Feature] "
+name: 功能提案
+about: 提出專案功能
+title: "[功能] "
 labels: enhancement
 ---
 
-## Goal
+<a id="goal"></a>
+## 目標
 
-What should be implemented?
+希望實作什麼？
 
-## Scope
+<a id="scope"></a>
+## 範圍
 
-What is included?
+包含哪些內容？
 
-## Acceptance Criteria
+<a id="acceptance-criteria"></a>
+## 驗收條件
 
-- [ ] Criterion 1
-- [ ] Criterion 2
+- [ ] 條件一
+- [ ] 條件二
 
-## Dependencies
+<a id="dependencies"></a>
+## 相依項目
 
-List related frontend, backend, infrastructure, or QA dependencies.
+列出相關的前端、後端、基礎設施或品質驗證相依項目。

@@ -1,20 +1,24 @@
-## Summary
+<a id="summary"></a>
+## 摘要
 
-Describe what this PR changes.
+說明此合併請求的變更內容。
 
-## Related Task / Issue
+<a id="related-task--issue"></a>
+## 相關工作／議題
 
-Link the related issue or task.
+附上相關議題或工作的連結。
 
-## How to Test
+<a id="how-to-test"></a>
+## 驗證方式
 
-Describe the steps reviewers should use to verify this change.
+說明審查者應如何驗證此變更。
 
-## Checklist
+<a id="checklist"></a>
+## 檢查清單
 
-- [ ] I tested this change locally.
-- [ ] I did not commit secrets or private data.
-- [ ] I updated relevant docs/specs.
-- [ ] API / WebSocket / DB changes are documented.
-- [ ] I removed debug code and temporary files.
-- [ ] CI checks pass.
+- [ ] 我已在本機測試此變更。
+- [ ] 我未提交機密或私密資料。
+- [ ] 我已更新相關文件／規格。
+- [ ] 已記錄 API／WebSocket／資料庫變更。
+- [ ] 我已移除除錯程式碼與暫存檔。
+- [ ] 持續整合檢查通過。

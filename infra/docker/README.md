@@ -1,3 +1,3 @@
 # Docker
 
-Local development containers and Docker-related configuration.
+本機開發容器與 Docker 相關設定。

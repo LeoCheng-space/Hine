@@ -1,3 +1,3 @@
 # REST API
 
-REST API contracts, request/response formats, authentication, status codes, and error models.
+REST API 契約、請求／回應格式、認證、狀態碼與錯誤模型。

@@ -1,3 +1,4 @@
-# Backend Common
+<a id="backend-common"></a>
+# 後端共用模組
 
-Shared backend types, utilities, constants, validation, and common domain definitions.
+後端共用型別、工具、常數、驗證及共用領域定義。

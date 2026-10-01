@@ -1,3 +1,4 @@
-# Deployment
+<a id="deployment"></a>
+# 部署
 
-GCP deployment, DNS, TLS, environment configuration, rollback, and operational procedures.
+GCP 部署、DNS、TLS、環境設定、回滾與維運程序。
