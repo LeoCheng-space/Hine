@@ -10,7 +10,7 @@
 ## 範圍
 
 - **範圍內：** WSS 交握、連線／心跳、單一 Redis Pub/Sub 通知／在線狀態、事件路由與同步入口；以及下方角色專屬功能卡。
-- **範圍外：** 活動租約與 W21／W22（本版範圍外，2026-10-01 PM 決議）；其他角色所負責的範圍；亦不得變更共用 API／事件 ID、正式資料、ACK、游標或同步語意。各後端負責人自選語言；以內部 HTTP＋JSON 對接，不要求共用後端原始碼／型別／ORM。PostgreSQL 為主資料庫，Redis 僅供通知與在線狀態。
+- **範圍外：** 活動租約與 W21／W22（本版範圍外，2026-10-01 PM 決議）；其他角色所負責的範圍；不得單方變更共用 API／事件 ID、正式資料、ACK、游標或同步語意。介面依[共同變更流程](../../CONTRIBUTING.md#interface-changes)與受影響成員一起修改，先對齊[近期串接基線](../contracts/interface-contract.md#integration-baseline)。各後端負責人自選語言及內部實作，以內部 HTTP＋JSON 對接；不要求共用後端原始碼／型別／ORM或一次鎖死整份規格。PostgreSQL 為主資料庫，Redis 僅供通知與在線狀態。
 - **共用 Web 行為：** 遵循 [Web／RWD 規格](../ui/web-rwd.md#web-rwd)；不得另訂斷點或重複定義版面規則。
 
 ## 功能索引

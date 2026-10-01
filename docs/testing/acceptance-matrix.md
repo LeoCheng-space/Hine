@@ -5,6 +5,26 @@
 各列先列主要負責角色，再列協作者。API 與事件連結直達共用契約中的對應登錄列。
 本輪局部交叉審查的補充定位：[REQ-01／身分](#ac-r03)、[REQ-02／07／16 錯誤分流](#ac-r02)、[REQ-03 已知 ID 查詢](#ac-r07)、[REQ-09／15 欄位排序分頁與心跳](#ac-r05)、[REQ-06／07／09／12 本地保存](#ac-r06)、[REQ-13 附件](#ac-r04)、[REQ-12 條件群組回條](#ac-r08)、[REQ-02／16 內部驗證分層](#ac-r09)、[REQ-12／20 未讀數](#ac-r10)；已讀正反案例放在 [REQ-20 詳細驗收](#req-20-detail)。這些案例不新增 REQ ID、不代表已執行。
 
+<a id="first-integration-cases"></a>
+## 首輪一對一文字串接：共同確認與驗收
+
+依[近期串接基線](../contracts/interface-contract.md#integration-baseline)先對齊下列情境，不要求先驗收整份矩陣。FA／FB／BA／BB 對接確認及產品執行結果尚未取得；本節是可重跑的驗收條件，不是通過報告，也不取消其他需求。
+
+| 範圍／角色 | 操作與必要邊界 | 預期結果與須留存證據 |
+|---|---|---|
+| A01／A02／A05、W01／W02；FB／BB／FA／BA | 用不同瀏覽器設定檔或裝置登入兩個測試帳號，各完成 W01；另以無效權杖驗證 | A02.user_id＝A05.id＝W02.user_id，裝置／世代一致；不得把 subject_id 交給前端。無效驗證不回成功 W02；遵循既有 W17／關線規則 |
+| A13、openChat；FB／BB／FA | 以另一帳號公開 ID 建立一對一，重複建立；由 FB 把回傳 conversation_id 交 FA | 同一雙人配對只有一個對話；一對一 title／membership_version 為 null；聊天導覽不開第二條 WSS |
+| W03／W04、W05／W06／W07；FA／BA／BB | 各端心跳；送出文字；分別讓 W06 或 W07 先到寄件端 | 同連線 nonce／correlation_id 精確匹配；完整提交後才回 W06。寄件端依 C1／M1 合併，兩端呈現同一 M1 且不重複；sender_id 取可信身分 |
+| W05 冪等與拒絕；FA／BA／BB | 同 C1／同文字重送；同 C1／不同文字重送；以無權對話送出文字 | 同內容回同一 M1，不多寫訊息／事件；改內容回 IDEMPOTENCY_CONFLICT。無權操作依既有拒絕，不回成功 ACK；不觸發整帳號登出 |
+| EntityID／text 邊界；FB／FA／BA／BB | EntityID 128／129 個碼點；W05 text 空字串、1／4096／4097 個 ASCII 或 emoji 碼點；另送 `"e\u0301"` | EntityID 128 在長度上合法、129 回該操作 INVALID_ARGUMENT；UUID／游標不套用該上限。text 1／4096 長度合法，0／4097 回 W17 INVALID_ARGUMENT 且不寫入／不回成功 ACK。😀 算 1、e 加組合重音算 2；仍須通過其他既有驗證 |
+| A19 保存核對；FA／BB／QA | 以成功 ACK 的 M1 查歷史，重新載入後再查，並比較 text／order_key | 查到同一 M1 與原文字／排序鍵，不以即時 UI 顯示充當持久化證據；使用既有 REST 清單封套、授權與歷史游標 |
+| 共同變更；直接受影響角色 | 若串接發現欄位／錯誤／工作值須改，依任務／PR 列出新舊差異、受影響端、同步修改與切換方式 | 提供方與受影響消費方共同確認；契約、範例、驗收與實作同改。只有文件時明列尚未產品驗證，不單方改線上格式 |
+
+QA／PM 保存實際環境、瀏覽器與模組版本、命令／步驟、提交、成功與失敗觀察；在 Notion 逐項記錄，沒有執行結果的項目不勾選完成。Title 與群組、附件、回條、完整重連／同步另於相應輪確認及驗收，不能由本輪通過推論全部功能完成。
+
+## 全部需求驗收索引
+
+
 | 需求 | 主要負責角色／協作者 | 介面 | 驗收摘要 |
 |---|---|---|---|
 | <a id="req-01"></a>REQ-01 帳號驗證與登入身分 | [FB](../prd/frontend-b.md#fb-01) / [BB](../prd/backend-b.md#bb-01), [BA](../prd/backend-a.md#ba-01), [FA](../prd/frontend-a.md#fa-01), [QA](../prd/qa.md#qa-02) | [A01](../contracts/interface-contract.md#api-a01), [A02](../contracts/interface-contract.md#api-a02), [A05](../contracts/interface-contract.md#api-a05), [W01](../contracts/interface-contract.md#event-w01), [W02](../contracts/interface-contract.md#event-w02) | 首次裝置登入會綁定伺服器端裝置；A02、W02、A05 的公開使用者身分一致；內部 subject_id 僅留在伺服器端。補充：[AC-N11](#ac-n11)。 |
