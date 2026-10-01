@@ -21,8 +21,8 @@
 
 - [系統架構與部署拓樸（推播流程本版範圍外）](architecture/README.md)
 - [關鍵即時流程：連線、傳送、群組事件、附件（推播範圍外）](architecture/README.md#arch-flows)
-- [REST API 登錄表 A01–A25](contracts/interface-contract.md#rest-api)
-- [WebSocket 事件登錄表 W01–W22](contracts/interface-contract.md#websocket-events)
+- [REST API 登錄表 A01–A25](contracts/interface-contract.md#rest-api)（本版提供 A01–A22；A23–A25 僅保留 ID）
+- [WebSocket 事件登錄表 W01–W22](contracts/interface-contract.md#websocket-events)（本版提供 W01–W20；W21／W22 僅保留 ID）
 - [共用資料字典](contracts/interface-contract.md#data-dictionary)
 - [錯誤與重試規則](contracts/interface-contract.md#error-rules)
 - [後端 A↔B 內部交接契約](contracts/interface-contract.md#internal-handoffs)

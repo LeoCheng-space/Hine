@@ -52,8 +52,8 @@ flowchart TB
   end
   subgraph host["單台 VM：Docker Compose"]
     ingress["Web 入口反向代理<br/>HTTPS／WSS"]
-    api["api（Backend B）<br/>A01–A25、JWT／session、授權、交易"]
-    rt["realtime（Backend A）<br/>W01–W22、heartbeat、presence、fanout、同步入口"]
+    api["api（Backend B）<br/>A01–A22（A23–A25 範圍外）、JWT／session、授權、交易"]
+    rt["realtime（Backend A，單一實例）<br/>W01–W20（W21／W22 範圍外）、heartbeat、presence、fanout、同步入口"]
     pg[("PostgreSQL<br/>權威狀態")]
     redis[("Redis<br/>presence、Pub/Sub")]
     ingress -->|"/api/v1"| api
@@ -79,8 +79,8 @@ flowchart TB
 |---|---|---|---|
 | Web 殼層、工作階段與非聊天頁面 | [前端 B](../prd/frontend-b.md) | SessionContext、AccessSession 保存、A02／A03／A04 流程（不讀取更新憑證 Cookie 值）、DeviceStore、路由與深層連結、帳號／個人資料／聯絡人／群組管理頁、呼叫 `openChat` | 建立 WSS、簽發 JWT、定義線上格式 |
 | 聊天模組 | [前端 A](../prd/frontend-a.md) | 唯一 WSS 生命週期、W01–W20 用戶端（W21／W22 本版範圍外）、C1 待送狀態、ACK 合併與去重、SyncCursor 與本機投影、附件訊息、回條 | 更新憑證 Cookie、JWT 簽發、簽署網址、推播派送 |
-| `api` 服務 | [後端 B](../prd/backend-b.md) | [A01–A25](../contracts/interface-contract.md#rest-api)（A25 本版範圍外）、帳號與工作階段權威、JWT 簽發、以 `Set-Cookie` 設定與輪替更新憑證 Cookie、授權決策、PostgreSQL 結構描述與交易、事件流與快照讀取、GCS 授權憑證 | 持有用戶端連線、把 Redis 當訊息儲存、推播工作程序 |
-| `realtime` 服務 | [後端 A](../prd/backend-a.md) | [W01–W22](../contracts/interface-contract.md#websocket-events)（W21／W22 本版範圍外）、WSS 驗證、心跳、使用者線上狀態、Redis Pub/Sub 通知、同步請求入口、WSS 速率限制與錯誤 | JWT 簽發、授權最終決策、持久化狀態、PostgreSQL 結構描述、活動租約 |
+| `api` 服務 | [後端 B](../prd/backend-b.md) | [A01–A22](../contracts/interface-contract.md#rest-api)（A23–A25 僅保留 ID，本版範圍外）、帳號與工作階段權威、JWT 簽發、以 `Set-Cookie` 設定與輪替更新憑證 Cookie、授權決策、PostgreSQL 結構描述與交易、事件流與快照讀取、GCS 授權憑證 | 持有用戶端連線、把 Redis 當訊息儲存、推播工作程序 |
+| `realtime` 服務 | [後端 A](../prd/backend-a.md) | [W01–W20](../contracts/interface-contract.md#websocket-events)（W21／W22 僅保留 ID，本版範圍外）、WSS 驗證、心跳、使用者線上狀態、Redis Pub/Sub 通知、同步請求入口、WSS 速率限制與錯誤 | JWT 簽發、授權最終決策、持久化狀態、PostgreSQL 結構描述、活動租約 |
 | 入口、設定、交付與監控 | [維運](../prd/devops.md) | DNS、TLS、路由、機密綁定、GitHub Actions、健康檢查、監控與日誌、可重現的驗證環境 | 產品政策數值的批准 |
 | 驗收 | [QA](../prd/qa.md) | 契約、故障注入、隱私、響應式與效能驗收 | 修改共用 API／事件 ID |
 
@@ -160,7 +160,8 @@ sequenceDiagram
 - 前景期間依 `SYNC_RECONCILE_SECONDS`（10 秒）定期送 W15 對帳。
 
 <a id="flow-send"></a>
-### 6.2 訊息傳送、持久化 ACK 與跨節點扇出
+<a id="62-訊息傳送持久化-ack-與跨節點扇出"></a>
+### 6.2 訊息傳送、持久化 ACK 與即時扇出（單一 realtime 實例）
 
 ```mermaid
 sequenceDiagram
@@ -270,7 +271,7 @@ sequenceDiagram
 | 授權失效：撤銷後的資料（D1） | 授權點在撤銷 R 之後的資料，永不交付給 R 撤銷的對象 | 提交序：工作階段撤銷以 `W ≥ r` 判定，群組撤權以對話列鎖判定 | 不受影響 |
 | 授權失效：撤銷前的資料（D2、D3） | 工作階段依開始交付前的未失效／新鮮／權杖檢查；群組待送內容依已批准 E1 | [D2 與 E1](../contracts/interface-contract.md#group-revocation-e1) | 工作階段與群組均於撤銷提交後最遲 15 秒停止開始交付；不是資料抵達期限 |
 | 授權失效：新操作（D4） | R 之後的舊身分操作被拒 | 交易內工作階段檢查 | 不受影響 |
-| 連線清理 | 各節點將連線標記失效並關閉；沒有全域完成回報 | 通知、每 `INVALIDATION_POLL_SECONDS` 輪詢、遞送閘門補齊、存取權杖到期 | 後端 B 可連線時，最遲在下一次輪詢的完整補齊並套用後完成（輪詢間隔加一次補齊）。不可連線時依[狀態表](../contracts/interface-contract.md#delivery-state-table)：仍新鮮時連線保留、撤銷前資料可交付、需補齊的事件逾時放棄（第 6 列）；不新鮮後只送 W04／W17、不交付資料（第 7 列）；兩者最遲都在存取權杖到期時關閉 |
+| 連線清理 | `realtime` 實例將連線標記失效並關閉；沒有全域完成回報 | 通知、每 `INVALIDATION_POLL_SECONDS` 輪詢、遞送閘門補齊、存取權杖到期 | 後端 B 可連線時，最遲在下一次輪詢的完整補齊並套用後完成（輪詢間隔加一次補齊）。不可連線時依[狀態表](../contracts/interface-contract.md#delivery-state-table)：仍新鮮時連線保留、撤銷前資料可交付、需補齊的事件逾時放棄（第 6 列）；不新鮮後只送 W04／W17、不交付資料（第 7 列）；兩者最遲都在存取權杖到期時關閉 |
 | 通知傳遞 | 盡力傳遞 | `publishCommitted` → Redis Pub/Sub | 群組事件由事件流補回；工作階段失效由失效紀錄補回 |
 
 - 「多久內關閉連線」只是清理時間，不能代替資料交付政策。群組撤權分為裝置已有副本、服務端已授權待送內容與撤權後新查詢，分別依 G1、G2／E1、G3 處理。
@@ -336,8 +337,8 @@ flowchart TB
   subgraph compose["Docker Compose"]
     proxy["Web 入口反向代理<br/>HTTPS／WSS 終止"]
     web["Web 靜態資產"]
-    api["api<br/>單一實例"]
-    rt["realtime<br/>單一實例"]
+    api["api<br/>單一實例；A01–A22"]
+    rt["realtime<br/>單一實例；W01–W20"]
     pg[("PostgreSQL")]
     redis[("Redis")]
     proxy --> web
@@ -358,8 +359,8 @@ flowchart TB
 
 | 路徑 | 目的地 | 公開 | 說明 |
 |---|---|---|---|
-| `https://hine.run.place/api/v1/...` | `api` | 是 | [A01–A25](../contracts/interface-contract.md#rest-api) |
-| `wss://hine.run.place/ws/v1` | `realtime` | 是 | [W01–W22](../contracts/interface-contract.md#websocket-events) |
+| `https://hine.run.place/api/v1/...` | `api` | 是 | [A01–A22](../contracts/interface-contract.md#rest-api)；A23–A25 僅保留 ID，本版不提供路由 |
+| `wss://hine.run.place/ws/v1` | `realtime` | 是 | [W01–W20](../contracts/interface-contract.md#websocket-events)；W21／W22 僅保留 ID，本版不處理 |
 | `/`、`/login`、`/register`、`/contacts`、`/chats`、`/chats/{conversation_id}`、`/profile`、`/groups/{conversation_id}/manage` | Web 殼層 | 是 | [DO-06](../prd/devops.md#do-06)；`/` 只負責導向，見[根路徑規則](../ui/web-rwd.md#rwd-root-route)；不得把 `/api/v1`、`/ws/v1` 改寫到 Web 殼層 |
 | `/health/live`、`/health/ready` | 各服務 | 否 | 內部健康檢查，回應格式見 [HealthResponse](../contracts/interface-contract.md#data-dictionary) |
 | `/internal/v1/*` | `api`、`realtime` | 否 | 內部操作；公開入口不得轉送，使用[內部呼叫憑證](../contracts/interface-contract.md#internal-caller-credential) |

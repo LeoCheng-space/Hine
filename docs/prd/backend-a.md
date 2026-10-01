@@ -19,9 +19,9 @@
 - [BA-02 — 心跳與使用者層級在線狀態](#ba-02)
 - [BA-03 — 訊息入口與持久化 ACK](#ba-03)
 - [BA-04 — 送達／已讀回條轉送](#ba-04)
-- [BA-05 — 跨節點散佈與群組事件路由](#ba-05)
+- [BA-05 — 即時散佈（單一 realtime 實例）與群組事件路由](#ba-05)
 - [BA-06 — 初始化與事件流同步入口](#ba-06)
-- [BA-07 — 裝置活動租約](#ba-07)
+- [BA-07 — 裝置活動租約（本版範圍外）](#ba-07)
 - [BA-08 — 速率限制、訊框防護與 WSS 錯誤](#ba-08)
 
 ## 角色目的與責任界線
@@ -55,7 +55,7 @@
 **正常流程：** W03/W04 用於追蹤連線存活。`HEARTBEAT_INTERVAL_SECONDS=30`、`HEARTBEAT_TIMEOUT_SECONDS=90`。`nonce` 必須是非空字串；W04 必須原樣回顯，且 correlation_id 必須對應同一連線上同一筆待回覆 W03。不得轉型；重複或過期 W04 不延長存活時間。
 - **失敗流程：** 心跳逾時只清除該連線。Redis 無法使用時，在線狀態視為未知，不得斷定離線或在線。
 **驗收條件：** 在線狀態描述彙總連線情形，絕不代表應用程式在前景或訊息已送達；本版設定未量測。
-- **交接：** [BB-02](backend-b.md#bb-02) 在線狀態查詢；[FA-07](frontend-a.md#fa-07)/[FB-04](frontend-b.md#fb-04) 顯示。
+- **交接：** [BB-02](backend-b.md#bb-02) 在線狀態查詢；[FA-01](frontend-a.md#fa-01) 經唯一 WSS 接收 W18、[FB-04](frontend-b.md#fb-04) 顯示。
 
 <a id="ba-03"></a>
 <a id="ba-03--message-ingress-and-persisted-ack"></a>
@@ -79,8 +79,9 @@
 
 <a id="ba-05"></a>
 <a id="ba-05--cross-node-fanout-and-group-event-routing"></a>
-### BA-05 — 跨節點散佈與群組事件路由
-**追溯：** [REQ-05 群組管理、權限與成員變更](../testing/acceptance-matrix.md#req-05), [REQ-08 跨節點即時廣播與漏送復原](../testing/acceptance-matrix.md#req-08), [REQ-11 撤權過濾、自身通知與多群組同步](../testing/acceptance-matrix.md#req-11); [A14](../contracts/interface-contract.md#api-a14), [A15](../contracts/interface-contract.md#api-a15), [A16](../contracts/interface-contract.md#api-a16), [A17](../contracts/interface-contract.md#api-a17), [A18](../contracts/interface-contract.md#api-a18); [W07](../contracts/interface-contract.md#event-w07), [W11](../contracts/interface-contract.md#event-w11), [W12](../contracts/interface-contract.md#event-w12), [W15](../contracts/interface-contract.md#event-w15), [W16](../contracts/interface-contract.md#event-w16), [W20](../contracts/interface-contract.md#event-w20)。
+<a id="ba-05--跨節點散佈與群組事件路由"></a>
+### BA-05 — 即時散佈（單一 realtime 實例）與群組事件路由
+**追溯：** [REQ-05 群組管理、權限與成員變更](../testing/acceptance-matrix.md#req-05), [REQ-08 即時廣播與漏送復原（單一 realtime 實例）](../testing/acceptance-matrix.md#req-08), [REQ-11 撤權過濾、自身通知與多群組同步](../testing/acceptance-matrix.md#req-11); [A14](../contracts/interface-contract.md#api-a14), [A15](../contracts/interface-contract.md#api-a15), [A16](../contracts/interface-contract.md#api-a16), [A17](../contracts/interface-contract.md#api-a17), [A18](../contracts/interface-contract.md#api-a18); [W07](../contracts/interface-contract.md#event-w07), [W11](../contracts/interface-contract.md#event-w11), [W12](../contracts/interface-contract.md#event-w12), [W15](../contracts/interface-contract.md#event-w15), [W16](../contracts/interface-contract.md#event-w16), [W20](../contracts/interface-contract.md#event-w20)。
 - **前置條件：** BB 已提交訊息或成員變更交易。
 - **正常流程：** Redis Pub/Sub 加速將事件送至目前已授權的連線；保留各收件者專屬的事件識別。
 - **失敗流程：** 發布遺失時透過 [W16](../contracts/interface-contract.md#event-w16) 修復。遞送時重新檢查授權；已撤權成員僅收到自己的最小化 [W12](../contracts/interface-contract.md#event-w12)，不得收到後續本文。
@@ -92,7 +93,7 @@
   - 單一 Redis Pub/Sub 由 BB 提交後經內部 HTTP／JSON 呼叫 `publishCommitted`，以 `notice_id` 去重；PostgreSQL 為準，Pub/Sub 遺失由 W15／W16 與失效紀錄輪詢補齊。不得提交前發事件。不採多實例／多節點廣播拓樸。
   - 群組舊授權內容採 E1 有界停止交付：套用撤權即停止開始交付，最遲撤權提交後 15 秒不得再開始；這不是抵達期限，且只驗收單一 realtime 實例。不得以 60 秒移除紀錄保留窗冒充交付上限（[AC-N26](../testing/acceptance-matrix.md#ac-n26)）。
   - 見[驗收 AC-N01、AC-N02、AC-N09、AC-N12～AC-N18](../testing/acceptance-matrix.md#ac-n01)。
-- **交接：** [BB-03](backend-b.md#bb-03) 已提交的成員／事件流資料列；[FA-05](frontend-a.md#fa-05) 節點間遞送／復原；[DO-01](devops.md#do-01) 路由。
+- **交接：** [BB-03](backend-b.md#bb-03) 已提交的成員／事件流資料列；[FA-05](frontend-a.md#fa-05) 即時遞送與漏送復原（W15／W16）；[DO-01](devops.md#do-01) 路由。
 
 <a id="ba-06"></a>
 <a id="ba-06--bootstrap-and-feed-sync-ingress"></a>
@@ -113,7 +114,7 @@
 - **正常流程：** 本版範圍外（2026-10-01 PM 決議）。不實作裝置活動租約、W21／W22 上報或 unknown 推播判斷；WSS 心跳、斷線重連及前端 Page Visibility 已讀判斷仍保留且互不混用。
 - **失敗流程：** 本版範圍外（2026-10-01 PM 決議）。
 - **驗收條件：** 本版範圍外（2026-10-01 PM 決議）。保留 BA-07 卡片及錨點。
-- **交接：** [FA-07](frontend-a.md#fa-07) 的連線生命週期；活動租約不交接至 BB-08（本版範圍外）。
+- **交接：** 本版範圍外，無交接；連線生命週期與心跳由 [BA-01](#ba-01)／[BA-02](#ba-02) 及 [FA-01](frontend-a.md#fa-01) 負責，活動租約不交接至 FA-07／BB-08。
 
 <a id="ba-08"></a>
 <a id="ba-08--rate-limiting-frame-defense-and-wss-errors"></a>

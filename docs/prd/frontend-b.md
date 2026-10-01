@@ -20,7 +20,7 @@
 - [FB-03 — 個人檔案與頭像（含無對話帳戶）](#fb-03)
 - [FB-04 — 聯絡人、已知 ID 查詢與本機游標復原](#fb-04)
 - [FB-05 — 對話導覽與群組管理](#fb-05)
-- [FB-06 — 推播權杖註冊與清理](#fb-06)
+- [FB-06 — 推播權杖註冊與清理（本版範圍外）](#fb-06)
 - [FB-07 — 響應式 Web 外框、非聊天頁面與路由返回](#fb-07)
 
 ## 角色目的與責任界線
@@ -69,7 +69,7 @@
 - **正常流程：** [A07](../contracts/interface-contract.md#api-a07) 僅使用已知公開 user_id 查詢摘要。使用者可輸入／貼上對方分享的公開 ID（對方從自己的 A02／A03／A05 取得），或選取自己有權讀取的 A08 UserSummary.id／A12 成員 user_id；先核對摘要再確認 A09。A08 是聯絡人摘要，不是對話摘要。依[已知 ID 流程](../contracts/interface-contract.md#contact-id-lookup)分頁、加入／移除聯絡人及顯示線上狀態；不提供名稱／電子郵件搜尋或新查詢 API。聯絡人頁的「搜尋／篩選」只是[本機清單篩選](../ui/web-rwd.md#rwd-local-filter)，不呼叫 A07。
 - **失敗流程：** [A08](../contracts/interface-contract.md#api-a08) REST 游標錯誤僅重新取得聯絡人第一頁；不請求 [W13](../contracts/interface-contract.md#event-w13)，也不清除 FA 事件流。線上狀態未知時顯示為未知。
 - **驗收條件：** 摘要不得揭露電子郵件；查詢須有已知 ID，且不新增關鍵字搜尋行為；重複加入不會建立重複聯絡人；移除聯絡人不會刪除對話歷史。響應式聯絡人／目錄版面遵循集中管理的 Web/RWD 章節。參見 [AC-R07](../testing/acceptance-matrix.md#ac-r07)。
-**交接：** [BB-02](../prd/backend-b.md#bb-02) 聯絡人投影；[BA-02](../prd/backend-a.md#ba-02)/[FA-07](../prd/frontend-a.md#fa-07) 在線狀態顯示。
+**交接：** [BB-02](../prd/backend-b.md#bb-02) 聯絡人投影；[BA-02](../prd/backend-a.md#ba-02) 在線狀態；[FA-01](../prd/frontend-a.md#fa-01) 經唯一 WSS 接收 W18。
 
 <a id="fb-05"></a>
 <a id="fb-05-conversation-navigation-and-group-management"></a>

@@ -34,7 +34,7 @@ Hine/
 - `frontend/` — 用戶端應用程式
 - `backend/api/` — REST API 與業務資料服務
 - `backend/realtime/` — WebSocket 與即時訊息服務
-- `backend/common/` — 後端共用程式碼
+- `backend/common/` — 可選的後端共用程式碼；同語言模組可自行決定是否共用，非整合必要條件。跨語言整合依據為[共用介面契約](docs/contracts/interface-contract.md)、Schema 與測試樣例
 - `infra/` — Docker、GCP、監控及維運指令稿
 - `tests/` — 整合、端對端及負載測試
 - `.github/` — GitHub Actions 與協作範本
