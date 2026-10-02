@@ -22,7 +22,7 @@
 - 提供方與直接受影響的消費方；共同確認紀錄。
 - 同步的契約／範例／驗收／實作，以及相關 PR 依賴與共同切換方式。
 - 已執行的驗證與未取得的證據；文件檢查不代表產品串接通過。
-- 涉及 EntityID／text 時，確認 BB 專屬 JSON 解碼後 Unicode code point 單位、外部 EntityID 前置 INVALID_ARGUMENT 與實際接收操作 error list、validation 在認證／授權及 C1 比對之前；列 ASCII、兩個 BB Unicode 與三個 C1 案例。前端／BA 不需重現算法；BB 拒絕由 BA 映射既有 W17、不回成功 W06，不轉換原訊息。
+- 核對 W05 六階段與唯一 BB 5/s burst10 產品 quota：C1 後／持久化前只判新合法 intent；列 quota exhausted 的五個結果、拒絕無持久化／C1映射／W06。BA transport/frame defense 另屬防護，不重現 canonical／產品 quota。BB 發通知前驗 IDs，BA 對 authenticated BB notice 僅結構驗證；EntityID 矩陣包含 A06 非 null／A10 且保留 A06 null，其他 PM 邊界不變。
 - 分開記錄 PM 政策確認與直接受影響成員確認；沒有實際證據不替 FA／FB／BA／BB 宣稱已確認。文件／CI 檢查不代表產品測試通過，未執行產品情境須明列「尚未產品驗證」。
 
 

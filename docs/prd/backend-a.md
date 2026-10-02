@@ -62,10 +62,11 @@
 ### BA-03 — 訊息入口與持久化 ACK
 **追溯：** [REQ-06 文字訊息與持久 ACK](../testing/acceptance-matrix.md#req-06), [REQ-07 ACK 遺失、重試與去重](../testing/acceptance-matrix.md#req-07); [W05](../contracts/interface-contract.md#event-w05), [W06](../contracts/interface-contract.md#event-w06), [W07](../contracts/interface-contract.md#event-w07), [W17](../contracts/interface-contract.md#event-w17); [authorize](../contracts/interface-contract.md#internal-authorize), [persistIfAbsent](../contracts/interface-contract.md#internal-persist-if-absent)。
 - **前置條件：** 已驗證的主體、已授權的對話、有效訊息 C1。
-**正常流程：** 驗證 WSS envelope、必要欄位、型別等入口結構，再由 BB 按[驗證優先順序](../contracts/interface-contract.md#validation-precedence)完成 EntityID／text 合法性、認證／授權、C1 比對及持久化；不得先呼叫 authorize 提前拒絕而跳過 BB 的輸入驗證，也不維護另一套權威 text 計數算法。完整持久化結果後才回 [W06](../contracts/interface-contract.md#event-w06)，[W07](../contracts/interface-contract.md#event-w07) 路由至已授權收件者。每使用者訊息速率仍每秒 5、突發 10（未量測）。
-- **失敗流程：** BB 以 INVALID_ARGUMENT 拒絕空字串或超過 4096 的 text 後，BA 映射為既有 W17 INVALID_ARGUMENT、關聯原 W05，不得產生成功 W06。已知回滾時不得產生成功 ACK；結果不明時標示 OUTCOME_UNCONFIRMED；ACK 遺失時以相同 C1 復原。Redis 發布失敗可透過 [W16](../contracts/interface-contract.md#event-w16) 復原。
-- **驗收條件：** ACK 不得早於訊息、C1 對應及必要事件流提交。先 validation、再認證／授權及 C1：相同 C1＋非法 payload 回 W17 INVALID_ARGUMENT；不同合法 payload 回 IDEMPOTENCY_CONFLICT；相同合法 payload 回原同 M1／existing_same。拒絕不回成功 ACK；訊息速率仍依 RATE_LIMITED／retry_after_ms。
+**正常流程：** BA 驗 WSS envelope／required／基本型別及既有 connection/frame defense，再交 BB 依[六階段](../contracts/interface-contract.md#validation-precedence)做 canonical、認證／授權、C1、僅新合法 intent 的 5/s burst10 產品 quota、持久化；BA 不先判此產品 quota 或以 authorize 跳過 BB validation，不重現 canonical 計數。完整結果才回 W06，W07 路由至已授權收件者。
+- **失敗流程：** BB 的 INVALID_ARGUMENT／IDEMPOTENCY_CONFLICT／RATE_LIMITED 由 BA 映射既有 W17、關聯原 W05；拒絕不回成功 W06。產品 quota 拒絕不持久化或建立 C1→M1，安全 retry_after_ms 依既有規則。回滾／結果不明／ACK 遺失與 Redis 發布復原規則不變。
+- **驗收條件：** ACK 先有完整提交。quota exhausted 時，非法 payload（含同 C1）先 INVALID_ARGUMENT；不同合法 C1 payload 先 IDEMPOTENCY_CONFLICT；同 C1 相同合法 payload 回 existing_same／原 M1，不進 quota；只有新合法 intent 由 BB 可能回 RATE_LIMITED。
 - **長度交接：** [JSON 解碼後 Unicode code points](../contracts/interface-contract.md#string-length-counting)是 BB canonical 單位，不是 BA 重現算法義務；BB 的 EntityID 前置拒絕及 text 拒絕均沿用 INVALID_ARGUMENT 映射。不 trim／normalization 或轉換原內容。
+- **正式通知交接：** [publishCommitted](../contracts/interface-contract.md#committed-notice-validation) 只接受已驗服務身分的 BB；BB 發送前負責 canonical EntityID，BA 驗結構／required／null／型別／enum／UUID／source，結構錯誤仍 INVALID_ARGUMENT。合法結構通知不由 BA 重算 Unicode 長度，不因巢狀 EntityID >128 自行補判。
 - **交接：** [BB-04](backend-b.md#bb-04) 持久化／收件者；[FA-03](frontend-a.md#fa-03) 重試／合併；[QA-04](qa.md#qa-04) 故障案例。
 
 <a id="ba-04"></a>
@@ -122,7 +123,7 @@
 ### BA-08 — 速率限制、訊框防護與 WSS 錯誤
 **追溯：** [REQ-16 統一錯誤與隱私保護](../testing/acceptance-matrix.md#req-16); [W17](../contracts/interface-contract.md#event-w17) 與本版限制（2026-10-01 PM 決議）。
 - **前置條件：** 任意未驗證／已驗證訊框。
-**正常流程（BA 服務端責任）：** 執行速率限制及訊框防護，依共用 W17 格式輸出欄位。每使用者送訊息每秒 5 則、突發 10 則。只有可重試 `RATE_LIMITED` 且有安全延遲時才提供非負整數 `retry_after_ms`；否則省略、不填 0。內部 `UNAUTHENTICATED` 依 C13 分層：只有可信回應明確 `auth_layer:"user_session"` 才對應 W17 `UNAUTHENTICATED` 並關閉該使用者連線；服務憑證失敗、缺少分層或非 HINE 回覆均轉為 `DEPENDENCY_UNAVAILABLE`，不登出／刷新。新 W01 不回 W02，回 W17 後關閉未驗證連線；已驗證連線依狀態表與生命週期（見 [BA-01](#ba-01)）。`auth_layer` 僅適用 UNAUTHENTICATED；其他錯誤碼依原契約傳遞。BA 不替前端決定是否刷新、登出或重試。
+**正常流程（BA 服務端責任）：** 保留 WSS connection/frame abuse defense、envelope／required fields／基本型別、transport 與 W17 mapping。**transport/frame defense ≠ product W05 message-send quota**；原每使用者 5/s、burst 10 的產品 quota 唯一權威是 BB，BA 不在 BB canonical validation 前執行，也不另維護一套產品 quota。BA 將 BB RATE_LIMITED 映射 W17；可重試且有安全延遲才提供既有非負 retry_after_ms，否則省略、不猜 0。C13 user_session／service_identity 分層及原新連線／已驗證連線處理不變，BA 不替前端決定刷新／登出／重試。
 - **前端消費規則（FA／FB 執行，BA 只確保錯誤可辨識）：** 依[共用錯誤復原規則](../contracts/interface-contract.md#error-recovery)：僅 UNAUTHENTICATED／已知權杖過期進入既有驗證更新流程；有效權杖斷線應重連並執行 W01/W02、再送 W15，不得盲目呼叫 A03。RATE_LIMITED 只限制失敗動作，依 retry_after_ms 規則；一般服務故障不套用認證重試。
 - **失敗流程：** 為慢速消費者限制每個連線的輸出；連線中斷時不得宣稱錯誤已送達；絕不記錄權杖或本文。
 - **驗收條件：** 不得捏造成功結果；速率限制為本版設定，未量測。

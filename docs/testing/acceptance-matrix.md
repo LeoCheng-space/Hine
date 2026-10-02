@@ -21,12 +21,18 @@
 | text 長度 4096；BB／BA／QA | 以 W05 傳送 4096 個 ASCII `"A"` | 長度上合法；仍須通過其他既有驗證與持久化條件 |
 | text 長度 4097；BB／BA／QA | 以 W05 傳送 4097 個 ASCII `"A"`，另直接對 BB 持久化入口傳相同輸入 | BB 回 INVALID_ARGUMENT，不持久化訊息、C1 對應或事件流；BA 映射 W17 INVALID_ARGUMENT，不回成功 W06 |
 | EntityID 長度 128；BB／QA | 有效認證下，以 128 個 ASCII `"a"` 作 A12／A19 conversation_id，該 ID 結構合法但不存在 | 長度上合法後才查資源，依既有契約回 NOT_FOUND；消費端保持 opaque。UUID／游標不套用該上限 |
-| EntityID 長度 129；BB／QA | 對 A07／A09／A12／A13、A14–A22 中實際接收 ID 的欄位／path，以及接收 EntityID 的 internal 操作送出 129 個 ASCII `"a"`；含陣列／巢狀 ID | 先回 INVALID_ARGUMENT（相應 WSS 映射 W17），不做存在性查詢／授權／C1 比對；不能依是否存在改回 NOT_FOUND，不由前端預先阻擋決定。只收 UUID／游標或僅輸出 EntityID 的操作不套此例 |
+| EntityID 長度 129；BB／QA | 對 A06（非 null avatar_attachment_id）、A07、A09、A10（user_id）、A12、A13、A14–A22 中實際接收 EntityID 的欄位／path，以及 BB 接收 EntityID 的 internal 操作送出 129 個 ASCII `"a"`；含陣列／巢狀 ID | BB 先 INVALID_ARGUMENT，不查資源／授權／C1；A06 不做 attachment lookup／authorization，A10 不查使用者／聯絡人狀態。output-only、UUID／DeviceID／OpaqueCursor 及範圍外 API 不套此例；publishCommitted 由 BB 發送前驗長度，不要求 BA 重算 |
+| A06 null；BB／FB／QA | 在原授權條件下呼叫 A06，avatar_attachment_id 明確為 null；另比較省略該欄位 | null 仍依既有語意移除頭像，省略仍是不修改；不得因 EntityID 長度規則改變 null／omission 語意 |
 | 權威責任與內容；FB／FA／BA／BB／QA | 不啟用前端長度預檢，經 BA 將結構合法的上述空字串／超長文字送往 BB；使用前後帶空白的合法 ASCII 文字核對保存與接收內容 | 文字長度最終由 BB 判定，BA 不另立權威計數規則；拒絕不能回成功 ACK。前端提示僅屬 UX，不要求重現後端算法；原訊息不自動 trim／normalization 或做其他轉換 |
 | BB canonical 單位；BB／QA | JSON 解碼後的 EntityID／text 分別用 `"😀"` 及 `"e\u0301"` 核對 BB 的長度單位 | BB 的 Unicode code point 數分別為 1、2，原內容不改。只驗 BB，不要求 FA／FB／BA 計數一致，不按 bytes／code units／grapheme 計數 |
-| C1 Case A；BB／BA／QA | 先成功保存 C1=X、text="Hello" 得 M1；用同 C1 傳 5000 個 ASCII `"A"`，另核對空字串 | 輸入 validation 先失敗，BB 回 INVALID_ARGUMENT，不進入 idempotency comparison；不新增訊息／C1 對應／事件，原 M1 不變；BA 回 W17 INVALID_ARGUMENT，不回成功 W06 |
-| C1 Case B；BB／BA／QA | 同一已成功 C1=X，第二次為合法 text="World"，身分／授權仍有效 | 通過 validation 與認證／授權後才比較 C1；回 IDEMPOTENCY_CONFLICT，不新增訊息，不回成功 W06 |
-| C1 Case C；BB／BA／QA | 同一已成功 C1=X，第二次仍為相同合法 text="Hello"，身分／授權仍有效 | 回 existing_same／原同一 M1，沿用原持久化結果與成功 W06 行為，不建立第二筆訊息 |
+| W05 quota Case 1；BB／BA／QA | 產品 quota exhausted，以新 C1 傳 5000 ASCII text（非法 payload） | canonical validation 先回 INVALID_ARGUMENT，不判產品 quota，不持久化／C1→M1／成功 W06；不是 RATE_LIMITED |
+| W05 quota Case 2；BB／BA／QA | quota exhausted，新 C1、合法 "Hello"、有效認證／授權且 C1 尚不存在 | BB 在 C1 後、持久化前回 RATE_LIMITED，不持久化、不建立 C1→M1、不回成功 W06；安全 retry_after_ms 依既有契約，BA 映射 W17 |
+| W05 quota Case 3；BB／BA／QA | 已成功 C1=X、合法 "Hello" 得 M1；quota exhausted 時重送同 C1／相同合法 payload | existing_same／原 M1，不新增訊息／C1 映射／事件，不再判產品 quota，不改回 RATE_LIMITED；沿用原成功 ACK 行為 |
+| W05 quota Case 4；BB／BA／QA | 已成功 C1=X、"Hello"；quota exhausted 時重送同 C1／不同合法 "World" | IDEMPOTENCY_CONFLICT，不進 message-send quota、不持久化或回成功 W06 |
+| W05 quota Case 5；BB／BA／QA | 已成功 C1=X、"Hello"；quota exhausted 時重送同 C1／非法 5000 ASCII（另核對空字串） | INVALID_ARGUMENT，不進 C1 comparison／quota，不新增訊息／C1 映射／事件、不回成功 W06 |
+| BB 通知生成；BB／QA | 建立／送出 RealtimeNotice 前核對自己產生或從已驗證正式資料取得的巢狀 EntityID；令 BB 端資料 canonical 非法 | BB 負責 ≤128 JSON 解碼後 Unicode code points；非法資料不得送 publishCommitted，不能把補驗責任交 BA |
+| publishCommitted 接收；BA／BB／QA | 由已通過 service identity 驗證的 BB 送出結構合法通知；另送 required／型別／enum／UUID／source 不符的通知，及非允許 caller | 合法結構的 authenticated BB notice 長度視為 BB 已完成，BA 不重算／不因巢狀 EntityID >128 做 canonical 拒絕。結構錯誤 INVALID_ARGUMENT；服務身分不合法依原 UNAUTHENTICATED／C13；不宣稱通知成功即產品送達 |
+| BA transport 與產品 quota；BA／BB／QA | 通過既有 connection/frame gate 後，核對 W05 是交給 BB 做 canonical／C1／產品 quota；另驗既有 connection/frame defense | BA 保留 transport/frame abuse protection，但不執行 W05 5/s burst10 產品 quota；唯一權威 BB。五個產品案例不因 BA 先判產品 quota 改錯誤；不新訂 transport 限值或防護行為 |
 | A19 保存核對；FA／BB／QA | 以成功 ACK 的 M1 查歷史，重新載入後再查，並比較 text／order_key | 查到同一 M1 與原文字／排序鍵，不以即時 UI 顯示充當持久化證據；使用既有 REST 清單封套、授權與歷史游標 |
 | 共同變更；直接受影響角色 | 若串接發現欄位／錯誤／工作值須改，依任務／PR 列出新舊差異、受影響端、同步修改與切換方式 | 提供方與受影響消費方共同確認；契約、範例、驗收與實作同改。只有文件時明列尚未產品驗證，不單方改線上格式 |
 

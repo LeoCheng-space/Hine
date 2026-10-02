@@ -1,5 +1,14 @@
 # HINE 文件變更紀錄
 
+## 2026-10-01 — PR #3 最新通知／ID 覆蓋／產品 quota 修正
+
+- Finding 1：BB 在生成／送出 RealtimeNotice 前驗所有 canonical EntityID；authenticated BB 的結構合法 notice 視為 BB 已完成長度責任。BA 驗 caller／JSON／required／null／型別／enum／UUID／source，不重算 Unicode 長度，結構錯誤仍 INVALID_ARGUMENT。同步 BB→BA 內部 ID 交接，公開 REST／W05 的 BB 前置驗證不變。
+- Finding 2：EntityID 129 驗收補 A06 非 null avatar_attachment_id、A10 user_id，不做 attachment／使用者／聯絡人 lookup 或授權；A06 null／omission 語意保留，共用 15 個 receiving REST 清單一致，不新增其他 ID／output-only／範圍外邊界。
+- Finding 3：正式 PM 將 W05 每使用者 5/s、burst 10 的產品 quota 唯一權威改為 BB 的 persistIfAbsent，C1 判定後／持久化前只作用於新合法 intent。BA-08 保留 transport/frame defense 與 W17 mapping，不先判或雙重維護產品 quota；不指定 BB 實作。
+- 六階段與 quota exhausted 五個結果同步：非法 payload → INVALID_ARGUMENT；新合法 C1 → RATE_LIMITED；相同合法 C1 → existing_same／原 M1；不同合法 C1 payload → IDEMPOTENCY_CONFLICT；非法同 C1 payload → INVALID_ARGUMENT。拒絕不持久化、不建 C1→M1、不回成功 W06；retry_after_ms 沿用既有規則。
+- 只修相關契約／驗收／角色／架構交接／決策與五步摘要，原 5/s burst10 數值、Unicode／內容、Title 候選、部署 pending、模組自由、A／W／REQ 及推播／活動／群組回條 scope 不變。先前五階段說明由本輪 W05 六階段取代；沒有產品程式，尚未產品驗證，不代替組員批准。
+- 本輪文件 smoke：14 份相關文件的 1,270 個相對連結／anchor、34 個 JSON 區塊通過；A25／W22／REQ22 ID 集合、既有 JSON 範例與原 32 項 PM 正文未改。五個 quota 與 A06 129/null/omission、A10 129 驗收資料只做 JSON 往返；沒有執行產品 quota、通知接收、DB／C1／W06 或瀏覽器測試，尚未產品驗證。
+
 ## 2026-10-01 — PR #3 三項契約一致性修正
 
 - Issue 1：明訂 BB 的 EntityID／text canonical 單位為 JSON 解碼後 Unicode code points（Unicode 碼點），排除 UTF-8 bytes、UTF-16 code units 與 grapheme clusters。僅增加 😀＝1、e 加組合重音＝2 的 BB 案例；FA／FB／BA 不需重現算法，不 trim／normalization 或改內容。

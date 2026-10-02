@@ -126,7 +126,7 @@ FB-04 僅使用[公開 ID 查詢](contracts/interface-contract.md#contact-id-loo
 
 **近期路徑：** 依 Notion 首次端到端任務，先做兩個帳號登入、一對一建立、文字送出、持久化 ACK 與另一端顯示，另以 A19 核對保存。對接清單與唯一欄位定義見[共同契約近期基線](contracts/interface-contract.md#integration-baseline)，具體修改流程見[協作指南](../CONTRIBUTING.md#interface-changes)。
 
-**本次 PM 正式確認：** EntityID 上限固定為 128，消費端保持 opaque；text 非空且有效範圍 1～4096。BB 使用 JSON 解碼後的 Unicode code points 作 canonical backend 長度單位，不使用 UTF-8 bytes、UTF-16 code units 或 grapheme clusters；FA／FB／BA 不需重現算法，前端提示仍只屬 UX。EntityID 超長先回 INVALID_ARGUMENT，不查資源或授權；操作依「結構 → 輸入合法性 → 認證／授權 → C1 冪等 → 持久化」處理，BB 拒絕由 BA 映射既有 W17 INVALID_ARGUMENT，不回成功 W06。不 trim、normalization 或改原內容。這是 PM 規則，不是 FA／FB／BA／BB 對接確認或產品測試結果。
+**本次 PM 正式確認：** EntityID ≤128、text 非空／1～4096、BB JSON 解碼後 Unicode code points 單位不變；消費端不重現、不 trim／normalization。publishCommitted 由 BB 生成／發送前驗 IDs，BA 對 authenticated BB notice 僅結構檢查。W05 每使用者 5/s、burst 10 產品 quota 改由 BB 的 persistIfAbsent 唯一執行，順序為結構 → canonical → 認證／授權 → C1 → 僅新合法 intent 的 quota → 持久化；BA 保留 transport/frame defense，不雙重判產品 quota。不新增 API／架構，也不是組員確認或產品測試結果。
 
 
 | 事項 | 本輪安排 | 已取得證據／尚缺 |
@@ -135,10 +135,11 @@ FB-04 僅使用[公開 ID 查詢](contracts/interface-contract.md#contact-id-loo
 | EntityID | PM 已確認上限 128；BB 以 JSON 解碼後 Unicode code points 計算。所有外部 EntityID 輸入先驗證，超長 INVALID_ARGUMENT 先於資源查詢／授權；消費端不解析格式 | 本次 PM 正式指示；實際接收 EntityID 的 REST／internal error list 同步，UUID／OpaqueCursor 不套此上限 |
 | text | PM 已確認非空、有效範圍固定為 1～4096；空或超長不持久化、不回成功 W06 | 本次 PM 正式指示；由 BB 在持久化前權威判定，BA 映射既有 W17 INVALID_ARGUMENT |
 | 驗證責任與模型 | BB canonical 計數單位已定；ASCII 邊界外僅以 😀＝1、e 加組合重音＝2 驗 BB，不要求消費端算法一致。BA 可做結構檢查及錯誤映射，前端提示只是 UX，不轉換原內容 | 本次 PM 正式指示；不是消費端共同計數義務，尚未產品驗證 |
-| Validation／C1 precedence | 結構、輸入合法性、認證／授權、C1 比對、持久化依序；同 C1＋非法 payload → INVALID_ARGUMENT；合法不同 → IDEMPOTENCY_CONFLICT；相同合法 → existing_same／同 M1 | 同步 W05／W17、persistIfAbsent 與三個最小重試案例；不新增 A／W／REQ ID |
+| Validation／C1／產品 quota | W05 六階段；非法（含同 C1）先 INVALID_ARGUMENT；不同合法 C1 payload 先 IDEMPOTENCY_CONFLICT；相同合法 C1 即使 quota exhausted 仍 existing_same／原 M1；只有新合法 intent 超額 RATE_LIMITED | 唯一產品 quota owner 是 BB，不改 5/s burst10 或指定實作；拒絕不持久化／C1→M1／成功 W06 |
+| publishCommitted 交接 | BB 發送前驗所有 canonical EntityID；BA 先驗 caller 為 authenticated BB，再驗 notice 結構，不重算 Unicode 長度 | 結構錯誤仍 INVALID_ARGUMENT；非允許 caller 依原 UNAUTHENTICATED／C13；不取消 REST／W05 外部驗證 |
 | Title | 1–80 限制保留候選，群組 A14／A15 串接前共同確認 | 本輪一對一 title:null 不受影響；不作首輪阻塞 |
 | 來源與修訂 | 來源提交 `17c25ec`；本次修訂透過 `docs/incremental-interface-baseline` 分支交付，以該分支提交紀錄追溯 | 來源不是已批准凍結提交；分支交付不代表已 Review／合併，不宣稱 GitHub main 已更新 |
-| 首輪產品驗收 | 依[首輪驗收條件](testing/acceptance-matrix.md#first-integration-cases)記錄 ASCII 邊界、BB 兩個 Unicode 單位案例、EntityID 前置拒絕及 C1 三種重試的可重跑結果 | 尚無產品程式／首次串接結果，尚未產品驗證；文件檢查不是產品通過 |
+| 首輪產品驗收 | 首輪矩陣核對全部 EntityID 接收 REST（含 A06 非 null、A10），A06 null 原義；BB／BA 通知分工、Unicode／ASCII 邊界、quota exhausted 下五個結果 | 尚未產品驗證；文件／資料檢查不是後端或瀏覽器通過 |
 | 後續輪與內部部署 | 群組、附件、回條、完整同步等各輪串接前確認；`INVALIDATION_RETENTION_SECONDS` 另行協調 | 不要求一起完成，不取消現行授權／ACK／保存語意及範圍外決議 |
 
 **任務交付狀態：** 首輪限制與後端權威驗證責任已取得 PM 正式確認；近期共同介面與共同變更流程的書面交付仍須受影響成員 Review。尚未取得 FA／FB／BA／BB 對接確認，不標示「全介面凍結完成」。PM 在原任務／PR 記錄確認者、適用介面 ID、例子／驗收結果與合併提交；每輪完成只更新該輪，不替尚未驗證的功能勾選完成。
