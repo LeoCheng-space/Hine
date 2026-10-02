@@ -1,6 +1,6 @@
 # HINE 文件變更紀錄
 
-## 2026-10-01 — PR #3 最新通知／ID 覆蓋／產品 quota 修正
+## 2026-10-02 — PR #3 最新通知／ID 覆蓋／產品 quota 修正
 
 - Finding 1：BB 在生成／送出 RealtimeNotice 前驗所有 canonical EntityID；authenticated BB 的結構合法 notice 視為 BB 已完成長度責任。BA 驗 caller／JSON／required／null／型別／enum／UUID／source，不重算 Unicode 長度，結構錯誤仍 INVALID_ARGUMENT。同步 BB→BA 內部 ID 交接，公開 REST／W05 的 BB 前置驗證不變。
 - Finding 2：EntityID 129 驗收補 A06 非 null avatar_attachment_id、A10 user_id，不做 attachment／使用者／聯絡人 lookup 或授權；A06 null／omission 語意保留，共用 15 個 receiving REST 清單一致，不新增其他 ID／output-only／範圍外邊界。
