@@ -10,7 +10,7 @@
 ## 範圍
 
 - **範圍內：** SessionContext 與 AccessSession、A02／A03／A04 認證流程、個人檔案／聯絡人／群組入口與頂層路由負責權；以及下列角色專屬功能卡。
-- **範圍外：** 其他角色所負責的範圍；亦不得變更共用 API／事件 ID、正式資料、ACK、游標或同步語意。共用欄位型別、封套、錯誤與限制均以共同介面契約為準。
+- **範圍外：** 其他角色所負責的範圍；不得單方變更共用 API／事件 ID、正式資料、ACK、游標或同步語意。介面可以依[共同變更流程](../../CONTRIBUTING.md#interface-changes)與受影響成員一起修改；模組內實作由負責人決定。先對齊[近期串接基線](../contracts/interface-contract.md#integration-baseline)，不要求一次鎖死整份規格。
 - **共用 Web 行為：** 遵循 [Web / RWD 規格](../ui/web-rwd.md#web-rwd)；不得另訂斷點或重複定義版面規則。
 
 ## 功能索引
@@ -67,6 +67,7 @@
 **追溯：** [REQ-03 個人檔案、頭像與聯絡人](../testing/acceptance-matrix.md#req-03); [A07](../contracts/interface-contract.md#api-a07), [A08](../contracts/interface-contract.md#api-a08), [A09](../contracts/interface-contract.md#api-a09), [A10](../contracts/interface-contract.md#api-a10); [getDevicePresence](../contracts/interface-contract.md#internal-get-device-presence)。
 - **前置條件：** 已驗證使用者。
 - **正常流程：** [A07](../contracts/interface-contract.md#api-a07) 僅使用已知公開 user_id 查詢摘要。使用者可輸入／貼上對方分享的公開 ID（對方從自己的 A02／A03／A05 取得），或選取自己有權讀取的 A08 UserSummary.id／A12 成員 user_id；先核對摘要再確認 A09。A08 是聯絡人摘要，不是對話摘要。依[已知 ID 流程](../contracts/interface-contract.md#contact-id-lookup)分頁、加入／移除聯絡人及顯示線上狀態；不提供名稱／電子郵件搜尋或新查詢 API。聯絡人頁的「搜尋／篩選」只是[本機清單篩選](../ui/web-rwd.md#rwd-local-filter)，不呼叫 A07。
+- **ID 與 UX：** EntityID 對 FB 是 opaque string，不解析內部格式。BB canonical 上限 128；外部 ID 超長先回 INVALID_ARGUMENT、不查資源或授權，合法後才有 NOT_FOUND 等原結果。FB 可以提示／預先阻擋，但不是權威驗證，不要求重現 BB 的 Unicode code point 算法。見[共用前置驗證](../contracts/interface-contract.md#entityid-input-validation)。
 - **失敗流程：** [A08](../contracts/interface-contract.md#api-a08) REST 游標錯誤僅重新取得聯絡人第一頁；不請求 [W13](../contracts/interface-contract.md#event-w13)，也不清除 FA 事件流。線上狀態未知時顯示為未知。
 - **驗收條件：** 摘要不得揭露電子郵件；查詢須有已知 ID，且不新增關鍵字搜尋行為；重複加入不會建立重複聯絡人；移除聯絡人不會刪除對話歷史。響應式聯絡人／目錄版面遵循集中管理的 Web/RWD 章節。參見 [AC-R07](../testing/acceptance-matrix.md#ac-r07)。
 **交接：** [BB-02](../prd/backend-b.md#bb-02) 聯絡人投影；[BA-02](../prd/backend-a.md#ba-02) 在線狀態；[FA-01](../prd/frontend-a.md#fa-01) 經唯一 WSS 接收 W18。

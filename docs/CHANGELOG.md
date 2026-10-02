@@ -1,5 +1,40 @@
 # HINE 文件變更紀錄
 
+## 2026-10-02 — PR #3 最新通知／ID 覆蓋／產品 quota 修正
+
+- Finding 1：BB 在生成／送出 RealtimeNotice 前驗所有 canonical EntityID；authenticated BB 的結構合法 notice 視為 BB 已完成長度責任。BA 驗 caller／JSON／required／null／型別／enum／UUID／source，不重算 Unicode 長度，結構錯誤仍 INVALID_ARGUMENT。同步 BB→BA 內部 ID 交接，公開 REST／W05 的 BB 前置驗證不變。
+- Finding 2：EntityID 129 驗收補 A06 非 null avatar_attachment_id、A10 user_id，不做 attachment／使用者／聯絡人 lookup 或授權；A06 null／omission 語意保留，共用 15 個 receiving REST 清單一致，不新增其他 ID／output-only／範圍外邊界。
+- Finding 3：正式 PM 將 W05 每使用者 5/s、burst 10 的產品 quota 唯一權威改為 BB 的 persistIfAbsent，C1 判定後／持久化前只作用於新合法 intent。BA-08 保留 transport/frame defense 與 W17 mapping，不先判或雙重維護產品 quota；不指定 BB 實作。
+- 六階段與 quota exhausted 五個結果同步：非法 payload → INVALID_ARGUMENT；新合法 C1 → RATE_LIMITED；相同合法 C1 → existing_same／原 M1；不同合法 C1 payload → IDEMPOTENCY_CONFLICT；非法同 C1 payload → INVALID_ARGUMENT。拒絕不持久化、不建 C1→M1、不回成功 W06；retry_after_ms 沿用既有規則。
+- 只修相關契約／驗收／角色／架構交接／決策與五步摘要，原 5/s burst10 數值、Unicode／內容、Title 候選、部署 pending、模組自由、A／W／REQ 及推播／活動／群組回條 scope 不變。先前五階段說明由本輪 W05 六階段取代；沒有產品程式，尚未產品驗證，不代替組員批准。
+- 本輪文件 smoke：14 份相關文件的 1,270 個相對連結／anchor、34 個 JSON 區塊通過；A25／W22／REQ22 ID 集合、既有 JSON 範例與原 32 項 PM 正文未改。五個 quota 與 A06 129/null/omission、A10 129 驗收資料只做 JSON 往返；沒有執行產品 quota、通知接收、DB／C1／W06 或瀏覽器測試，尚未產品驗證。
+
+## 2026-10-01 — PR #3 三項契約一致性修正
+
+- Issue 1：明訂 BB 的 EntityID／text canonical 單位為 JSON 解碼後 Unicode code points（Unicode 碼點），排除 UTF-8 bytes、UTF-16 code units 與 grapheme clusters。僅增加 😀＝1、e 加組合重音＝2 的 BB 案例；FA／FB／BA 不需重現算法，不 trim／normalization 或改內容。
+- Issue 2：所有 Client／其他模組輸入的 EntityID（含 path、欄位、陣列與巢狀參數）先驗結構／長度；超長 INVALID_ARGUMENT 先於資源／授權。同步實際接收 EntityID 的 REST／internal error list 及引用；只輸出 EntityID、只收其他 ID 型別或範圍外操作不機械新增錯誤。
+- Issue 3：結構、輸入合法性、認證／授權、C1 比對、持久化依序；同 C1＋非法 text 先 INVALID_ARGUMENT，合法 World 才 IDEMPOTENCY_CONFLICT，相同合法 Hello 回 existing_same／同 M1。同步 W05／W17、persistIfAbsent、角色／QA／矩陣及原架構圖的順序說明，不新增架構或 A／W／REQ ID。
+- 仍保留首輪登入／一對一／W06／W07／A19、Title 群組前候選、內部保留時間部署待決、分輪治理與模組自由；不改推播、活動租約或群組回條。這是文件修正，尚未產品驗證，也不是 FA／FB／BA／BB 的對接確認。
+- 本輪文件 smoke：14 份相關文件的 1,275 個相對連結／anchor 與 34 個 JSON 區塊通過；A25／W22／REQ22 的 ID 集合及既有 JSON 範例值未增刪或改動，原 32 項 PM 決議正文未改。兩個 BB Unicode 與三個 C1 情境只做 JSON 解碼／資料往返探查，沒有產品後端、WSS、持久化或瀏覽器測試；尚未產品驗證。
+
+## 2026-10-01 — PM 正式確認首輪限制與後端權威驗證
+
+- PM 已正式確認 EntityID 上限固定為 128、對消費端仍為 opaque string；超長輸入由後端依既有契約回 INVALID_ARGUMENT。text 必須非空，有效範圍固定為 1～4096。
+- Canonical validation 由後端負責；文字最終權威驗證由 BB 在持久化前完成。BA 可驗證 envelope、必要欄位與型別，BB 拒絕後 BA 映射既有 W17 INVALID_ARGUMENT，不持久化、不回成功 W06；前端提示／字數／預先阻擋僅屬 UX。
+- 前輪移除消費端或不同語言必須重現相同計數模型的要求，以 ASCII 資料驗 text 空、1、4096／4097 及 EntityID 128／129；上方本次修正另明訂 BB 專屬單位及兩個最小 BB Unicode 案例，不恢復消費端算法義務。不 trim／normalization 或改內容。
+- Title 1～80 保留 A14／A15 群組串接前候選，`INVALIDATION_RETENTION_SECONDS` 保留部署／維運待決；不阻擋首輪登入與一對一文字聊天。分輪治理與模組內自由維持不變，共同修改僅要求提供方及直接受影響消費方確認。
+- 本次僅同步政策文件、角色交接、導覽、協作／PR 清單與驗收條件；不新增 API／WSS ID，不改其他產品規格。PM 確認不代表 FA／FB／BA／BB 已確認；尚未產品驗證，不宣稱全介面已凍結或產品已實作／測試通過。
+- 本次已執行文件 smoke：13 份文件的 1,192 個相對連結／錨點與 34 個 JSON 區塊通過檢查，六個 ASCII 邊界資料已實際產生並完成 JSON 往返檢查。這是文件／測試資料驗證，不是後端、WSS 或瀏覽器產品測試；尚未產品驗證。
+
+## 2026-10-01 — 近期共同介面與分輪變更政策
+
+- 依使用者指示改採「先對齊近期串接介面，模組內自由開發；介面可以修改，但與受影響成員一起改」，不要求一次鎖死整份規格。
+- 共同契約新增首輪一對一文字路徑：A01／A02／A05／A13／A19、W01–W07／W17、FA↔FB 工作階段／導覽及 BA↔BB 驗證／寫入／提交後通知交接；既有欄位、授權、ACK、C1 冪等、游標／保存語意及 API／事件 ID 不重編。
+- 初稿以 EntityID ≤128、text 1–4096 為工作值並提出消費端一致計數；此驗證責任提案已由上方 PM 正式確認取代，不再是現行契約要求。Title 1–80 保留群組串接前候選；內部部署保留時間仍另行協調。
+- 協作指南與 PR 範本補上提供方／直接受影響消費方共同確認、同步契約／範例／驗收／實作與切換、驗證及更新 Notion 的流程；六角色文件、決策紀錄、驗收矩陣與文件導覽同步引用，不要求內部實作逐項請 PM 批准。
+- 前輪曾執行 34 個 JSON 區塊解析、相對連結／錨點檢查及兩種語言各 13 個計數探查情境；計數探查不是本次必要驗收或對消費端的算法要求。這些不是產品 API／瀏覽器串接測試；未實作或部署產品，未取得 FA／FB／BA／BB 共同確認，不宣稱整份規格已凍結。
+- 來源為 `17c25ec`；本次修訂透過 `docs/incremental-interface-baseline` 分支交付，以該分支提交紀錄追溯。分支交付不代表已 Review／合併，不宣稱 GitHub main 已更新。
+
 ## 2026-10-01 — 決議一致性修正（單一實例、範圍外功能、共用程式碼）
 
 - 驗收矩陣：REQ-08 與 AC-N01、N03、N04、N08、N09 改為單一 `realtime` 實例；保留多使用者、多裝置及以測試客戶端模擬的同工作階段新舊連線（重連／A03 換線交接的安全測試，不代表多個可操作分頁）。AC-N03／N04 以 W05／W15 取代 W21 步驟；REQ-15 改列 W03／W04、W18、A08，AC-N27 與 REQ-14 標示本版範圍外。

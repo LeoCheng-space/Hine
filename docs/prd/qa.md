@@ -10,7 +10,7 @@
 ## 範圍
 
 - **範圍內：** 行為、結構描述、隱私、復原與效能驗收；以及下方角色專屬功能卡。
-- **範圍外：** 其他角色所負責的範圍；亦不得變更共用 API／事件 ID、正式資料、ACK、游標或同步語意。共用欄位型別、封套、錯誤與限制均以共同介面契約為準。
+- **範圍外：** 其他角色所負責的範圍；不得單方變更共用 API／事件 ID、正式資料、ACK、游標或同步語意。介面可以依[共同變更流程](../../CONTRIBUTING.md#interface-changes)與受影響成員一起修改；測試工具與內部實作由負責人決定。先對齊[近期串接基線](../contracts/interface-contract.md#integration-baseline)及其驗收，不要求一次鎖死整份規格。
 - **共用 Web 行為：** 遵循 [Web／RWD 規格](../ui/web-rwd.md#web-rwd)；不得另訂斷點或重複定義版面規則。
 
 ## 功能索引
@@ -38,6 +38,7 @@
 - **正常流程：** 驗證欄位存在性、null／省略、方法／路徑、status、關聯、授權、排序分頁及事件對應。C8–C14 使用跨語言 Schema／測試樣例驗收：C8 `validateAccess` 可信 `user_id` 用於 W02；C9/C10 已核驗附件版本及對話授權；C11/C12 排序與 REST 分頁；C13 內部身分錯誤分層；C14-S 伺服器權威未讀查詢。A23–A25、W21／W22 本版範圍外，僅保留 ID，不做 Schema／樣例驗收。
 - **失敗流程：** 欄位不符、事件錯配、以摘要代詳細資料或洩漏 subject_id 均為契約失敗。
 - **驗收條件：** 每個消費端參照同一契約並通過對應 Schema／測試樣例；不要求跨語言共用程式碼型別。
+- **首輪本輪三項驗收：** EntityID 129 案例覆蓋 A06 非 null avatar_attachment_id、A10 user_id 及共用接收清單，不做 lookup／授權；A06 null／omission 語意不變。保留 ASCII 與只驗 BB 的兩個 Unicode 案例。BB 生成通知前 canonical 驗 IDs，BA 只對 authenticated BB notice 做結構檢查，不重算長度。W05 5/s burst10 quota 只有 BB，依結構／canonical／認證授權／C1／新 intent quota／持久化六步，驗 quota exhausted 下五種結果：INVALID_ARGUMENT、RATE_LIMITED、existing_same／同 M1、IDEMPOTENCY_CONFLICT、INVALID_ARGUMENT；拒絕無寫入／C1映射／W06。BA frame defense 另屬 transport，不新增限值。依[首輪矩陣](../testing/acceptance-matrix.md#first-integration-cases)留證；尚未產品驗證。
 - **交接：** 結構描述／報告發現交給 [FA-01](frontend-a.md#fa-01)、[FB-01](frontend-b.md#fb-01)、[BA-01](backend-a.md#ba-01)、[BB-01](backend-b.md#bb-01)。
 
 <a id="qa-02--工作階段更新活動與多裝置行為"></a>

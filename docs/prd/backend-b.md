@@ -10,7 +10,7 @@
 ## 範圍
 
 - **範圍內：** REST API、帳戶／工作階段權威、PostgreSQL 正式狀態、物件中繼資料／GCS 授權憑證及持久化事件流；以及下方角色專屬功能卡。
-- **範圍外：** 推播意圖、推播權杖儲存與背景派送（本版範圍外，2026-10-01 PM 決議）；其他角色所負責的範圍。各後端負責人自選語言，以內部 HTTP＋JSON 對接；不要求共用後端原始碼／型別／ORM。PostgreSQL 為主資料庫，Redis 僅供通知與在線狀態。
+- **範圍外：** 推播意圖、推播權杖儲存與背景派送（本版範圍外，2026-10-01 PM 決議）；其他角色所負責的範圍。各後端負責人自選語言及內部實作，以內部 HTTP＋JSON 對接；不要求共用後端原始碼／型別／ORM。不得單方變更共同介面；依[共同變更流程](../../CONTRIBUTING.md#interface-changes)與受影響成員一起修改，先對齊[近期串接基線](../contracts/interface-contract.md#integration-baseline)，不要求一次鎖死整份規格。PostgreSQL 為主資料庫，Redis 僅供通知與在線狀態。
 - **共用 Web 行為：** 遵循 [Web／RWD 規格](../ui/web-rwd.md#web-rwd)；不得另訂斷點或重複定義版面規則。
 
 ## 功能索引
@@ -69,9 +69,10 @@
 ### BB-04 — 交易式訊息、冪等性與持久化事件流
 **追溯：** [REQ-06 文字訊息與持久 ACK](../testing/acceptance-matrix.md#req-06), [REQ-07 ACK 遺失、重試與去重](../testing/acceptance-matrix.md#req-07), [REQ-08 即時廣播與漏送復原（單一 realtime 實例）](../testing/acceptance-matrix.md#req-08), [REQ-14 裝置活動與背景推播（本版範圍外，僅保留追溯）](../testing/acceptance-matrix.md#req-14); [W05](../contracts/interface-contract.md#event-w05), [W06](../contracts/interface-contract.md#event-w06), [W07](../contracts/interface-contract.md#event-w07); [authorize](../contracts/interface-contract.md#internal-authorize), [persistIfAbsent](../contracts/interface-contract.md#internal-persist-if-absent)。
 - **前置條件：** 已授權的傳送者、訊息格式、穩定 C1。
-**正常流程：** 以交易寫入正式訊息、C1 對應及每位使用者所有必要事件流資料列；傳回 `created` 或 `existing_same` 與持久化結果。每使用者送訊息每秒 5 則、突發 10 則（本版設定，未量測）。不建立推播意圖（本版範圍外，2026-10-01 PM 決議）。
-- **失敗流程：** 同一 C1 配上不同承載資料時為衝突；區分已知回滾與結果不明；必要資料列提交前絕不寫入成功 ACK 證據。
-- **驗收條件：** 重試傳送會產生相同 M1 與穩定事件 ID；通知經提交後 publish；不含推播供應商派送。
+**正常流程：** BB 用 JSON 解碼後 Unicode code points 作 EntityID ≤128、text 非空／1～4096 的 canonical 單位。依[六階段](../contracts/interface-contract.md#validation-precedence)：結構、輸入合法性、認證／授權、C1、僅新合法 send intent 的產品 quota、持久化。W05 每使用者 5/s、burst 10 數值不變，唯一權威執行者是 BB 的 persistIfAbsent，不指定儲存或 quota 算法；BA 不先判此產品 quota。合法新 intent 通過 quota 才原子寫訊息／C1／必要事件流，回 created；相同合法 payload 回 existing_same／原 M1，不進 quota或新寫入。
+- **失敗流程：** 非法 EntityID／text 先 INVALID_ARGUMENT，不進認證／授權後續、C1 或 quota；合法不同 C1 payload 回 IDEMPOTENCY_CONFLICT，不進 quota。新合法 C1 且 quota exhausted 回 RATE_LIMITED，不持久化／不建 C1→M1／不回成功 W06，安全 retry_after_ms 依原契約由 BA 映射 W17。回滾與結果不明仍依原規則。
+- **驗收條件：** 保留 ASCII／兩個 BB Unicode 案例，並依[首輪矩陣](../testing/acceptance-matrix.md#first-integration-cases)驗 quota exhausted 時五個結果：非法新 payload、合法新 C1、相同合法 C1、不同合法 C1 payload、非法同 C1 payload；原事件 ID／提交後 publish 與推播範圍不變。
+- **責任與通知：** canonical 計數只在 BB；不要求 FA／FB／BA 重現，也不 trim／normalization 或改內容。BB 在建立／送出 RealtimeNotice 前，確保自己產生／已驗正式資料中的所有 EntityID canonical 合法，不合法不得送 publishCommitted；authenticated BB 的合法結構通知不交 BA 補驗長度。見[正式交接](../contracts/interface-contract.md#committed-notice-validation)。
 - **現行規格（C3；2026-10-01 PM 決議）：** `persistIfAbsent` 依 T2 鎖定工作階段列與群組對話列，在交易內計算 `recipient_ids`，並回傳 `invalidation_position` 與 `membership_version`。
 - **交接：** [BA-03](backend-a.md#ba-03) 交易結果；[FA-03](frontend-a.md#fa-03) C1 合併；[QA-04](qa.md#qa-04) 故障結果。
 

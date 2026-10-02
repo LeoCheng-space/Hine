@@ -10,7 +10,7 @@
 ## 範圍
 
 - **範圍內：** 聊天 UI、應用程式範圍的 WSS、訊息狀態與本機同步投影；以及下列角色專屬功能卡。
-- **範圍外：** 其他角色所負責的範圍；亦不得變更共用 API／事件 ID、正式資料、ACK、游標或同步語意。共用欄位型別、封套、錯誤與限制均以共同介面契約為準。
+- **範圍外：** 其他角色所負責的範圍；不得單方變更共用 API／事件 ID、正式資料、ACK、游標或同步語意。介面可以依[共同變更流程](../../CONTRIBUTING.md#interface-changes)與受影響成員一起修改；模組內實作由負責人決定。先對齊[近期串接基線](../contracts/interface-contract.md#integration-baseline)，不要求一次鎖死整份規格。
 - **共用 Web 行為：** 遵循 [Web / RWD 規格](../ui/web-rwd.md#web-rwd)；不得另訂斷點或重複定義版面規則。
 
 ## 功能索引
@@ -57,7 +57,8 @@
 **追溯：** [REQ-06 文字訊息與持久 ACK](../testing/acceptance-matrix.md#req-06), [REQ-07 ACK 遺失、重試與去重](../testing/acceptance-matrix.md#req-07); [W05](../contracts/interface-contract.md#event-w05), [W06](../contracts/interface-contract.md#event-w06), [W07](../contracts/interface-contract.md#event-w07), [W17](../contracts/interface-contract.md#event-w17); [authorize](../contracts/interface-contract.md#internal-authorize), [persistIfAbsent](../contracts/interface-contract.md#internal-persist-if-absent)。
 - **前置條件：** 對話已授權且連線已驗證。
 - **正常流程：** 傳送前持久保存原始 C1／承載資料與待處理狀態，送出 [W05](../contracts/interface-contract.md#event-w05)，將 [W06](../contracts/interface-contract.md#event-w06) 與傳送端 [W07](../contracts/interface-contract.md#event-w07) 合併為同一筆 M1；未確認前保留原意圖，以便重啟／重連時復原。[本機持久化](../contracts/interface-contract.md#local-persistence-boundary)是既有義務，不等同完整離線應用程式／PWA。
-- **失敗流程：** ACK 遺失、斷線或 OUTCOME_UNCONFIRMED 時，保留並重試原始 C1 與承載資料。相同 C1 搭配不同承載資料時呈現衝突；同一意圖絕不可悄悄產生替代 C1。
+- **長度與內容責任：** PM 已確認 text 非空且有效範圍 1～4096，最終權威驗證由 BB 在持久化前完成。FA 可提供字數／提示／預先阻擋，但僅屬 UX，不要求重現後端計數算法；收到 W17 INVALID_ARGUMENT 時不得呈現為成功持久化。送出的原訊息不自動 trim／normalization 或做其他尚未決定的轉換，EntityID 仍視為 opaque string。見[共同責任](../contracts/interface-contract.md#string-length-counting)。
+- **失敗流程：** ACK 遺失、斷線或 OUTCOME_UNCONFIRMED 時保留並重試原 C1／payload。同 C1＋非法 payload 先呈現 INVALID_ARGUMENT，不當作 C1 衝突；通過 validation 與認證／授權後，不同合法 payload 才呈現 IDEMPOTENCY_CONFLICT，相同合法 payload 合併原 M1。這是消費後端結果，不要求 FA 重現 BB 計數算法；同一意圖不可悄悄產生替代 C1。
 - **驗收條件：** 相同 C1 只產生一筆可見／持久化的 M1；不得將 `persisted` 呈現為已送達／已讀。ACK 可在 [W07](../contracts/interface-contract.md#event-w07) 前後抵達而不重複。已知的回滾不得顯示為成功。
 **交接：** [BA-03](../prd/backend-a.md#ba-03) W05–W07 順序；[BB-04](../prd/backend-b.md#bb-04) 原子持久化；[QA-04](../prd/qa.md#qa-04) 失敗情境。
 

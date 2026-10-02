@@ -5,6 +5,42 @@
 各列先列主要負責角色，再列協作者。API 與事件連結直達共用契約中的對應登錄列。
 本輪局部交叉審查的補充定位：[REQ-01／身分](#ac-r03)、[REQ-02／07／16 錯誤分流](#ac-r02)、[REQ-03 已知 ID 查詢](#ac-r07)、[REQ-09／15 欄位排序分頁與心跳](#ac-r05)、[REQ-06／07／09／12 本地保存](#ac-r06)、[REQ-13 附件](#ac-r04)、[REQ-12 條件群組回條](#ac-r08)、[REQ-02／16 內部驗證分層](#ac-r09)、[REQ-12／20 未讀數](#ac-r10)；已讀正反案例放在 [REQ-20 詳細驗收](#req-20-detail)。這些案例不新增 REQ ID、不代表已執行。
 
+<a id="first-integration-cases"></a>
+## 首輪一對一文字串接：共同確認與驗收
+
+依[近期串接基線](../contracts/interface-contract.md#integration-baseline)先對齊下列情境，不要求先驗收整份矩陣。首輪 EntityID／text 限制與後端權威驗證責任已由 PM 正式確認；FA／FB／BA／BB 對接確認及產品執行結果尚未取得，尚未產品驗證。本節是可重跑的驗收條件，不是通過報告，也不取消其他需求。
+
+| 範圍／角色 | 操作與必要邊界 | 預期結果與須留存證據 |
+|---|---|---|
+| A01／A02／A05、W01／W02；FB／BB／FA／BA | 用不同瀏覽器設定檔或裝置登入兩個測試帳號，各完成 W01；另以無效權杖驗證 | A02.user_id＝A05.id＝W02.user_id，裝置／世代一致；不得把 subject_id 交給前端。無效驗證不回成功 W02；遵循既有 W17／關線規則 |
+| A13、openChat；FB／BB／FA | 以另一帳號公開 ID 建立一對一，重複建立；由 FB 把回傳 conversation_id 交 FA | 同一雙人配對只有一個對話；一對一 title／membership_version 為 null；聊天導覽不開第二條 WSS |
+| W03／W04、W05／W06／W07；FA／BA／BB | 各端心跳；送出文字；分別讓 W06 或 W07 先到寄件端 | 同連線 nonce／correlation_id 精確匹配；完整提交後才回 W06。寄件端依 C1／M1 合併，兩端呈現同一 M1 且不重複；sender_id 取可信身分 |
+| W05 冪等與拒絕；FA／BA／BB | 同 C1／相同合法文字重送；同 C1／不同合法文字重送；以無權對話送出合法文字 | 合法且已授權後才比對 C1；相同 payload 回同 M1，不多寫訊息／事件；不同合法 payload 回 IDEMPOTENCY_CONFLICT。輸入非法先 INVALID_ARGUMENT；無權合法操作依既有拒絕，不回成功 ACK、不登出整個帳號 |
+| text 空字串；BB／BA／QA | 在有效授權／工作階段下以 W05 傳送 `text:""`，另直接對 BB 持久化入口傳相同輸入 | BB 拒絕且不持久化訊息、C1 對應或事件流；BA 映射既有 W17 INVALID_ARGUMENT、關聯原 W05，不回成功 W06 |
+| text 長度 1；BB／BA／QA | 以 W05 傳送 ASCII `text:"A"` | 長度驗證接受；仍須通過其他既有驗證，完整原子提交後才回成功 W06 |
+| text 長度 4096；BB／BA／QA | 以 W05 傳送 4096 個 ASCII `"A"` | 長度上合法；仍須通過其他既有驗證與持久化條件 |
+| text 長度 4097；BB／BA／QA | 以 W05 傳送 4097 個 ASCII `"A"`，另直接對 BB 持久化入口傳相同輸入 | BB 回 INVALID_ARGUMENT，不持久化訊息、C1 對應或事件流；BA 映射 W17 INVALID_ARGUMENT，不回成功 W06 |
+| EntityID 長度 128；BB／QA | 有效認證下，以 128 個 ASCII `"a"` 作 A12／A19 conversation_id，該 ID 結構合法但不存在 | 長度上合法後才查資源，依既有契約回 NOT_FOUND；消費端保持 opaque。UUID／游標不套用該上限 |
+| EntityID 長度 129；BB／QA | 對 A06（非 null avatar_attachment_id）、A07、A09、A10（user_id）、A12、A13、A14–A22 中實際接收 EntityID 的欄位／path，以及 BB 接收 EntityID 的 internal 操作送出 129 個 ASCII `"a"`；含陣列／巢狀 ID | BB 先 INVALID_ARGUMENT，不查資源／授權／C1；A06 不做 attachment lookup／authorization，A10 不查使用者／聯絡人狀態。output-only、UUID／DeviceID／OpaqueCursor 及範圍外 API 不套此例；publishCommitted 由 BB 發送前驗長度，不要求 BA 重算 |
+| A06 null；BB／FB／QA | 在原授權條件下呼叫 A06，avatar_attachment_id 明確為 null；另比較省略該欄位 | null 仍依既有語意移除頭像，省略仍是不修改；不得因 EntityID 長度規則改變 null／omission 語意 |
+| 權威責任與內容；FB／FA／BA／BB／QA | 不啟用前端長度預檢，經 BA 將結構合法的上述空字串／超長文字送往 BB；使用前後帶空白的合法 ASCII 文字核對保存與接收內容 | 文字長度最終由 BB 判定，BA 不另立權威計數規則；拒絕不能回成功 ACK。前端提示僅屬 UX，不要求重現後端算法；原訊息不自動 trim／normalization 或做其他轉換 |
+| BB canonical 單位；BB／QA | JSON 解碼後的 EntityID／text 分別用 `"😀"` 及 `"e\u0301"` 核對 BB 的長度單位 | BB 的 Unicode code point 數分別為 1、2，原內容不改。只驗 BB，不要求 FA／FB／BA 計數一致，不按 bytes／code units／grapheme 計數 |
+| W05 quota Case 1；BB／BA／QA | 產品 quota exhausted，以新 C1 傳 5000 ASCII text（非法 payload） | canonical validation 先回 INVALID_ARGUMENT，不判產品 quota，不持久化／C1→M1／成功 W06；不是 RATE_LIMITED |
+| W05 quota Case 2；BB／BA／QA | quota exhausted，新 C1、合法 "Hello"、有效認證／授權且 C1 尚不存在 | BB 在 C1 後、持久化前回 RATE_LIMITED，不持久化、不建立 C1→M1、不回成功 W06；安全 retry_after_ms 依既有契約，BA 映射 W17 |
+| W05 quota Case 3；BB／BA／QA | 已成功 C1=X、合法 "Hello" 得 M1；quota exhausted 時重送同 C1／相同合法 payload | existing_same／原 M1，不新增訊息／C1 映射／事件，不再判產品 quota，不改回 RATE_LIMITED；沿用原成功 ACK 行為 |
+| W05 quota Case 4；BB／BA／QA | 已成功 C1=X、"Hello"；quota exhausted 時重送同 C1／不同合法 "World" | IDEMPOTENCY_CONFLICT，不進 message-send quota、不持久化或回成功 W06 |
+| W05 quota Case 5；BB／BA／QA | 已成功 C1=X、"Hello"；quota exhausted 時重送同 C1／非法 5000 ASCII（另核對空字串） | INVALID_ARGUMENT，不進 C1 comparison／quota，不新增訊息／C1 映射／事件、不回成功 W06 |
+| BB 通知生成；BB／QA | 建立／送出 RealtimeNotice 前核對自己產生或從已驗證正式資料取得的巢狀 EntityID；令 BB 端資料 canonical 非法 | BB 負責 ≤128 JSON 解碼後 Unicode code points；非法資料不得送 publishCommitted，不能把補驗責任交 BA |
+| publishCommitted 接收；BA／BB／QA | 由已通過 service identity 驗證的 BB 送出結構合法通知；另送 required／型別／enum／UUID／source 不符的通知，及非允許 caller | 合法結構的 authenticated BB notice 長度視為 BB 已完成，BA 不重算／不因巢狀 EntityID >128 做 canonical 拒絕。結構錯誤 INVALID_ARGUMENT；服務身分不合法依原 UNAUTHENTICATED／C13；不宣稱通知成功即產品送達 |
+| BA transport 與產品 quota；BA／BB／QA | 通過既有 connection/frame gate 後，核對 W05 是交給 BB 做 canonical／C1／產品 quota；另驗既有 connection/frame defense | BA 保留 transport/frame abuse protection，但不執行 W05 5/s burst10 產品 quota；唯一權威 BB。五個產品案例不因 BA 先判產品 quota 改錯誤；不新訂 transport 限值或防護行為 |
+| A19 保存核對；FA／BB／QA | 以成功 ACK 的 M1 查歷史，重新載入後再查，並比較 text／order_key | 查到同一 M1 與原文字／排序鍵，不以即時 UI 顯示充當持久化證據；使用既有 REST 清單封套、授權與歷史游標 |
+| 共同變更；直接受影響角色 | 若串接發現欄位／錯誤／工作值須改，依任務／PR 列出新舊差異、受影響端、同步修改與切換方式 | 提供方與受影響消費方共同確認；契約、範例、驗收與實作同改。只有文件時明列尚未產品驗證，不單方改線上格式 |
+
+QA／PM 保存實際環境、瀏覽器與模組版本、命令／步驟、提交、成功與失敗觀察；在 Notion 逐項記錄，沒有執行結果的項目不勾選完成。Title 與群組、附件、回條、完整重連／同步另於相應輪確認及驗收，不能由本輪通過推論全部功能完成。
+
+## 全部需求驗收索引
+
+
 | 需求 | 主要負責角色／協作者 | 介面 | 驗收摘要 |
 |---|---|---|---|
 | <a id="req-01"></a>REQ-01 帳號驗證與登入身分 | [FB](../prd/frontend-b.md#fb-01) / [BB](../prd/backend-b.md#bb-01), [BA](../prd/backend-a.md#ba-01), [FA](../prd/frontend-a.md#fa-01), [QA](../prd/qa.md#qa-02) | [A01](../contracts/interface-contract.md#api-a01), [A02](../contracts/interface-contract.md#api-a02), [A05](../contracts/interface-contract.md#api-a05), [W01](../contracts/interface-contract.md#event-w01), [W02](../contracts/interface-contract.md#event-w02) | 首次裝置登入會綁定伺服器端裝置；A02、W02、A05 的公開使用者身分一致；內部 subject_id 僅留在伺服器端。補充：[AC-N11](#ac-n11)。 |
@@ -13,7 +49,7 @@
 | <a id="req-04"></a>REQ-04 一對一聊天導覽與建立 | [FB](../prd/frontend-b.md#fb-05) / [FA](../prd/frontend-a.md#fa-05), [BB](../prd/backend-b.md#bb-03) | [A11](../contracts/interface-contract.md#api-a11)–[A13](../contracts/interface-contract.md#api-a13) | 重複建立一對一聊天會回傳唯一的雙人對話；FB 導向 FA 聊天頁，不另建連線。 |
 | <a id="req-05"></a>REQ-05 群組管理、權限與成員異動 | [BB](../prd/backend-b.md#bb-03) / [FB](../prd/frontend-b.md#fb-05), [BA](../prd/backend-a.md#ba-05), [FA](../prd/frontend-a.md#fa-05) | [A14](../contracts/interface-contract.md#api-a14)–[A18](../contracts/interface-contract.md#api-a18), [W11](../contracts/interface-contract.md#event-w11), [W12](../contracts/interface-contract.md#event-w12), [W20](../contracts/interface-contract.md#event-w20) | 群組最多 50 人（含管理員），僅 admin／member；建立者為 admin；最後一位 admin 不可移除、降級或退出。加入界線：新成員不得經 A19／W14／W16／A22 讀取加入前訊息，退出後重加入以新界線開始。事件對應固定為 A14/A16→W11、A15/A17→W20、A18→W12；拒絕未授權操作／內容。補充：[AC-N01](#ac-n01)、[AC-N02](#ac-n02)、[AC-N18](#ac-n18)。 |
 | <a id="req-06"></a>REQ-06 文字訊息與持久化 ACK | [BA](../prd/backend-a.md#ba-03) / [BB](../prd/backend-b.md#bb-04), [FA](../prd/frontend-a.md#fa-03) | [W05](../contracts/interface-contract.md#event-w05)–[W07](../contracts/interface-contract.md#event-w07), [A19](../contracts/interface-contract.md#api-a19) | 完整交易完成後才送 ACK；傳送端與接收端收斂至同一 M1；訊息顯示於歷史記錄。 |
-| <a id="req-07"></a>REQ-07 ACK 遺失、重試與去重 | [BB](../prd/backend-b.md#bb-04) / [BA](../prd/backend-a.md#ba-03), [FA](../prd/frontend-a.md#fa-03), [QA](../prd/qa.md#qa-04) | [W05](../contracts/interface-contract.md#event-w05)–[W07](../contracts/interface-contract.md#event-w07), [W17](../contracts/interface-contract.md#event-w17) | 已知回滾不會回成功 ACK；已提交但 ACK 遺失時，以相同 C1 重試並回傳相同 M1；內容變更則回衝突。補充案例：[AC-N06](#ac-n06)。 |
+| <a id="req-07"></a>REQ-07 ACK 遺失、重試與去重 | [BB](../prd/backend-b.md#bb-04) / [BA](../prd/backend-a.md#ba-03), [FA](../prd/frontend-a.md#fa-03), [QA](../prd/qa.md#qa-04) | [W05](../contracts/interface-contract.md#event-w05)–[W07](../contracts/interface-contract.md#event-w07), [W17](../contracts/interface-contract.md#event-w17) | 已知回滾不回成功 ACK；ACK 遺失後以相同合法 C1／payload 重試回原 M1；同 C1／非法 payload 先 INVALID_ARGUMENT，通過驗證與授權的不同合法內容才衝突。補充：[首輪 Case A–C](#first-integration-cases)、[AC-N06](#ac-n06)。 |
 | <a id="req-08"></a>REQ-08 即時廣播與漏送復原（單一 realtime 實例） | [BA](../prd/backend-a.md#ba-05) / [BB](../prd/backend-b.md#bb-04), [FA](../prd/frontend-a.md#fa-05), [DO](../prd/devops.md#do-01) | [W07](../contracts/interface-contract.md#event-w07), [W15](../contracts/interface-contract.md#event-w15), [W16](../contracts/interface-contract.md#event-w16) | 本版驗收環境為單一 `realtime` 實例；收件者的每條有效連線（多使用者、多裝置）各收到一次即時事件；重複通知只處理一次，亂序或跳號的失效紀錄補齊後才推進；遺失的 Pub/Sub 通知由事件流對帳（W15／W16）與失效紀錄輪詢補回；UI 只顯示一則訊息。補充案例：[AC-N01](#ac-n01)、[AC-N09](#ac-n09)、[AC-N12](#ac-n12)、[AC-N26](#ac-n26)。 |
 | <a id="req-09"></a>REQ-09 首次登入、授權快照與歷史分離 | [BB](../prd/backend-b.md#bb-06) / [BA](../prd/backend-a.md#ba-06), [FA](../prd/frontend-a.md#fa-05), [QA](../prd/qa.md#qa-03) | [W13](../contracts/interface-contract.md#event-w13)–[W16](../contracts/interface-contract.md#event-w16), [A19](../contracts/interface-contract.md#api-a19) | 多頁且屬同一快照的啟動同步，只有完整投影後才安裝 H；H 時點約定的有界啟動同步範圍／目前狀態均有呈現，可取得 >H 事件流位置，較早且已授權的歷史由 A19 提供。群組新成員經 A19／W14／W16／A22 不得取得加入前訊息；重加入依新加入界線。補充：[AC-N16](#ac-n16)、[AC-N26](#ac-n26)。 |
 | <a id="req-10"></a>REQ-10 快照切換與即時投影合併 | [FA](../prd/frontend-a.md#fa-05) / [BA](../prd/backend-a.md#ba-06), [BB](../prd/backend-b.md#bb-06) | [W07](../contracts/interface-contract.md#event-w07), [W13](../contracts/interface-contract.md#event-w13)–[W16](../contracts/interface-contract.md#event-w16) | 切換期間觀察到的 C1／事件須保留；候選游標只與投影以原子方式一同前進。 |

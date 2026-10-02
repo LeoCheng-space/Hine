@@ -79,8 +79,8 @@ flowchart TB
 |---|---|---|---|
 | Web 殼層、工作階段與非聊天頁面 | [前端 B](../prd/frontend-b.md) | SessionContext、AccessSession 保存、A02／A03／A04 流程（不讀取更新憑證 Cookie 值）、DeviceStore、路由與深層連結、帳號／個人資料／聯絡人／群組管理頁、呼叫 `openChat` | 建立 WSS、簽發 JWT、定義線上格式 |
 | 聊天模組 | [前端 A](../prd/frontend-a.md) | 唯一 WSS 生命週期、W01–W20 用戶端（W21／W22 本版範圍外）、C1 待送狀態、ACK 合併與去重、SyncCursor 與本機投影、附件訊息、回條 | 更新憑證 Cookie、JWT 簽發、簽署網址、推播派送 |
-| `api` 服務 | [後端 B](../prd/backend-b.md) | [A01–A22](../contracts/interface-contract.md#rest-api)（A23–A25 僅保留 ID，本版範圍外）、帳號與工作階段權威、JWT 簽發、以 `Set-Cookie` 設定與輪替更新憑證 Cookie、授權決策、PostgreSQL 結構描述與交易、事件流與快照讀取、GCS 授權憑證 | 持有用戶端連線、把 Redis 當訊息儲存、推播工作程序 |
-| `realtime` 服務 | [後端 A](../prd/backend-a.md) | [W01–W20](../contracts/interface-contract.md#websocket-events)（W21／W22 僅保留 ID，本版範圍外）、WSS 驗證、心跳、使用者線上狀態、Redis Pub/Sub 通知、同步請求入口、WSS 速率限制與錯誤 | JWT 簽發、授權最終決策、持久化狀態、PostgreSQL 結構描述、活動租約 |
+| `api` 服務 | [後端 B](../prd/backend-b.md) | A01–A22、帳號／工作階段、JWT／Cookie、授權、PostgreSQL 交易／事件流／快照、GCS；W05 的 canonical／C1 與唯一 5/s burst10 產品 quota；發送通知前驗所有 EntityID | 持有用戶端連線、Redis 當訊息儲存、推播工作程序 |
+| `realtime` 服務 | [後端 A](../prd/backend-a.md) | W01–W20、WSS 驗證／心跳／在線、Redis Pub/Sub、同步入口、connection/frame defense、W17 mapping；authenticated BB notice 僅結構檢查 | JWT、權威 canonical 長度、W05 產品 quota、最終授權／持久化、活動租約；A23–A25／W21–W22 範圍外不變 |
 | 入口、設定、交付與監控 | [維運](../prd/devops.md) | DNS、TLS、路由、機密綁定、GitHub Actions、健康檢查、監控與日誌、可重現的驗證環境 | 產品政策數值的批准 |
 | 驗收 | [QA](../prd/qa.md) | 契約、故障注入、隱私、響應式與效能驗收 | 修改共用 API／事件 ID |
 
@@ -111,7 +111,7 @@ flowchart TB
 
 | 識別碼 | 產生者 | 用途 | 限制 |
 |---|---|---|---|
-| `client_message_id`（C1，UUID） | 傳送端前端 A，每個傳送意圖一次 | 冪等與去重；斷線或 ACK 遺失時沿用 | 同一意圖重試不得換新 C1；同 C1 不同內容回 `IDEMPOTENCY_CONFLICT` |
+| `client_message_id`（C1，UUID） | 傳送端前端 A，每個傳送意圖一次 | 冪等與去重；斷線或 ACK 遺失時沿用 | 同一意圖重試不換 C1；先通過 validation／授權的不同合法內容才 IDEMPOTENCY_CONFLICT，非法 payload 先 INVALID_ARGUMENT |
 | `message_id`（M1，UUID） | 後端 B | 標準訊息 ID；即時、歷史與同步中一致 | — |
 | 訊息 `event_id`（UUID） | 後端 B，於提交時產生 | 即時 W07 與 W16 重播使用同一值，用戶端據此去重 | — |
 | 請求 `event_id`、`correlation_id` | 送出請求的一方 | 回應以 `correlation_id` 對應請求 | 每次嘗試不同，不可取代 C1 |
@@ -173,10 +173,14 @@ sequenceDiagram
   participant PS as Redis Pub/Sub
   participant T as 接收端 Frontend A
   S->>R: W05 message.send（C1）
-  R->>B: authorize 與 persistIfAbsent
-  B->>DB: 單一交易寫入訊息、C1→M1、各收件者 feed
-  DB-->>B: commit
-  B-->>R: created 或 existing_same（M1、event_id、order_key、recipient_ids、invalidation_position）
+  R->>B: persistIfAbsent（結構、canonical、認證／授權、C1）
+  alt 新合法 intent 且 BB 5/s burst10 quota 通過
+    B->>DB: 原子寫訊息、C1→M1、必要 feed
+    DB-->>B: commit
+    B-->>R: created（M1、event_id、order_key、recipient_ids、invalidation_position）
+  else 相同合法 C1／payload
+    B-->>R: existing_same／原 M1（不判 quota、不新寫）
+  end
   par 回覆傳送端
     R-->>S: W06 message.ack（persisted）
   and 提交後即時扇出
@@ -184,11 +188,12 @@ sequenceDiagram
     PS->>R: 單一實例接收通知
     R->>T: W07 message.created（通過遞送閘門）
   end
-  Note over S,R: ACK 遺失時以同一 C1 重送，取得同一 M1
+  Note over S,R: ACK 遺失以同一 C1／相同合法 payload 重送，取得同一 M1
   Note over PS,T: 發布或轉送遺失時由 W15／W16 補回
 ```
 
 - W06 與 W07 沒有先後保證；前端 A 依 C1 與 `message_id` 合併成同一則可見訊息。
+- 上圖沿用[六階段](../contracts/interface-contract.md#validation-precedence)：BB 的結構／canonical、認證／授權、C1、僅新合法 intent 的產品 quota、持久化。非法／衝突／新 intent 超額分別 W17 INVALID_ARGUMENT／IDEMPOTENCY_CONFLICT／RATE_LIMITED，不進成功提交路徑；BA 保留 transport/frame defense，不先執行 5/s burst10 產品 quota。existing_same 不因目前 quota exhausted 失敗。
 - `persisted` 只代表已持久化，不代表送達或已讀。W08/W09 經 [persistReceipt](../contracts/interface-contract.md#internal-persist-receipt) 寫入後，每次都以 W19 回覆請求者（重複請求可能是 `changed:false`）。W10 只在一對一回條狀態實際改變、`status_event_id` 非 null 時產生；群組不發 W10，保留個別 W08／W09／W19 狀態。見[回條交接](../contracts/interface-contract.md#receipt-projection-handoff)。
 - 單一 realtime 實例透過 Redis Pub/Sub 發布及接收提交後通知；收件者一律採用後端 B 在提交交易內決定的清單，遞送前依 `invalidation_position` 補齊工作階段失效紀錄；不得以快取成員名單或 `authorize` 結果決定收件者（[BA-05](../prd/backend-a.md#ba-05)、[6.6](#flow-invalidation)）。
 
@@ -280,6 +285,7 @@ sequenceDiagram
 - 保留連線不等於允許送資料：節點不新鮮時，連線保留，但只送 W04 與 W17。
 - A03 只使舊世代連線失效；A04 只撤銷目前裝置的工作階段；A02 重新登入會撤銷同帳號同裝置原有的工作階段；A18 只影響該對話，不關閉連線。
 - 同一瀏覽器設定檔只允許一個可操作分頁與一條 WSS；不做多分頁交接或活動租期。
+- [正式通知驗證](../contracts/interface-contract.md#committed-notice-validation)：BB 生成／送出前 canonical 驗所有 EntityID，不合法不得通知；BA 先驗 caller 是 authenticated BB，再驗結構／required／null／type／enum／UUID／source，不重算 EntityID 的 Unicode 長度。既有提交後發布、失效／遞送閘門與範圍決策不變。
 - 使用者事件流涵蓋 W07、W10（一對一回條）、W11、W12、W20，不含工作階段失效；工作階段失效另存於 SessionInvalidation 紀錄，不回傳給用戶端。
 
 ```mermaid
