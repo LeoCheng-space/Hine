@@ -49,10 +49,10 @@ Hine/
 - 單台 GCP Compute Engine VM＋Docker Compose；`api` 與 `realtime` 各一實例
 - 各模組負責人自選熟悉的程式語言／框架，以 HTTP／JSON、WebSocket 事件格式及共用介面文件／Schema／測試樣例整合
 - GitHub Actions
-- Prometheus / Grafana
+- GCP Logging 與基本 health／error 檢查；Prometheus／Grafana 非本版必交
 - 負載測試工具由 QA 選擇一套 HTTP＋WebSocket 工具或語言，於 `tests/load/README.md` 記錄
 
-> 本版不納入 FCM／APNs、推播工作程序及推播憑證（本版範圍外，2026-10-01 PM 決議）。上述為決議方向，尚未實作或測試。
+> 本版不納入 FCM／APNs、推播工作程序及推播憑證（本版範圍外，2026-10-01 PM 決議）。已提供首輪 Backend A、共用環境配置及 QA 協定工具；其他模組與完整產品部署／驗收不得由這些交付推論為完成。
 
 <a id="collaboration"></a>
 ## 協作方式
@@ -82,3 +82,15 @@ Hine/
 ## 團隊文件入口
 
 請從 [HINE-IC-0.4 文件地圖](docs/README.md)依角色閱讀，並先讀[系統架構](docs/architecture/README.md)。角色需求文件：[前端 A](docs/prd/frontend-a.md) · [前端 B](docs/prd/frontend-b.md) · [後端 A](docs/prd/backend-a.md) · [後端 B](docs/prd/backend-b.md) · [維運](docs/prd/devops.md) · [品質驗證](docs/prd/qa.md)。
+
+## 可執行交付與驗證邊界
+
+- [Backend A](backend/realtime/README.md)：Python 3.12＋aiohttp／Redis，提供首輪 W01–W07／W17、BB 內部 HTTP 交接、提交後扇出、工作階段失效與健康檢查；BA 不自行簽發／驗 JWT、不代替 BB 保存訊息或執行產品 quota。
+- [共用環境](infra/docker/README.md)：`sh infra/scripts/init-dev.sh` 產生不覆寫既有值的私有設定／Secret；`docker compose up -d --wait` 啟動 PostgreSQL／Redis。資料卷保留，開發端口須明確選用 loopback override。
+- [部署與維運](docs/deployment/README.md)：真實 BB／Web 交付後才做完整部署；公開反向代理禁止內部／health 路由，提供備份／還原、回滾與 preflight。Docker daemon、VM 存取與正式設定仍是實際部署前提。
+- [QA 協定工具](tests/load/README.md)：一套 HTTP＋WebSocket CLI 驗證 ACK／收訊／歷史與真實負載節奏；工具供 Jackie 確認。協定訊框不等於瀏覽器保存／呈現，50 WSS 容量與重連目標須在真實產品環境量測。
+- [CI](.github/workflows/repository-checks.yml)：檢查已實作的 Python、Redis 邊界、QA 證據與維運安全，並在具 Docker 的 runner 驗證資料服務、映像建置與一次性 DB 還原；未推送／未執行的 Actions 不宣稱成功。
+
+首輪串接仍需要 BB 的 Schema／Migration、A01／A02／A05／A13／A19、`validateAccess`／`persistIfAbsent`／`authorize`／`readSessionInvalidations`，以及 FA／FB 的單一 Web、SessionContext／openChat 與本機保存交付。測試專用 BB authority 只驗 BA／工具，不是 BB 產品或 PostgreSQL／JWT／瀏覽器驗收。
+
+學校作業階段暫緩 main 強制分支保護；一般功能分支／PR／Review／適用 CI 流程仍保留，見[協作指南](CONTRIBUTING.md)。

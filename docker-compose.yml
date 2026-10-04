@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hine}
+      POSTGRES_USER: ${POSTGRES_USER:-hine}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    entrypoint: [sh, /opt/hine/redis-start.sh]
+    secrets:
+      - redis_password
+    volumes:
+      - redis_data:/data
+      - type: bind
+        source: ./infra/docker/redis-start.sh
+        target: /opt/hine/redis-start.sh
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - backend
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$(cat /run/secrets/redis_password)" redis-cli --no-auth-warning ping | test "$$(cat)" = PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  realtime:
+    profiles: [realtime]
+    build:
+      context: ./backend/realtime
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Compose bind-mounted file secrets retain the host owner/mode. Root with no
+    # capabilities can read root-owned0600 files; provision matching IDs otherwise.
+    user: ${HINE_RUNTIME_UID:-0}:${HINE_RUNTIME_GID:-0}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      HINE_ENV: ${HINE_ENV:-development}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://hine.run.place}
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080}
+      REALTIME_HOST: 0.0.0.0
+      REALTIME_PORT: "8081"
+      REDIS_URL_SECRET_REF: /run/secrets/redis_url
+      INTERNAL_CALLER_TOKEN_SECRET_REF: /run/secrets/realtime_internal_token
+      INTERNAL_ALLOWED_CALLERS: '{"api":"/run/secrets/api_internal_token"}'
+      SYNC_PAGE_LIMIT: "100"
+      HEARTBEAT_INTERVAL_SECONDS: "30"
+      HEARTBEAT_TIMEOUT_SECONDS: "90"
+      INVALIDATION_POLL_SECONDS: "5"
+      INVALIDATION_STALE_SECONDS: "15"
+      NOTICE_CATCHUP_HOLD_MS: "1000"
+    secrets:
+      - redis_url
+      - realtime_internal_token
+      - api_internal_token
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/ready', timeout=2).read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  backend:
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_data:
+
+secrets:
+  postgres_password:
+    file: ${HINE_SECRET_DIR:-.secrets}/postgres_password
+  redis_password:
+    file: ${HINE_SECRET_DIR:-.secrets}/redis_password
+  redis_url:
+    file: ${HINE_SECRET_DIR:-.secrets}/redis_url
+  api_internal_token:
+    file: ${HINE_SECRET_DIR:-.secrets}/api_internal_token
+  realtime_internal_token:
+    file: ${HINE_SECRET_DIR:-.secrets}/realtime_internal_token

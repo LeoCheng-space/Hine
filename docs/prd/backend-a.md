@@ -93,6 +93,7 @@
   - 遞送前若 `invalidation_position` 大於已套用位置，先補齊失效紀錄；無法補齊就放棄即時遞送，由同步補回。
   - 每個訊框開始交付時，再檢查連線狀態與節點新鮮狀態；套用工作階段撤銷時，丟棄連線佇列中尚未開始交付的訊框。群組撤權不清空整條連線佇列。
   - 單一 Redis Pub/Sub 由 BB 提交後經內部 HTTP／JSON 呼叫 `publishCommitted`，以 `notice_id` 去重；PostgreSQL 為準，Pub/Sub 遺失由 W15／W16 與失效紀錄輪詢補齊。不得提交前發事件。不採多實例／多節點廣播拓樸。
+  - **首輪遞送實作交接：** W07 以既有 `authorize(action:"receive",resource_type:"message",resource_id:M1)` 檢查 BB 當前可讀／加入界線，不能只以目前對話成員資格放行舊訊息。A18 在任何排隊／補齊等待前套用移除，包含只寄給其餘成員的分段通知；內部待送項目保留 membership version／M1，授權與 socket 鎖等待後再查撤權排除。最小自身 W12、較新合法版本及其他對話不因此阻塞；詳見[可執行 Backend A 與隔離驗證邊界](../../backend/realtime/README.md)。
   - 群組舊授權內容採 E1 有界停止交付：套用撤權即停止開始交付，最遲撤權提交後 15 秒不得再開始；這不是抵達期限，且只驗收單一 realtime 實例。不得以 60 秒移除紀錄保留窗冒充交付上限（[AC-N26](../testing/acceptance-matrix.md#ac-n26)）。
   - 見[驗收 AC-N01、AC-N02、AC-N09、AC-N12～AC-N18](../testing/acceptance-matrix.md#ac-n01)。
 - **交接：** [BB-03](backend-b.md#bb-03) 已提交的成員／事件流資料列；[FA-05](frontend-a.md#fa-05) 即時遞送與漏送復原（W15／W16）；[DO-01](devops.md#do-01) 路由。

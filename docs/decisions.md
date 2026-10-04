@@ -3,6 +3,10 @@
 
 **狀態：** 下列 32 項均由 PM 於 2026-10-01 決定，來源為 Notion 資料庫「HINE 待 PM 批准項目（HINE-IC-0.4）」([來源](https://app.notion.com/p/f325ae03c65848aba8ddfd6e029e1f95))。本登錄記錄現行政策；決議不代表已實作、部署、測試或量測。已否決及本版不做項目標示「本版範圍外（2026-10-01 PM 決議）」。
 
+## 2026-10-04 — main 分支保護暫緩
+
+使用者決議：學校作業階段暫時不啟用 GitHub `main` Branch Protection／Rulesets，其他交付工作繼續。不將分支保護當作共用環境、Backend A 或首輪串接的阻塞；仍保留[一般功能分支／PR／Review／CI 協作流程](../CONTRIBUTING.md#daily-workflow)。暫緩不等於設定完成，也不取消機密保護、共同介面確認、持久化與驗收要求。
+
 | 決策項目 | PM 決議狀態與現行定義 | 決策成本／影響 | 相關負責角色與來源 |
 |---|---|---|---|
 | <a id="decision-web-push"></a>Web Push 範圍與供應商 | 已否決；本版範圍外（2026-10-01 PM 決議）：不納入 Web Push 或 iOS／Android 原生推播，無須供應商、Service Worker、訂閱或 FCM／APNs；保留開啟網頁時 WSS、聊天內提示及查詢更新未讀。 | 不需推播 worker／金鑰；缺少推播金鑰不影響核心服務就緒。 | [BB](prd/backend-b.md#bb-08)、[FB](prd/frontend-b.md#fb-06)、[DO](prd/devops.md#do-02)、[QA](prd/qa.md#qa-06) |

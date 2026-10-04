@@ -1,0 +1,49 @@
+# Must be combined with docker-compose.yml AND the real BB-owned provider file.
+# The required api dependency intentionally fails if that provider is absent.
+services:
+  realtime:
+    environment:
+      HINE_ENV: production
+      PUBLIC_ORIGIN: https://${HINE_DOMAIN:?Set HINE_DOMAIN to the approved DNS name}
+      API_INTERNAL_URL: http://api:8080
+
+  caddy:
+    profiles: [production]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      HINE_DOMAIN: ${HINE_DOMAIN:?Set HINE_DOMAIN to the approved DNS name}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL to the responsible operator}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - type: bind
+        source: ./infra/docker/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WEB_ROOT:?Set WEB_ROOT to a real frontend build directory}
+        target: /srv/hine
+        read_only: true
+        bind:
+          create_host_path: false
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - backend
+      - edge
+    depends_on:
+      api:
+        condition: service_started
+      realtime:
+        condition: service_started
+
+networks:
+  edge: {}
+
+volumes:
+  caddy_data:
+  caddy_config:

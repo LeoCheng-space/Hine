@@ -1,5 +1,16 @@
 # HINE 文件變更紀錄
 
+## 2026-10-04 — 首輪 Backend A、共用環境、QA 與 CI 交付
+
+- 依使用者決議暫緩 main Branch Protection／Rulesets；保留一般功能分支／PR／Review／適用 CI 協作流程，不設定 GitHub 強制保護。
+- 新增可執行 `backend/realtime/`：Python 3.12、aiohttp 3.14.3、redis 8.1.0，首輪 W01–W07／W17、可信 BB 身分／持久化交接、提交後 Redis 扇出、心跳、失效輪詢／新鮮度／到期、健康檢查與有界輸出。BB 保留 JWT、canonical 計數、C1／產品 quota 與 PostgreSQL 權威。
+- 群組資料遞送沿用既有安全義務：A18 在等待／排隊前套用撤權，包含只送給其餘成員的分段通知；訊框保留內部 membership version／M1，寫入前再次檢查。W07 以既有 message-resource receive 授權核對當前可讀／加入界線，不因重新加入或通知遺失而交付舊內容；不新增公開欄位／API 或群組 CRUD。
+- 新增 PostgreSQL 17／Redis 7 Compose、私有 Secret 初始化、loopback 開發 override、真實 BB／Web provider 的 Caddy 部署交接與備份／還原／preflight。修正 cap-drop Runtime 與 Secret owner 身分；禁止任何 volume 刪除旗標繞過；缺失 Web 發布不再阻擋既有服務停止／DB 復原。
+- 新增一套 QA HTTP／WebSocket CLI；ACK、收訊、歷史／C1／排序、保存／游標、公開錯誤隱私、實際派送節奏與已驗證 WS／WSS 連線分開核對。未達 50 使用者／600 秒的真實負載節奏，不宣稱基線；工具供 Jackie 確認，瀏覽器保存／呈現仍另驗。
+- CI 新增適用 Python／Redis 邊界／QA／維運檢查，以及具 Docker runner 的真實資料服務、映像建置與一次性還原場景。明確設定測試 Redis 卻不可用時會失敗，不以 skip 假造綠燈。
+- 已執行：31 項 BA（真實 HTTP／WS／Redis＋隔離 BB 測試 authority）、19 項 QA、23 項維運測試，共 73 項通過；Ruff、actionlint、shell syntax、Compose 配置與原生 Caddy 配置通過。兩個群組漏送授權情境實際重現修正前洩漏／修正後阻擋；實際 CLI、小負載及 Caddy→BA upgrade／fail-closed smoke 已執行。
+- 證據邊界：上述 BB authority、歷史與前端路由樣本僅為隔離 smoke，不是 BB PostgreSQL／JWT、真實產品 E2E、瀏覽器或 50 WSS 容量證據。Docker daemon／VM 存取、BB／Web 真實交付與成員確認仍缺；未執行容器建置／DB 還原／雲端部署或 GitHub Actions，不宣稱成功。功能分支發佈不等於合併 main、成員批准或遠端驗收通過。
+
 ## 2026-10-02 — PR #3 最新通知／ID 覆蓋／產品 quota 修正
 
 - Finding 1：BB 在生成／送出 RealtimeNotice 前驗所有 canonical EntityID；authenticated BB 的結構合法 notice 視為 BB 已完成長度責任。BA 驗 caller／JSON／required／null／型別／enum／UUID／source，不重算 Unicode 長度，結構錯誤仍 INVALID_ARGUMENT。同步 BB→BA 內部 ID 交接，公開 REST／W05 的 BB 前置驗證不變。
