@@ -1,4 +1,4 @@
-"""Single-instance first-round BA: W01-W07/W17, BB authority and Redis fanout."""
+"""Single-instance BA: messaging, receipts and synchronization with BB authority."""
 import asyncio
 import contextlib
 import hashlib
@@ -17,6 +17,7 @@ from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
 
 from . import protocol as p
+from . import receipts, synchronization
 from .config import Settings
 from .internal import Fault, InternalClient
 from .invalidation import Invalidations
@@ -48,6 +49,7 @@ class Outgoing:
     message_id: str | None = None
     membership_version: int | None = None
     self_removal: bool = False
+    sync_guard: object | None = None
 
 
 class Connection:
@@ -146,7 +148,7 @@ class Connection:
         removed_version = self.removed_versions.get(outgoing.conversation)
         return removed_version is None or (outgoing.membership_version is not None and outgoing.membership_version > removed_version)
 
-    def enqueue(self, frame, position=None, authorize=False, membership_version=None, self_removal=False):
+    def enqueue(self, frame, position=None, authorize=False, membership_version=None, self_removal=False, sync_guard=None):
         if self.invalid or self.closed:
             return
         if not self.valid() or not self.runtime.invalidations.fresh():
@@ -157,18 +159,31 @@ class Connection:
             self.invalidate(Fault("DEPENDENCY_UNAVAILABLE"))
             return
         self.queue_bytes += size
-        message_id = frame["payload"]["message_id"] if frame["event"] == "message.created" else None
-        self.queue.put_nowait(Outgoing(raw, size, position, authorize, frame.get("conversation_id"), message_id, membership_version, self_removal))
+        message_id = frame["payload"]["message_id"] if frame["event"] in {"message.created", "message.status"} else None
+        self.queue.put_nowait(Outgoing(raw, size, position, authorize, frame.get("conversation_id"), message_id, membership_version, self_removal, sync_guard))
 
     async def write_loop(self):
         try:
             while True:
                 outgoing = await self.queue.get()
                 self.queue_bytes -= outgoing.size
-                if not self.valid() or not self.runtime.invalidations.fresh() or not self.group_allows(outgoing):
+                if not self.valid():
+                    continue
+                if not self.runtime.invalidations.fresh() or not self.group_allows(outgoing):
+                    if outgoing.sync_guard is not None:
+                        await self.error(Fault(), outgoing.sync_guard.correlation)
                     continue
                 if outgoing.position is not None and not await self.runtime.invalidations.gate(outgoing.position):
                     continue
+                if outgoing.sync_guard is not None:
+                    try:
+                        await outgoing.sync_guard.authorize(self)
+                    except Fault as failure:
+                        await self.error(failure, outgoing.sync_guard.correlation)
+                        continue
+                    except (p.Invalid, TypeError, KeyError):
+                        await self.error(Fault(), outgoing.sync_guard.correlation)
+                        continue
                 if outgoing.authorize:
                     try:
                         resource_type = "message" if outgoing.message_id is not None else "conversation"
@@ -191,10 +206,20 @@ class Connection:
                     # invalidation/admission mutation shares this asyncio loop.
                     if self.invalid or self.closed:
                         continue
-                    if not self.valid() or not self.runtime.invalidations.fresh() or not self.group_allows(outgoing) or (outgoing.position is not None and outgoing.position > self.runtime.invalidations.applied_position):
+                    if not self.valid():
                         continue
+                    blocked = (not self.runtime.invalidations.fresh() or not self.group_allows(outgoing)
+                               or (outgoing.position is not None and outgoing.position > self.runtime.invalidations.applied_position)
+                               or (outgoing.sync_guard is not None and not outgoing.sync_guard.allows(self)))
+                    raw = outgoing.raw
+                    if blocked:
+                        if outgoing.sync_guard is None:
+                            continue
+                        # The socket lock is held: send this control error here,
+                        # never reacquire the same lock through error/control.
+                        raw = p.dumps(p.event("error", Fault().payload(), correlation=outgoing.sync_guard.correlation))
                     async with asyncio.timeout(self.runtime.settings.send_timeout):
-                        await self.ws.send_str(outgoing.raw)
+                        await self.ws.send_str(raw)
         except (aiohttp.ClientError, ConnectionError, TimeoutError, RuntimeError):
             self.invalidate(Fault())
 
@@ -467,11 +492,16 @@ class Runtime:
             connection.last_heartbeat = time.monotonic()
             await connection.control(p.event("heartbeat.pong", {"nonce": nonce}, correlation=frame["event_id"]))
             return
-        if name != "message.send":
-            raise Fault("INVALID_ARGUMENT", False)
         if not self.invalidations.fresh():
             raise Fault()
-        await self.send_message(connection, frame)
+        if name == "message.send":
+            await self.send_message(connection, frame)
+        elif name in {"message.received", "message.read"}:
+            await receipts.handle(self, connection, frame)
+        elif name in {"sync.bootstrap.request", "sync.request"}:
+            await synchronization.handle(self, connection, frame)
+        else:
+            raise Fault("INVALID_ARGUMENT", False)
 
 
 async def websocket(request):

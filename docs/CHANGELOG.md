@@ -1,5 +1,15 @@
 # HINE 文件變更紀錄
 
+## 2026-10-04 — 子分支 BA 回條與斷線同步
+
+- 依使用者要求，由已發佈 `feature/hine-first-integration`／`5b71178` 建立 `feature/realtime-receipts-sync`，獨立交付回條與同步；原分支不改寫。子分支發佈不等於合併 main、成員批准或正式產品驗收。
+- 新增 `receipts.py`：W08／W09 經 BB 持久化後回 W19，保留單調 read、未變更結果、正式 M1／公開操作者／觀察者／時間與穩定事件；一對一 W10 走既有 Redis 通知，群組只回個別 W19、不發彙總。Redis 故障不撤回已確認回條，畸形寫入結果不冒充成功。
+- 新增 `synchronization.py`：W13／W14 多頁快照、W15／W16 固定邊界／事件流；保留不透明游標、完整投影、sender-only C1 與最小自身 W12。公開回應不假造內部 watermark，讀取後完整補齊工作階段失效；排隊寫入前再次核對當前資源授權、到期／新鮮度及撤權版本。
+- `SYNC_PAGE_LIMIT` 成為必要設定，合法範圍1–100，標準100；既有測試呼叫者及啟動說明同步更新，Compose 原本已有100。BB 仍負責1000位置掃描上限、游標／快照與正式權威，FA 仍負責瀏覽器投影／游標原子保存。
+- Review 發現過時的排隊同步回應會默默被丟棄；已實際重現，再修正 dequeue／socket-lock 末端兩處為關聯 DEPENDENCY_UNAVAILABLE，不洩露原正文／游標、不造成鎖重入，恢復後可重試同一游標。
+- 已執行77項真實 HTTP／WS／Redis BA 邊界測試、19項 QA、23項維運，共119項通過；Ruff／actionlint／Compose配置通過。兩個新功能先有消費失敗測試；回條及同步 scoped Review 通過。實際 QA CLI reconnect smoke 完成3／3訊息、斷線補回、QA SQLite 原子投影／游標與舊游標去重。
+- 隔離 BB authority／QA SQLite 不是產品 PostgreSQL／JWT 或瀏覽器證據；真實 BB／FA／FB 串接、Docker／VM部署、GitHub Actions與50WSS仍未驗收。本輪不新增公開 API／欄位、群組已讀彙總、推播或原生 App。
+
 ## 2026-10-04 — 首輪 Backend A、共用環境、QA 與 CI 交付
 
 - 依使用者決議暫緩 main Branch Protection／Rulesets；保留一般功能分支／PR／Review／適用 CI 協作流程，不設定 GitHub 強制保護。

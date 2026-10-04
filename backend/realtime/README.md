@@ -1,12 +1,13 @@
 <a id="realtime-service"></a>
-# 即時服務 — first integration
+# 即時服務 — 訊息、回條與同步
 
-Python 3.12+ / aiohttp / redis-py implementation of **W01–W07 and W17**.
+Python 3.12+ / aiohttp / redis-py implementation of **W01–W17 and W19**.
+W11/W12/W20 group projections use the existing committed-notice boundary.
 BB remains the sole JWT, session, authorization, canonical Unicode-length,
 product-quota and PostgreSQL persistence authority. There is no local JWT,
-database, credential or persistence fallback. This module does not implement
-later W08/W09 receipt commands, W13–W16 synchronization, W18 subscriptions,
-activity leases or push; unsupported client commands return `INVALID_ARGUMENT`.
+database, credential or persistence fallback. W18 contact notifications,
+activity leases and push are not implemented; unsupported client commands
+return `INVALID_ARGUMENT`.
 The existing internal committed-notice boundary accepts authenticated BB
 session invalidations and A14–A18 projections without taking over BB group APIs.
 
@@ -25,6 +26,7 @@ export REDIS_URL_SECRET_REF=/absolute/path/to/redis_url
 export INTERNAL_CALLER_TOKEN_SECRET_REF=/absolute/path/to/realtime_internal_token
 export INTERNAL_ALLOWED_CALLERS='{"api":"/absolute/path/to/api_internal_token"}'
 export HEARTBEAT_INTERVAL_SECONDS=30 HEARTBEAT_TIMEOUT_SECONDS=90
+export SYNC_PAGE_LIMIT=100
 export INVALIDATION_POLL_SECONDS=5 INVALIDATION_STALE_SECONDS=15
 export NOTICE_CATCHUP_HOLD_MS=1000
 python3.12 -m hine_realtime
@@ -62,7 +64,7 @@ Local HTTP/WS testing is not a production TLS deployment.
 
 Required BA configuration: `HINE_ENV`, `API_INTERNAL_URL`, Redis URI/secret
 reference, outbound token secret reference, allowed-caller JSON map and the
-five heartbeat/invalidation variables above. Missing/invalid core settings
+five heartbeat/invalidation variables above, plus `SYNC_PAGE_LIMIT`. Missing/invalid core settings
 leave the process live but unready (`CONFIG_MISSING`) and reject authentication.
 Invalidation poll must be shorter than freshness, freshness may not exceed
 15 seconds, and notice hold may not exceed 1000 ms. Defaults for listener are
@@ -190,12 +192,42 @@ Real integration still requires BB's actual implementations of
 secret validation, trusted public mapping, atomic PostgreSQL commit/C1/feed,
 quota/canonical precedence and transactional invalidation positions. BB must
 send only committed, canonically valid, structurally correct notices. Actual
-later synchronization belongs to its agreed next round; no sync success is
-fabricated here. FA/FB consumer artifacts and A19 are required for product
-acceptance. Parent runs final GREEN, smoke and review; no verification result
-is asserted by this runtime README.
+`persistReceipt`, `readBootstrap` and `readFeed` are also required for receipt
+and synchronization paths. Actual BB/FA/FB artifacts and A19 remain required
+for product acceptance; test-only authority and QA projection storage do not
+prove PostgreSQL/JWT or browser persistence/presentation.
 
 Dependency pins were selected from current [aiohttp PyPI metadata](https://pypi.org/pypi/aiohttp/json)
 and [redis PyPI metadata](https://pypi.org/pypi/redis/json); runtime API references:
 [aiohttp server](https://docs.aiohttp.org/en/stable/web_reference.html),
 [redis asyncio](https://redis.readthedocs.io/en/stable/examples/asyncio_examples.html).
+
+## Receipt and synchronization delivery
+
+- W08/W09 carry only the declared message ID and conversation. BA forwards the
+  trusted session binding to BB and sends correlated W19 only for a complete
+  confirmed receipt result. `read` cannot regress when a later W08 arrives.
+  W10 is a direct-only projection using BB's stable status event, time, state,
+  observers, and the trusted public recipient. A failed Redis fanout cannot
+  undo a confirmed W19. Group individual receipts still get W19, never an
+  aggregate W10.
+- W13 preserves the opaque snapshot/page pair; W15 preserves the original
+  cursor and optional fixed boundary. BA does not install H, save client
+  cursors, compare opaque cursor strings, or silently rewrite a partial
+  response. Public W14/W16 structures, complete snapshots, sender-only C1 and
+  configured page limits are validated before delivery.
+- `SYNC_PAGE_LIMIT` is now required, a positive integer no greater than100;
+  the shared course configuration remains100. W14 counts conversations plus
+  recent messages as logical items; W16 limits returned events. BB remains
+  responsible for its1000-position scan cap and current page authorization.
+- Public read results have no internal watermark field. BA completes a new
+  session-invalidation catchup after every read, then revalidates deduplicated
+  current message/history permissions within one bounded authorization window.
+  Queue delivery rechecks expiry/freshness and request-start A18 revisions after
+  permission/socket-lock waits. A tainted whole response becomes a correlated
+  error without cursor progress; retrying the same cursor can obtain BB's
+  current authorized data, including other conversations and minimal own W12.
+- The real HTTP/WS/Redis regression suite and actual CLI reconnect smoke use a
+  stateful test-only authority. They are not real BB/JWT/PostgreSQL/browser,
+  deployment or50-WSS acceptance. Existing QA's `--reconnect --state` exercises
+  offline recovery, atomic QA projection/cursor persistence and stable replay.

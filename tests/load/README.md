@@ -24,8 +24,8 @@
   --reconnect --state .local/qa-sync.sqlite
 ```
 
-需先部署真實 BB、BA、Redis／PostgreSQL 與 TLS 私有測試入口；首輪 BA
-W01–W07 可執行基本檢查，`--reconnect` 另需真實 W13–W16／BB 快照與事件流。
+需先部署真實 BB、BA、Redis／PostgreSQL 與 TLS 私有測試入口；BA 已提供訊息、
+回條與 W13–W16，同步 `--reconnect` 仍需 BB 的真實快照／事件流與正式資料。
 沒有產品端點時應失敗，不以假資料宣稱通過。不得以公開行銷首頁當聊天服務。
 設定檔／環境憑證只供隔離測試帳戶，檔案必須為目前使用者擁有且禁止群組／其他人存取：
 
