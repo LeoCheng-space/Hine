@@ -228,6 +228,7 @@ class RealtimeBoundaryTests(unittest.IsolatedAsyncioTestCase):
             "REDIS_URL": self.redis_url,
             "REALTIME_REDIS_PREFIX": self.prefix,
             "INVALIDATION_POLL_SECONDS": "1", "INVALIDATION_STALE_SECONDS": "3", "NOTICE_CATCHUP_HOLD_MS": "1000",
+            "SYNC_PAGE_LIMIT": "100",
             "HEARTBEAT_INTERVAL_SECONDS": "30", "HEARTBEAT_TIMEOUT_SECONDS": "90",
         }
 

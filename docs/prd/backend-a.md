@@ -78,6 +78,7 @@
 - **失敗流程：** 拒絕偽造／不相關回條；重複回報不執行操作；`read` 不得倒退。
 - **驗收條件：** W19 請求結果有別於 W10 投影；BB 為正式狀態的權威來源。
 - **交接：** [BB-05](backend-b.md#bb-05) 權威回條；[FA-04](frontend-a.md#fa-04) 回條投影。
+- **本輪可執行交接：** [BA 回條模組](../../backend/realtime/src/hine_realtime/receipts.py) 使用 BB 正式狀態及觀察者建立 W19／一對一 W10；即使 W08 在 W09 後抵達，仍採 BB 的 read，不倒退。完整寫入結果驗證與 Redis 故障隔離不代替 BB／瀏覽器真正驗收。
 
 <a id="ba-05"></a>
 <a id="ba-05--cross-node-fanout-and-group-event-routing"></a>
@@ -108,6 +109,7 @@
 - **驗收條件：** 隱藏位置可安全前進；未授權內容會被過濾；單一撤權對話不得阻塞其餘事件流。新成員只可讀本次加入之後訊息；加入界線依 A14／A16 加入交易記錄的當時最新 `order_key`（與 C11 排序一致），退出後重加入重新記錄。W14／W16 依同一界線過濾。
 - **撤權與加入政策（2026-10-01 PM 決議）：** A19／W14／W16 每頁授權；撤權後新查詢不得取回該群組內容，W16 仍可保留最小自身 W12。套用 E1 撤權後不開始交付相符舊授權內容，不代用戶端推進游標，沿用授權過濾／重新讀取與錯誤恢復路徑，其他對話繼續同步（[AC-N26](../testing/acceptance-matrix.md#ac-n26)）。
 - **交接：** [BB-06](backend-b.md#bb-06) 讀取／授權過濾資料列；[FA-05](frontend-a.md#fa-05) 游標提交／投影；[QA-03](qa.md#qa-03) 復原。
+- **本輪可執行交接：** [BA 同步模組](../../backend/realtime/src/hine_realtime/synchronization.py) 以原有 readBootstrap／readFeed 回傳公開頁面／批次，不猜不存在的內部 watermark、不自行保存／推進用戶端游標。每次讀取後完整補齊失效紀錄，寫入前核對當前可讀及請求起始撤權版本；失效／排隊過時回關聯 W17，不交付舊正文或游標。`SYNC_PAGE_LIMIT` 必填、上限100；最小自身 W12 與下一次同游標的其他對話同步仍可繼續。
 
 <a id="ba-07"></a>
 <a id="ba-07--device-activity-leases"></a>

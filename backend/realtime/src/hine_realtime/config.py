@@ -24,6 +24,7 @@ class Settings:
     catchup_ms: int = 1000
     heartbeat_interval: int = 30
     heartbeat_timeout: int = 90
+    sync_page_limit: int = 100
     max_frame_bytes: int = 65536
     max_outgoing_frames: int = 128
     max_outgoing_bytes: int = 1048576
@@ -125,9 +126,12 @@ class Settings:
             ("NOTICE_CATCHUP_HOLD_MS", "catchup_ms"),
             ("HEARTBEAT_INTERVAL_SECONDS", "heartbeat_interval"),
             ("HEARTBEAT_TIMEOUT_SECONDS", "heartbeat_timeout"),
+            ("SYNC_PAGE_LIMIT", "sync_page_limit"),
         ]:
             fields[key] = integer(name)
         if not fields["poll_seconds"] < fields["stale_seconds"] <= 15 or fields["catchup_ms"] > 1000 or fields["heartbeat_interval"] >= fields["heartbeat_timeout"]:
+            valid = False
+        if fields["sync_page_limit"] > 100:
             valid = False
         for name, key, default in [
             ("REALTIME_MAX_FRAME_BYTES", "max_frame_bytes", "65536"),
