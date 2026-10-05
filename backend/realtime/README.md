@@ -197,6 +197,12 @@ and synchronization paths. Actual BB/FA/FB artifacts and A19 remain required
 for product acceptance; test-only authority and QA projection storage do not
 prove PostgreSQL/JWT or browser persistence/presentation.
 
+BA-specific causes, effects, detection, degradation, recovery and release gates
+are documented in the [failure analysis](../../docs/testing/backend-a-failure-analysis.md).
+The [local fault drill](../../tests/faults/README.md) kills/restarts only owned BA
+and Redis children and cuts an isolated BB test link; its component evidence is
+not production PostgreSQL/JWT durability, browser acceptance, VM recovery or an SLO.
+
 Dependency pins were selected from current [aiohttp PyPI metadata](https://pypi.org/pypi/aiohttp/json)
 and [redis PyPI metadata](https://pypi.org/pypi/redis/json); runtime API references:
 [aiohttp server](https://docs.aiohttp.org/en/stable/web_reference.html),

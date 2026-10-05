@@ -36,6 +36,7 @@
 - [部署設定](contracts/interface-contract.md#deployment-config)
 - [響應式網頁介面](ui/web-rwd.md#web-rwd)
 - [REQ-01–REQ-22 驗收](testing/acceptance-matrix.md#req-01)
+- [BA 專用失效分析、故障演練證據與殘餘風險](testing/backend-a-failure-analysis.md)
 - [決議紀錄](decisions.md)
 - [文件變更紀錄](CHANGELOG.md)
 

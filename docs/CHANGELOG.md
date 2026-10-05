@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-05 — BA 專用失效分析與本地故障演練
+
+- 新增[BA 失效分析](testing/backend-a-failure-analysis.md)：30種模式，原因／影響／偵測／降級／復原、角色、主觀工程嚴重度、42筆既有測試trace及7個正式產品／部署gate。O未知、D未量化、不捏造RPN；歷史119項不當作失效模式數。
+- 新增[可重跑工具](../tests/faults/README.md)：只操作自建BA／Redis子程序、loopback BB forwarding socket與測試專用記憶體authority；標準poll5／stale15／hold1000。實際DR-01～DR-06全PASS、exit0；[公開JSON](testing/evidence/backend-a-local-faults.json)保存版本、觀察、monotonic計時及14份吻合的source SHA256。
+- Review與實際診斷修正演練工具的ACK-loss誤踩第二次authority timeout；補owned BA listener證明、逐次shield cancellation及atomic no-clobber evidence。缺前提／既有輸出安全拒絕、不接觸無關ready服務，雙cancellation後owned children存活0；runner Ruff及scoped re-review通過。
+- 不修改BA產品runtime／公開介面；不以fixture記憶體證明PostgreSQL／JWT持久性，不以單次恢復時間證明15秒socket-write界線、p95／RTO／RPO／SLO。真BB／Web／VM／磁碟／備份還原／50WSS及W18仍按具名gate驗收；單VM不承諾HA。依使用者要求提交並推送至`feature/realtime-receipts-sync`，發佈以實際Git紀錄為準；不建立PR、不合併main。
+
 ## 2026-10-04 — 子分支 BA 回條與斷線同步
 
 - 依使用者要求，由已發佈 `feature/hine-first-integration`／`5b71178` 建立 `feature/realtime-receipts-sync`，獨立交付回條與同步；原分支不改寫。子分支發佈不等於合併 main、成員批准或正式產品驗收。
