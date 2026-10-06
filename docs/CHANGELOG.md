@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-06 — 修復 PR #5 的 Compose 交付遺漏
+
+- GitHub Actions run `37426162599` 的 `compose-data-services` 已失敗：根目錄 `docker-compose.yml` 在 `9a30c63` 仍是父分支版本，未包含真正 API provider；合併 development overlay 後 `api` 只有 ports，因此無 image/build context。這是提交範圍遺漏，不是以假 image 或額外 profile 可解決的服務實作問題。
+- 補納完整根檔：真 `api.build`／product profile、JWT／database_url secret、private backend／edge、readiness、trusted-proxy 預設 none。預設仍只啟動 PostgreSQL／Redis；沒有強制啟動 API 或改動 production migration／資料卷安全規則。
+- 驗證從實際 Git 暫存區檔案重建的隔離目錄，而非只測工作目錄：初始化後 default config、CI realtime development config、product config、product＋realtime development config 均通過。解析 model 驗明 default 為 PostgreSQL／Redis、product 才加入含真 build context 的 API。infra25、Ruff、actionlint 通過；完整遠端 CI 以修正提交的後續 run 為準。
+
 ## 2026-10-06 — 全角色真實產品補完與本機驗收
 
 - 依使用者已直接合併 PR #4 與跨角色補完指示，由 `fc9eb08` 建立 `feature/product-integration`；不再以 BB／FA／FB／BA 的責任分工阻擋缺項。後續依使用者要求 commit／push，實際 SHA／遠端發布以 Git 紀錄及 Notion 發布紀錄為準；不建立新 PR、不修改 main 強制保護、不冒充組員批准或遠端 Actions。
