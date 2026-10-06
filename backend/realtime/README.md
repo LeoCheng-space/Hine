@@ -1,16 +1,14 @@
 <a id="realtime-service"></a>
 # 即時服務 — 訊息、回條與同步
 
-Python 3.12+ / aiohttp / redis-py implementation of **W01–W17 and W19**.
-W11/W12/W20 group projections use the existing committed-notice boundary.
-BB remains the sole JWT, session, authorization, canonical Unicode-length,
-product-quota and PostgreSQL persistence authority. There is no local JWT,
-database, credential or persistence fallback. W18 contact notifications,
-activity leases and push are not implemented; unsupported client commands
-return `INVALID_ARGUMENT`.
-The existing internal committed-notice boundary accepts authenticated BB
-session invalidations and A14–A18 projections without taking over BB group APIs.
-
+Python 3.12+ / aiohttp / redis-py implementation of **W01–W20** (W21/W22
+activity leases remain out of scope). It consumes the real BB API for JWT
+validation, session binding, authorization, persistence and PostgreSQL authority;
+BA does not create local JWT, database, credential or persistence fallbacks.
+W18 contact presence uses the private `readPresenceTargets` operation and the
+existing W18 event, not the device-presence query or activity leases.
+The existing authenticated committed-notice boundary accepts session
+invalidations and A14–A18 group projections without taking over BB group APIs.
 ## Run locally
 
 From the repository root, with a real Redis service and an actual BB internal
@@ -59,6 +57,7 @@ Local HTTP/WS testing is not a production TLS deployment.
 | `GET /ws/v1` | Client W01 first; no same-connection reauthentication. W03→W04, W05→confirmed W06 plus Redis W07, correlated W17 errors. |
 | `POST /internal/v1/publishCommitted` | `{"notice":RealtimeNotice}`; only the authenticated `api` credential, only session invalidations or A14–A18 sources. |
 | `POST /internal/v1/getDevicePresence` | `{"subject_id":string,"device_id":string}`; actual local valid connections, `unknown` when Redis cannot be checked; `activity:"unknown",valid_until:null`. |
+| W18 private lookup | BA calls BB `readPresenceTargets` with the authenticated observer binding and bounded opaque pagination; BB returns authorized contact targets only. BA aggregates currently valid target sessions and publishes W18 full-state updates to the observer's own authenticated sessions. No public REST/WSS command exposes private IDs. |
 | `GET /health/live` | Always 200 when the process is serving; dependencies both `not_checked`. |
 | `GET /health/ready` | 200 only after a current real Redis PING, active subscription, BB invalidation catchup and fresh authority; otherwise 503. BA PostgreSQL is always `not_checked`, not a fabricated DB check. |
 
@@ -186,16 +185,18 @@ while minimal W12, rejoin data and unrelated conversation traffic still work.
 They also verify message readability after a lost A18/rejoin, immediate removal
 during a notice catchup hold, and fail-closed metadata pressure.
 
-Real integration still requires BB's actual implementations of
-`validateAccess`, `persistIfAbsent`, `authorize` and
-`readSessionInvalidations`, with the exact shared REST/error envelopes, caller
-secret validation, trusted public mapping, atomic PostgreSQL commit/C1/feed,
-quota/canonical precedence and transactional invalidation positions. BB must
-send only committed, canonically valid, structurally correct notices. Actual
-`persistReceipt`, `readBootstrap` and `readFeed` are also required for receipt
-and synchronization paths. Actual BB/FA/FB artifacts and A19 remain required
-for product acceptance; test-only authority and QA projection storage do not
-prove PostgreSQL/JWT or browser persistence/presentation.
+The product integration uses the real BB API for `validateAccess`,
+`persistIfAbsent`, `authorize`, `readSessionInvalidations`, `persistReceipt`,
+`readBootstrap`, `readFeed` and private `readPresenceTargets`. BB owns the
+shared envelopes, caller validation, public identity mapping, atomic PostgreSQL
+commit/C1/feed, quota/canonical precedence, transactional invalidation and
+current contact authorization. BA accepts only committed, canonical notices.
+The repository also contains test-only authorities for isolated consumer fault
+regressions; they are not a production fallback. The parent has verified local
+API/PostgreSQL/BA product protocol evidence. Formal transaction-fault gates,
+browser persistence/presentation, remote CI, VM recovery and cloud GCS signing
+remain separate acceptance requirements; protocol or fixture evidence does not
+substitute for them.
 
 BA-specific causes, effects, detection, degradation, recovery and release gates
 are documented in the [failure analysis](../../docs/testing/backend-a-failure-analysis.md).

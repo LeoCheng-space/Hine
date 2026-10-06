@@ -157,6 +157,24 @@ def access_result(value):
     return value
 
 
+def presence_targets(value, limit=100):
+    """Trusted BB IDs: validate structure, not BB's canonical length policy."""
+    keys(value, ["targets", "next_cursor", "invalidation_position"])
+    integer(value["invalidation_position"])
+    check(isinstance(value["targets"], list) and len(value["targets"]) <= limit)
+    users = set()
+    for target in value["targets"]:
+        keys(target, ["user_id", "subject_id"])
+        string(target["user_id"], True)
+        string(target["subject_id"], True)
+        check(target["user_id"] not in users)
+        users.add(target["user_id"])
+    if value["next_cursor"] is not None:
+        string(value["next_cursor"], True)
+        check(bool(value["targets"]))
+    return value
+
+
 def persisted_result(value):
     obj(value)
     for key in ["message_id", "event_id", "order_key", "created_at", "recipient_ids", "status", "invalidation_position", "membership_version"]:

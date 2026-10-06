@@ -57,6 +57,8 @@
 **驗收條件：** 在線狀態描述彙總連線情形，絕不代表應用程式在前景或訊息已送達；本版設定未量測。
 - **交接：** [BB-02](backend-b.md#bb-02) 在線狀態查詢；[FA-01](frontend-a.md#fa-01) 經唯一 WSS 接收 W18、[FB-04](frontend-b.md#fb-04) 顯示。
 
+**現行程式交接：** W18 聯絡人 presence 已由 BA `presence.py` 實作，透過 BB 私有 `readPresenceTargets` operation 11 取得當下授權聯絡人、依有效裝置 session 聚合並發佈 W18；不是 `getDevicePresence` 冒充、也不是 public API。23 項 W18 regression tests 覆蓋查詢／授權、初始狀態、故障與撤權時序（父任務已驗證）。此程式／測試狀態不代表雲端 VM、實體瀏覽器或正式容量驗收；其餘驗收門檻仍分別遵循驗收矩陣。
+
 <a id="ba-03"></a>
 <a id="ba-03--message-ingress-and-persisted-ack"></a>
 ### BA-03 — 訊息入口與持久化 ACK

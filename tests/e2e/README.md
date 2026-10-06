@@ -7,8 +7,8 @@
 ## 可執行協定串接檢查（不等於瀏覽器 E2E）
 
 共用唯一一套 [`../load/protocol.py`](../load/protocol.py)，設定格式／完整命令見
-[`../load/README.md`](../load/README.md)。Python／aiohttp 是待 Jackie 確認的候選，
-沒有替 Jackie 選定或宣稱核准；本目錄不另建第二套框架。
+[`../load/README.md`](../load/README.md)。現行 Python／aiohttp 工具依使用者跨角色補完指示維護，
+不代表特定組員已核准；本目錄不另建第二套框架。
 
 ```sh
 .venv/bin/python tests/load/protocol.py e2e --config .local/qa-users.json
@@ -26,10 +26,11 @@ M1／本文／order_key 一致、歷史去重與排序、同步邊界／游標�
 
 ## 真實瀏覽器另行驗收
 
-目前協定 CLI 只能量收件 W07 與 QA 自己的 SQLite 同步投影；
-沒有實際瀏覽器本機儲存、UI 呈現、Web Lock 或 Page Visibility 的證據。
-不得因 CLI exit 0 填「瀏覽器送達／已讀／呈現通過」，工具不發 W08/W09。
-待 FA／FB 實際 Web 產物與核准環境就緒後，QA 另記錄：
+協定 CLI 只量收件 W07 與 QA 自己的 SQLite 同步投影，**本工具**
+不提供瀏覽器儲存、UI 呈現、Web Lock 或 Page Visibility 證據。
+實際 React Web 與 PostgreSQL API 已提供；父工作另以真實 Chrome 檢查，
+結果／尚未執行的正式 VM、Edge、Android Chrome、GCS 案例見[驗收矩陣](../../docs/testing/acceptance-matrix.md)。
+不得因 CLI exit0 填「瀏覽器送達／已讀／呈現通過」；工具不發 W08/W09。另記錄：
 
 - Chrome／Edge 桌面版與 Android Chrome 的實測版本、資料集、VM／網路。
 - 使用兩個隔離瀏覽器設定檔登入兩帳戶，單操作分頁／Web Lock 與工作階段錯誤分流。
@@ -37,5 +38,5 @@ M1／本文／order_key 一致、歷史去重與排序、同步邊界／游標�
 - 斷線／重新整理後持久識別資訊、待送意圖和保存游標；恢復 ≤100 則時實際呈現耗時。
 - 本機持久化後才 W08；實際符合 V3 可見條件後才 W09；IME、RWD、路由／權限案例。
 
-以上瀏覽器驗收、真實產品二帳戶協定場景及 50 人負載均尚未執行，
-不能以 oracle 測試或 BA 的測試用 BB authority fixture 取代。
+實測結果按環境／場景分列，不把協定、oracle 測試或 BA 記憶體 authority
+當作瀏覽器／PostgreSQL／正式部署驗收。

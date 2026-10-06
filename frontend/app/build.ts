@@ -1,0 +1,21 @@
+import { mkdir } from 'node:fs/promises';
+import { basename, resolve } from 'node:path';
+import { validateConfig } from './src/api';
+const configuredOrigin = process.env.PUBLIC_ORIGIN;
+if (!configuredOrigin) throw new Error('PUBLIC_ORIGIN is required and must be an HTTPS origin.');
+const origin = new URL(configuredOrigin);
+if (origin.protocol !== 'https:' || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) throw new Error('PUBLIC_ORIGIN must be an HTTPS origin without credentials, path, query or fragment.');
+const config = validateConfig({ API_BASE_URL: `${origin.origin}/api/v1`, WS_URL: `wss://${origin.host}/ws/v1`, SYNC_RECONCILE_SECONDS: 10 }, origin.origin);
+const directory = import.meta.dir;
+const outdir = resolve(directory, 'dist');
+await mkdir(outdir, { recursive: true });
+const runtimeConfig = `window.HINE_CONFIG=Object.freeze(${JSON.stringify(config).replace(/</g, '\\u003c')});\n`;
+const result = await Bun.build({ entrypoints: [resolve(directory, 'src/index.tsx')], outdir, target: 'browser', minify: true, sourcemap: 'none', publicPath: '/', env: 'disable', define: { 'process.env.NODE_ENV': JSON.stringify('production') } });
+if (!result.success) { for (const log of result.logs) console.error(log); throw new Error('Web bundle failed.'); }
+const entry = result.outputs.find(output => output.kind === 'entry-point' && output.path.endsWith('.js'));
+if (!entry) throw new Error('Web entry bundle is missing.');
+const template = await Bun.file(resolve(directory, 'index.html')).text();
+if (!template.includes('src="./src/index.tsx"')) throw new Error('Web HTML entry declaration is missing.');
+const css = result.outputs.filter(output => output.path.endsWith('.css')).map(output => `<link rel="stylesheet" href="/${basename(output.path)}">`).join('\n');
+await Bun.write(resolve(outdir, 'index.html'), template.replace('src="./src/index.tsx"', `src="/${basename(entry.path)}"`).replace('</head>', `${css}\n</head>`));
+await Bun.write(resolve(outdir, 'runtime-config.js'), runtimeConfig);

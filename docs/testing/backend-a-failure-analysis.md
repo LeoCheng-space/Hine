@@ -18,9 +18,9 @@ BA 的安全降級方向是「不捏造授權、不捏造提交、不替用戶�
 | **CODE** | 基線已存在的處理器／設定／永久測試符號；以下提供精確連結 | 寫有測試不等於本輪跑過；程式碼檢查不等於實際 VM 行為 |
 | **HISTORICAL** | [2026-10-04 變更紀錄](../CHANGELOG.md)：77 BA、19 QA、23 維運測試通過及隔離 reconnect smoke；本文只轉述既有紀錄，不重新確認 | 本輪故障演練、產品 PostgreSQL／JWT、Docker／VM、真實瀏覽器或容量驗收 |
 | **LOCAL_COMPONENT_WITH_TEST_BB** | DR-01～DR-06 對真實 BA 子程序／Redis／本機 HTTP socket 的觀察；結果以 [機器證據](evidence/backend-a-local-faults.json)為準 | BB fixture 是持續存活的記憶體權威，不是 PostgreSQL、JWT 或正式 BB 備援；本機 WS 不是正式 WSS |
-| **UNVERIFIED PRODUCT GATE** | 第 8 節真實 BB、瀏覽器、VM／磁碟／DB、備份及容量門檻 | 不可因文件完整、local PASS 或歷史測試而標示通過 |
-
-**新增本地演練：6／6 PASS，exit 0。** 實際 run_id `19c60b3c-a5d4-4eef-af4f-998e9a01478a`，UTC `2026-10-05T13:39:42.614672Z`～`2026-10-05T13:40:18.812125Z`；公開 JSON 的14份source SHA256已與本機檔案逐一吻合。結果限於 `LOCAL_COMPONENT_WITH_TEST_BB`，不能簽掉第8節產品／部署門檻。
+| **LOCAL_REAL_PRODUCT_POSTGRESQL** | [產品 fault run](evidence/product-native-faults.json)：實際 API／BA、PostgreSQL／Redis、私有 CA HTTPS/WSS 受控故障；PF01–PF08 均 PASS，含真 PostgreSQL 交易／session／feed、API／BA restart、Redis reset、lost logout、response loss、rollback 與私有 `pg_dump`／owned-clone restore。 | 是本機實際產品／資料庫證據，不代表正式 VM、off-host 備份、公共 CA、GCS／雲端、瀏覽器 IndexedDB／呈現、HA 或正式容量驗收 |
+| **LOCAL_PROTOCOL_LOAD** | [一對一負載 JSON](evidence/product-direct-load.json) 與[50 人群組 JSON](evidence/product-group-load.json)：各自為實際 API／PG／BA 50 users/WSS、600 秒；一對一 25 rooms 6,000/6,000 成功、W07 p95 78.974 ms；群組 6,000 intents、294,000/294,000 收件、50 人 A19 歷史均驗、fanout p95 73.387 ms。CPU/RSS 與共享主機 concurrency 見[provenance](evidence/product-load-provenance.json) | 不代表 browser save/render p95、正式 VM／隔離資源容量或公開服務容量 |
+| **UNVERIFIED PRODUCT／DEPLOYMENT GATES** | 第 8 節仍需完成的真實產品功能、瀏覽器、VM／磁碟／雲端 GCS 與容量門檻 | 不可因文件完整、local PASS 或歷史測試而標示全部發佈驗收通過 |
 
 ### 已知修正前／後的風險（只引用有紀錄的事實）
 
@@ -40,7 +40,7 @@ BA 的安全降級方向是「不捏造授權、不捏造提交、不替用戶�
 | FA／FB | 唯一 WSS、有效憑證重連、C1 意圖／去重、投影與游標原子保存、完整快照切換；FB 唯一更新憑證流程 | 不把依賴故障当登出，不把 ACK 當收件保存／已讀 |
 | DO／QA | DO：私網、TLS、secret、程序與磁碟／備份／監控。QA：真實故障、隱私、瀏覽器、容量及證據 | 不因 live=200 或 `published:true` 宣告端到端成功 |
 
-**實作覆蓋差異：** [BA README](../../backend/realtime/README.md)明列 W01–W17、W19 與 BB committed group projections；W18 聯絡人在線通知尚未實作，是 REQ-15 的產品覆蓋缺口，不是假故障、不以 `getDevicePresence` 冒充 W18。活動租約、W21／W22、Web／原生推播及群組回條彙總本版範圍外。GCS／REST 游標處理仍歸 BB／前端，本文只列交接、不新增 BA 路徑。
+**實作覆蓋：** [BA README](../../backend/realtime/README.md)列明 W01–W20、BB committed group projections 與私有 W18 聯絡人 presence 交接；BB 以 `readPresenceTargets`（private operation 11）提供授權聯絡人目標，BA 聚合有效裝置連線並發送 W18。23 項 W18 regression tests 覆蓋初始狀態、重查授權、Redis unknown／freshness、佇列撤權與故障邊界；device-presence 查詢不是 W18。活動租約、W21／W22、Web／原生推播及群組回條彙總本版範圍外。GCS／REST 游標處理仍歸 BB／前端。
 
 ### 不變量
 
@@ -135,7 +135,7 @@ BA 的安全降級方向是「不捏造授權、不捏造提交、不替用戶�
 | **FM-27 S4/P1 BA SIGKILL／restart** | crash／OOM／部署restart，localqueue／bindings／subscription失去；所有WS斷線及ACKlost | 程序退出、oldWSclosed、live不可達；nativechildrestart後ready需Redis／subscription／catchup | DO重啟正確artifact／secret；BA新process不信舊bindings；FA有效tokenW01/W02後SAVEDcursorW15、sameC1查回 | [Runtime.start／stop](../../backend/realtime/src/hine_realtime/server.py#L286)、T25、DR-01。**gate：kill是真child、oldtransportclosed，重啟再auth、committedM1／stableevent回復、sameC1oneintent，分開ready／client-sync elapsed**。BBfixture不死，不能證PG／VM durabilityG-05 |
 | **FM-28 S5/P1 single VM／disk／real DB failure** | VM失去網路／電源、filesystem滿／唯讀、PG crash／WAL／volume損壞；同host各服務共因故障，可有永久資料損失 | DO實際health、disk／IO／PGlogs／archive驗證；BA自身PG一律not_checked，BB依賴不可查按FM-06/12，不能fallback | DO修復host／storage，BB核驗transaction／schema／data，QA重播正式history/feed/C1；FA重連；需off-host可用archive | [架構部署／failure](../architecture/README.md#arch-deployment)、[部署手冊](../deployment/README.md)、G-05。**UNVERIFIED：沒有實際VM／磁碟／PG故障證據；gate必須在隔離真host／volume執行並核驗ACKedmessage、C1、feed**。單VM無HA，沒有宣稱RTO／RPO=0 |
 | **FM-29 S5/P1 maintenance／backup restore／artifact rollback** | 混版本契約、secretowner失配、archive不可讀、activewriter restore、回到舊DB造成ACKeddata丟失／cursorinvalid | preflight與restore拒livewriters／缺archive／錯target；backup nooverwrite、archive list；deploy後健康不等DB一致 | DO停止writers／保護archive／明確destructiveconfirm／核schema再開；BB定migration與一致復原點；FA處理syncreset、sameC1；QA比復原前資料 | [backup script](../../infra/scripts/backup-postgres.sh)、[restore script](../../infra/scripts/restore-postgres.sh)、T41、G-05。**gate：實際restore到隔離existingDB、無writers、錯archivefail，不刪volume；rollback版本compatible、ACKed資料loss如實揭露**。safetests不是成功restore，DB舊備份損失不能用BAretry憑空恢復 |
-| **FM-30 S3/P1 W18 coverage／presence誤用** | 期待W18聯絡在線事件，但現行未實作；把deviceonline推成foreground／delivered會誤報 | CODE僅internalgetDevicePresence localconnection；Redisdownunknown、activityunknown／valid_untilnull | BA／BB／FA按REQ-15補真實產品交接與驗收；QA區分W18缺口；不新增活動租約／群組回條 | [BA README](../../backend/realtime/README.md)、T42、DR-02。**UNVERIFIED PRODUCT COVERAGE：device查詢不能簽W18eventgate；REQ-15命名功能發佈前需真實W18或經共同流程批准範圍變更**。不以「範圍外活動」掩蓋W18仍在PRD |
+| **FM-30 S3/P1 W18 coverage／presence誤用** | BA／BB 缺少 contact-authorized lookup、裝置聚合或 unknown/freshness 隔離時，可能漏發／錯發 presence，或把在線誤報為前景／已送達 | BB 私有 `readPresenceTargets` operation 11 每次依 observer binding／目前聯絡人授權查詢；BA bounded 5 秒 task、Redis PING、有效目標 session 聚合及逐框授權；依賴不確定即抑制 W18，不以 device query 代替 | BB 維持 private operation 11 current authorization；BA 重新查授權、只向 observer 發 W18 full state；QA regression；DO 部署私網 | [BA README](../../backend/realtime/README.md)、[W18 tests](../../tests/integration/test_realtime_presence.py)。**CODE／REGRESSION COVERED：** 實作缺口已由 private lookup 與 23 項回歸案例關閉（父任務已驗證）；不是 VM／雲端／物理瀏覽器驗收，也不宣稱 presence 等同 foreground／receipt。 |
 
 ## 5. 精確永久測試追溯
 
@@ -248,19 +248,19 @@ HINE_TEST_REDIS_URL=redis://127.0.0.1:6397/0 \
 
 ### 必要輸入，不可用fixture代替
 
-DO提供授權的**隔離**singleVM／Compose目標、可用Dockerdaemon、真TLS/private網路、artifact版本、secretowner／filemode、容量／磁碟布局及復原權限；BB提供實際APIimage／migration／schema／JWT／內部HTTP操作／transactionhooks／正式C1/feed/snapshot/session records；FA／FB提供實際單一Webartifact與有效testaccount流程；QA提供資料集與tool/browser版本、受保護配置。還需off-host私有archive與能驗證其可用性的restoretarget。沒有这些時結論是UNVERIFIED，不是測試沒錯所以PASS。現有來源只記錄缺Docker／VM／真BB／Web交付，本文沒有取得這些外部權限。
+DO仍須提供獲授權隔離 single VM／Compose、Docker daemon、真 TLS／私網、部署 secret 與備份還原目標；雲端 GCS／簽署憑證及實體瀏覽器版本亦未提供。BB API／migration／JWT／PostgreSQL 與 FA／FB 單一 Web 現在都有實作，且已完成本機 API／PG／BA 產品協定負載；但 G-01～G-06 列出的正式負例／交易 fault gates、完整瀏覽器呈現／持久化、遠端部署與容量證明不能由一般成功流量代替。FA／FB 提供真實隔離測試帳戶及 browser/version；QA 提供受保護配置。沒有對應外部條件時 gate 為 UNVERIFIED，不是程式缺失。off-host 私有 archive 與安全 restore target 仍需授權提供。
 
 **每次演練記錄：** target為隔離環境的聲明、versions／SHA、故障控制point與ownedscope、正式commit／authorization／start-write觀察機制、before／during／after逐項assertions、私有原始資料位置、公開sanitizedcounts及monotonic起止；監測CPU/RAM/disk/IO而不輸出credentials／body／IDs。不得用跨主機UTC相減證15秒，需可關聯的測試控制時鐘／instrumentation及真DBcommit證明，不公開rawidentity。完成後關閉faulthook、復原隔離環境、檢查沒有殘留writer／proxy變更。
 
 | Gate／owner | 可執行程序與必須通過的完成條件 | 目前判定 |
 |---|---|---|
-| **G-01 真實 BB commit／JWT／C1／receipt（BB＋BA＋QA，P0）** | 正式JWTvalid／expired／revoked／wrongdevice／mapping負例；真transactionbarrier驗無precommitW06/W19；knownrollback查訊息/C1/feed全無；提交後截回覆sameC1原M1且單一正式intent；receiptread單調／exactobserver/groupnoaggregate；A19在重載後查同M1／text/order。BB quota exhausted五案例含canonicalUnicode責任全驗 | UNVERIFIED；fixture不是正式資料庫 |
-| **G-02 service identity／隱私／公開路由（DO＋BB＋BA＋QA，P0）** | 真Compose私網錯caller／service401／usersession401；外部 `/internal/*`／`/health/*`不公開、僅exactWSSroute；TLSupgrade含RFC6455accept；DO逐一稽核secret owner／mode與掛載，拒絕過度寬鬆但可讀的檔案（BA ready不驗此項）；publicerrors／proxy/app/log/metrics／evidence無privatebody/IDs/authmetadata；rotation失配→dependency不是logout，修復後有效session恢復 | UNVERIFIED；localHTTP不能簽TLS／realproxy |
-| **G-03 real invalidation／group E1（BB＋BA＋QA，P0）** | 以真A03/A04/A02生成同transaction連續紀錄，攔通知／dropPubSub／斷BBlink，測fresh→stale→restore；同session多連線與otherdevice，W01兩種race、亂序／缺口／retentioncursorinvalid；真A18對話列鎖／joinorder界線、allowedresponse／socketlock／lostnotice／rejoin交錯；R提交後超15秒無開始oldwrite且已apply立即停，無假全球logout | UNVERIFIED；PG提交序／snapshot/locks與retention值仍需實測 |
-| **G-04 feed／snapshot／frontend recovery（BB＋BA＋FA／FB＋QA，P0）** | 真多頁同snapshot、partial／expiredpage-token不得installH；hiddenpositions、1000scan、100eventpages、opaqueboundary綁定、真正empty與has_more前進；revokedread／stalequeue不body／cursor，同savedcursor恢復otherdialogs/minimalW12；對有has_more但反覆next_cursor不前進的故障不能宣稱完成／忙迴圈；browser投影／cursoratomic、pendingC1／receipt重載、stableevent去重、RESTcursor錯不觸發syncreset | UNVERIFIED；QA SQLite／protocoloracle不等於browser |
-| **G-05 single VM／磁碟／PG／備份／版本復原（DO＋BB＋QA，P1）** | 隔離host依序BAcrash、Redisreset、PGstop/restart、真PG已提交回覆丟失、專用scratchvolume滿／唯讀、VMrestart／連線中斷；正式ACKedM1/C1/feed回復逐項核；privateoff-hostarchive真restore到隔離existingDB，不帶activewriters；schema／data／C1／feed／revocation核驗後才重開；artifactrollback須與migrationcompatible、secretowner正確；unrecoverable/backupgap如實列資料loss／實際時間，不聲稱HA | UNVERIFIED；不在正式VM填磁碟或刪volume；無RTO/RPO證明 |
-| **G-06 resource／capacity（BA＋DO＋QA，P1）** | slowreader／frameburst／handshake占位／metadata極值／longnonce與completionhash／Redismemorypressure在隔離環境，其他有效連線可用且不漏撤權；依課程50users/50WSS/25rooms/600s真cadence，另50人group；記成功率、實際CPU/RAM、browser呈現p95與recovery前提。若未達≤2s／≤5s目標公開原因，不把ACK／小样本當呈現 | UNVERIFIED；drill不做50WSS或HA |
-| **G-07 W18 product coverage（BA＋BB＋FA＋QA，P1）** | 交付PRD要求的可信W18／contactauthorization、deviceaggregation、Redisunknown與freshness；不冒充前景／receipt；或依共同變更流程經直接受影響者批准調整命名功能範圍後同步契約／tests／docs | UNVERIFIED；現行W18尚未實作，不虛構測例PASS |
+| **G-01 真實 BB commit／JWT／C1／receipt（BB＋BA＋QA，P0）** | 完整產品 gate 還包括 JWT negative cases、atomic write／rollback、same-C1 idempotency、receipt observer／monotonicity、A19 與 quota/canonical precedence。 | **PARTIAL LOCAL REAL PRODUCT PASS：** [PF01／PF06／PF07／PF08](evidence/product-native-faults.json) 驗真 JWT/session、C1、committed response loss、rollback、持久回條與 A19 restore；wrong-device／完整 quota precedence 組合仍須驗。 |
+| **G-02 service identity／隱私／公開路由（DO＋BB＋BA＋QA，P0）** | 正式 Compose 私網錯 caller／service401／user401；外部 `/internal/*`／`/health/*`隔離、exact WSS route、憑證與 secret owner/mode 稽核、完整公開錯誤／proxy／log 隱私檢查。 | **PARTIAL LOCAL PASS：** native run 用私有 CA 驗證 HTTPS/WSS；正式 VM proxy／公開路由、secret 配置稽核及完整 service identity rotation gate 未驗。 |
+| **G-03 real invalidation／group E1（BB＋BA＋QA，P0）** | 真 A03/A04/A02、通知丟失與同時操作；含 group A18 row lock／join boundary／pending old body、rejoin 與 socket-write E1。 | **PARTIAL LOCAL REAL PRODUCT PASS：** PF03 驗真 PG outage stale/control-only、JWT expiry close／恢復；PF05 真 A04 lost-notify 對指定 session 在 4.657s 關閉且保留另一裝置。真 group A18／E1 ordering gate 仍未驗。 |
+| **G-04 feed／snapshot／frontend recovery（BB＋BA＋FA／FB＋QA，P0）** | 多頁 partial/expired snapshot、hidden-position／cursor boundary、撤權 filter，以及 browser IndexedDB／cursor atomicity、pending C1／receipt reload 與 stable-event dedupe。 | **PARTIAL LOCAL REAL PRODUCT／BROWSER PASS：** PF01–PF04／PF08 驗本機 API／PG／W15-W16、saved cursor、A19／receipt；另有本機 Chrome product proof。指定完整多頁撤權情境與跨瀏覽器支援矩陣不由上述 run 推論，Edge／Android 未驗。 |
+| **G-05 single VM／磁碟／PG／備份／版本復原（DO＋BB＋QA，P1）** | VM／磁碟／正式 Compose 故障與 off-host 私有 archive recovery，實際恢復時間及 RPO 證明。 | **PARTIAL LOCAL REAL PRODUCT PASS：** PF01–PF08 含 API／BA restart、PG outage/restart、真 rollback 及私有 `pg_dump` 還原至 owned clone，20 張表逐列一致；不代表 VM／host disk、off-host archive、正式目標或 RTO/RPO。 |
+| **G-06 resource／capacity（BA＋DO＋QA，P1）** | 記錄容量、slow-reader／pressure、獨立 50 人群組及 browser presentation p95／正式 VM CPU/RAM。 | **LOCAL PROTOCOL GROUP PASS：** [群組 JSON](evidence/product-group-load.json) 50 WSS／50 人／600s、6,000 intents、294,000/294,000 個別 fanout、50 人 A19 歷史驗證，group W07 p95 73.387 ms；程序 CPU 平均 15.263%、峰值 21.989%，RSS 峰值 48,824,320 bytes。測試在同一開發主機與自有 fault/regression 工作併行，見[provenance](evidence/product-load-provenance.json)；不代表 browser 呈現 p95 或正式 VM 容量。
+| **G-07 W18 product coverage（BA＋BB＋FA＋QA，P1）** | 私有 `readPresenceTargets`＋W18 實作及 23 項回歸涵蓋聯絡人授權、有效裝置聚合、Redis unknown／freshness、初始化與撤權競態；不得冒充前景／receipt。 | CODE／REGRESSION COVERED（本機 23 項案例由父任務驗證）；雲端／VM／實體瀏覽器及正式容量仍依 G-02／G-05／G-06 gate，非 W18 缺失。 |
 
 ### 真實部署可重跑入口及復原順序
 
@@ -294,6 +294,5 @@ QA配置由BB／QA按[負載工具說明](../../tests/load/README.md)填真實�
 ## 9. 交付與 release 最終判定
 
 - **分析完整：** FM-01～FM-30都有原因／影響／偵測／隔離／恢復／角色／嚴重度與必要gate；testtrace、localdrill及externalgates分層。不表示全部gate通過。
-- **localdrill通過：** 上述run的DR-01～DR-06均PASS、exit0；14份sourcehash逐一吻合。這是6個本機代表性故障情境，不是30種模式全部實機驗收、更不是119种失效／coverage%。文件／runner／JSON的發佈以`feature/realtime-receipts-sync`的Git紀錄為準；JSON的`git_head`是演練時的基線提交，不是後續發佈提交。
-- **產品／部署release：** G-01～G-07目前UNVERIFIED；只有對應P0或P1命名功能／部署驗收不能簽release-ready，這不否認既有BA模組交付或歷史119項結果。recoverableRedis/live漏送只有在正式feed恢復與privacy/invalidation gates成立時才是可接受降級。W18是特定產品scope未驗項，不概括宣稱BA所有功能未完成；真BB／browser／VM前提不能被文件或fixture消除。
-- **沒有虛構統計：** O未知、D未量化、RPN不計；單次monotonicelapsed不是availability／RTO／p95／SLO；單VM沒有HA承諾。若有失敗公開fixeddiagnostic、affectedmode／gate及真實後果，不用mock／重試掩盖失敗。
+- **localdrill 證據：** BA component drill DR-01～DR-06 6/6 PASS（[component JSON](evidence/backend-a-local-faults.json)）；另本機真 API／PostgreSQL／BA fault run PF01–PF08 8/8 PASS（[native product JSON](evidence/product-native-faults.json)），並有獨立 50-WSS protocol load（[load JSON](evidence/product-direct-load.json)）。三者範圍不同；本機通過不等於全部 FM 已實機驗收、119 項 coverage、正式 VM／雲端／瀏覽器或公開容量通過。各 JSON provenance／hash 與 scope 依檔案原始內容。
+- **產品／部署 release：** G-01～G-06各有部分本機產品證據，但完整 P0／P1 gate 尚未全通過；分項差異見第 8 節。G-07 的 W18 程式與 23 項回歸案例已由父任務驗證，不代表雲端／VM／實體瀏覽器或容量驗收。只有對應完整命名 gate 全部通過才可簽 release-ready；本機實際 API／PG 結果不表示 BB／Web 缺失，也不能消除正式 VM、GCS、browser 或容量前提。

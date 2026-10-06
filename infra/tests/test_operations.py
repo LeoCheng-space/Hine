@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import urlsplit
 
 SOURCE = Path(__file__).resolve().parents[2]
 
@@ -23,7 +24,7 @@ class OperationsSafetyTests(unittest.TestCase):
 
     def run_script(self, name, *args, overrides=None):
         environment = os.environ.copy()
-        for key in ("HINE_ENV", "HINE_SECRET_DIR", "API_PROVIDER_COMPOSE", "WEB_ROOT", "HINE_DOMAIN"):
+        for key in ("HINE_ENV", "HINE_SECRET_DIR", "WEB_ROOT", "HINE_DOMAIN"):
             environment.pop(key, None)
         environment.update(overrides or {})
         return subprocess.run(["sh", str(self.root / "infra/scripts" / name), *args],
@@ -79,6 +80,41 @@ class OperationsSafetyTests(unittest.TestCase):
         (self.root / ".env").symlink_to(external)
         self.assertNotEqual(self.run_script("init-dev.sh").returncode, 0)
         self.assertEqual(external.read_text(), "unchanged")
+    def test_ambiguous_database_targets_fail_before_changing_existing_credentials(self):
+        directory = self.root / ".secrets"
+        directory.mkdir(mode=0o700)
+        password = directory / "postgres_password"
+        password.write_bytes(b"a" * 64 + b"\n")
+        password.chmod(0o640)
+        before = password.read_bytes(), password.stat().st_mode
+        for content in (
+            "POSTGRES_DB=hine\nPOSTGRES_DB=other\n",
+            "NOTE='example\nPOSTGRES_DB=other\n'\n",
+            "NOTE: 'example\nPOSTGRES_DB=other\n'\n",
+            "POSTGRES_USER=${UNCONFIRMED_TARGET}\n",
+        ):
+            with self.subTest(content=content):
+                (self.root / ".env").write_text(content)
+                result = self.run_script("init-dev.sh")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((password.read_bytes(), password.stat().st_mode), before)
+                self.assertFalse((directory / "database_url").exists())
+                self.assertFalse((directory / "jwt_signing_key").exists())
+
+    def test_explicit_empty_database_environment_does_not_use_dotenv_target(self):
+        (self.root / ".env").write_text("POSTGRES_DB=other\nPOSTGRES_USER=hine\n")
+        result = self.run_script("init-dev.sh", overrides={"POSTGRES_DB": "", "POSTGRES_USER": ""})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        target = urlsplit((self.root / ".secrets/database_url").read_text().strip())
+        self.assertEqual((target.username, target.path), ("hine", "/hine"))
+
+    def test_literal_quoted_database_target_and_environment_override_stay_consistent(self):
+        (self.root / ".env").write_text("POSTGRES_DB='stored'\nPOSTGRES_USER=\"stored_user\"\n")
+        result = self.run_script("init-dev.sh", overrides={"POSTGRES_DB": "explicit", "POSTGRES_USER": "explicit_user"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        target = urlsplit((self.root / ".secrets/database_url").read_text().strip())
+        self.assertEqual((target.username, target.path), ("explicit_user", "/explicit"))
+
 
     def test_restore_requires_destructive_flag_before_any_docker_call(self):
         result = self.run_script("restore-postgres.sh", "missing.dump")
@@ -103,7 +139,6 @@ class OperationsSafetyTests(unittest.TestCase):
                 result = self.run_script("stack.sh", "down", flag)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("unsafe down argument", result.stderr)
-                self.assertNotIn("API_PROVIDER_COMPOSE", result.stderr)
 
     def test_down_allowlist_accepts_safe_timeouts_and_service_names(self):
         for arguments in (
@@ -120,14 +155,10 @@ class OperationsSafetyTests(unittest.TestCase):
 
     def production_recovery_environment(self):
         self.assertEqual(self.run_script("init-dev.sh").returncode, 0)
-        provider = self.root / "operator-provider.yml"
-        # A real file for path validation; no fake product/container is started.
-        provider.write_text("services: {}\n")
         return {
             "HINE_ENV": "production",
             "COMPOSE_PROJECT_NAME": "hine-recovery-target",
             "HINE_SECRET_DIR": str(self.root / ".secrets"),
-            "API_PROVIDER_COMPOSE": str(provider),
             "WEB_ROOT": str(self.root / "missing-frontend-release"),
             "HINE_DOMAIN": "hine.run.place",
             "ACME_EMAIL": "operator@example.org",
@@ -147,10 +178,6 @@ class OperationsSafetyTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("WEB_ROOT must contain", result.stderr)
 
-    def test_preflight_fails_before_cloud_access_when_provider_is_absent(self):
-        result = self.run_script("preflight.sh", "--local")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("API_PROVIDER_COMPOSE", result.stderr)
 
 
 if __name__ == "__main__":

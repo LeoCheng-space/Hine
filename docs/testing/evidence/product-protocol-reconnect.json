@@ -1,0 +1,70 @@
+{
+  "ack_and_receiver_or_sync_success": 3,
+  "aiohttp_version": "3.14.3",
+  "attempted": 3,
+  "authenticated_connections": {
+    "current": {
+      "ws": 0,
+      "wss": 0
+    },
+    "peak": {
+      "ws": 0,
+      "wss": 2
+    },
+    "window_final": {
+      "ws": 0,
+      "wss": 2
+    },
+    "window_initial": {
+      "ws": 0,
+      "wss": 2
+    },
+    "window_minimum": {
+      "ws": 0,
+      "wss": 1
+    }
+  },
+  "baseline_measured": false,
+  "baseline_requested": false,
+  "browser_persistence": "not_measured",
+  "browser_presentation": "not_measured",
+  "errors": {},
+  "failed_or_unconfirmed": 0,
+  "failure_code": null,
+  "group_all_50_active_wss": null,
+  "group_delivery_deadline_seconds": null,
+  "group_fanout_protocol_p95_ms": null,
+  "group_history_members_verified": null,
+  "group_intent_receiver_counts": null,
+  "group_load_measured": false,
+  "group_load_requested": false,
+  "group_members": null,
+  "group_receivers_observed": null,
+  "group_receivers_per_intent_requested": null,
+  "group_receivers_requested": null,
+  "latency_boundary": "send_to_receiver_protocol_W07",
+  "live_receiver_latency_samples": 2,
+  "live_receiver_protocol_p95_ms": 7.802845007972792,
+  "load_dispatch_evidence": null,
+  "load_window_seconds": null,
+  "mode": "e2e",
+  "process": {
+    "status": "not_supplied"
+  },
+  "python_version": "3.12.3",
+  "reconnect": {
+    "browser_persistence": "not_measured",
+    "protocol_recovery_ms": 23.188105013105087,
+    "qa_projection_atomic_persistence": true,
+    "saved_cursor_replay_deduplicated": true,
+    "saved_cursor_replay_ms": 6.863899994641542,
+    "status": "verified"
+  },
+  "requested_duration_seconds": null,
+  "rooms": 1,
+  "send_interval_seconds": null,
+  "status": "passed",
+  "success_rate": 1,
+  "text_max_bytes": 1024,
+  "users": 2
+}

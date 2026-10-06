@@ -1,15 +1,15 @@
 <a id="load-tests"></a>
 # 負載測試
 
-課程效能基線：50 個測試使用者／50 條 WSS、25 個一對一聊天室，每使用者平均每 5 秒發 1 則不超過 1 KiB 的文字訊息，持續 10 分鐘；另驗收一個 50 人群組，不將其流量混入基線。記錄成功率、p95、CPU／RAM；目標為送出至收件端呈現 p95 ≤2 秒，網路恢復且待補不超過 100 則時同步完成 ≤5 秒。這些是待驗證目標，未實測。
+課程效能基線：50 個測試使用者／50 條 WSS、25 個一對一聊天室，每使用者平均每 5 秒發 1 則不超過 1 KiB 的文字訊息，持續 10 分鐘；另驗收一個 50 人群組，不將其流量混入基線。目標送出至收件端**呈現** p95 ≤2 秒、待補 ≤100 則時同步完成 ≤5 秒，不能以協定 W07 的時間代替。真實本機產品量測與正式 VM／瀏覽器量測分開，結果見[驗收矩陣](../../docs/testing/acceptance-matrix.md)。
 
 工具選 QA 熟悉的一套 HTTP＋WebSocket 工具或語言，只維護一套可重跑腳本與結果報告，不使用分散式壓力產生器。必測 W01 登入、W05 傳送、斷線後 W15／W16 同步及去重。協定負載報告與真實瀏覽器端到端驗收分開標示；收到訊框或伺服器 ACK 不等於收件端已保存／呈現。
 
-## 候選工具與啟動命令（待 Jackie 確認）
+## 現行工具與啟動命令
 
 目前提供**一套** Python 3.12+／aiohttp HTTP＋WebSocket 腳本：
 [`protocol.py`](protocol.py)；固定依賴 [`requirements.txt`](requirements.txt)
-（aiohttp 3.14.3，與 BA 共用版本）。這是交接候選，不代表 Jackie 已選定或核准。
+（aiohttp 3.14.3，與 BA 共用版本）。依使用者指示跨角色補完並實跑；不冒充特定組員已核准。
 不啟動假 BB、echo server、瀏覽器或產品 mock。
 
 ```sh
@@ -17,6 +17,9 @@
 .venv/bin/python tests/load/protocol.py --help
 .venv/bin/python tests/load/protocol.py e2e --config .local/qa-users.json
 .venv/bin/python tests/load/protocol.py load --config .local/qa-users.json
+# 獨立 50 人群組驗收；永遠不標示一對一 baseline_measured
+.venv/bin/python tests/load/protocol.py group-load --config .local/qa-users.json \
+  --users 50 --duration 600 --timeout 15
 # 僅串接小樣本；不得標成 50 人課程基線
 .venv/bin/python tests/load/protocol.py load --config .local/qa-users.json --users 2 --duration 10
 # 額外第一間聊天室斷線／補送／已保存游標重播，不混入即時 p95
@@ -118,6 +121,17 @@ email／password 各可用上述 `*_env`，或直接放在受保護 JSON 的同�
   缺 PID 就標 `not_supplied`，不可用就標 `unavailable`，不填假值；
   CPU 百分比以單核心 100% 為單位，多核心可超過 100%，RSS 不是整台 VM 記憶體。
   VM／資料集／網路／真實瀏覽器結果仍需 QA 另行記錄。
+- `group-load` 固定恰好 50 個不同帳戶／WSS、一個群組，每人每 5 秒一次，
+  50 個 dispatch phase 以 0.1 秒間隔分散。A14 相同鍵／承載重送須回原群組，
+  50 人的 A12 都驗目前 50 成員／建立者 admin／同一版本。
+  每 intent 同時驗持久 ACK、寄件端原 C1 與 **49 個不同收件者**的原 M1／本文／事件；
+  重複收件訊框不能代替缺席成員。結束後全部 50 人 A19 驗排序／唯一 M1／加入權限、
+  recipient C1 隱私與 `receipt:null`。不發群組回條，不宣稱瀏覽器已保存／呈現。
+- 群組 `group_load_measured` 必須整個場景成功、無遺漏時槽、持續 50 條已認證 WSS，
+  且 `group_history_members_verified=50`；`group_intent_receiver_counts` 保存每 intent
+  所需／實見 distinct receiver 數。`group_fanout_protocol_p95_ms` 是每個成功 intent
+  最慢收件端 W07 首次抵達時間的 p95；一對一基線欄位始終為 false。
+  群組不接受 `--reconnect`／`--state`，另跑既有 e2e 模式。
 - exit 0：所選協定場景通過；exit 1：協定／產品端點／timeout 失敗；
   exit 2：CLI／設定／本機輸入前提失敗；中斷 130。`--help` 不連服務。
   永久 oracle 行為測試（沒有 fake server／產品 mock）：
@@ -126,8 +140,9 @@ email／password 各可用上述 `*_env`，或直接放在受保護 JSON 的同�
 .venv/bin/python -m unittest discover -s tests/e2e -p 'test_protocol_tool.py'
 ```
 
-目前尚未對真實 BB 執行二帳戶 E2E 或 50 人基線；上述皆為可重跑工具與待驗前提，
-不是量測／核准紀錄。瀏覽器驗收見 [`../e2e/README.md`](../e2e/README.md)。
+真實 PostgreSQL／API／BA／Redis／私有 CA TLS 的本機量測由父工作執行；
+證據與尚未執行的正式 VM／GCS／實機瀏覽器界線記在[驗收矩陣](../../docs/testing/acceptance-matrix.md)。
+瀏覽器驗收見 [`../e2e/README.md`](../e2e/README.md)，不以工具存在或 oracle 測試當產品通過。
 
 ## 未來壓測（非本版交付）
 

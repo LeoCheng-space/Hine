@@ -1,6 +1,6 @@
 # HINE-IC-0.4 — 系統架構
 
-**狀態：** HINE-IC-0.4 系統架構。本文件描述課程版目標架構，不代表已實作、已部署或已完成測試。介面欄位、事件與錯誤碼以[共同介面契約](../contracts/interface-contract.md)為準；各角色驗收以[角色 PRD](../README.md#按角色閱讀)與[驗收矩陣](../testing/acceptance-matrix.md)為準。
+**狀態：** 本文件為 HINE-IC-0.4 架構與政策參照，不把 PM 決議視為程式／部署證據。程式碼地圖與狀態見第 13 節；程式／本機產品量測、正式政策與尚待雲端／瀏覽器驗收分層記錄於[驗收矩陣](../testing/acceptance-matrix.md)及[變更紀錄](../CHANGELOG.md)。介面欄位、事件與錯誤碼以[共同介面契約](../contracts/interface-contract.md)為準；政策核准仍以[決議登錄](../decisions.md)為準。
 
 [文件導覽](../README.md) · [共同介面契約](../contracts/interface-contract.md) · [Web/RWD 規格](../ui/web-rwd.md#web-rwd) · [PM 決議事項](../decisions.md)
 
@@ -15,7 +15,7 @@
 4. **即時轉送只為加速，補送保證正確。** Redis Pub/Sub 遺失事件時，由 W15/W16 依每使用者事件流補回；即時 W07 不推進同步游標。
 5. **單一可操作分頁與單一 WSS。** 同一瀏覽器設定檔只允許一個可操作聊天分頁；該分頁持有唯一應用程式範圍 WSS。
 6. **授權在伺服器端重查。** 用戶端傳入的寄件者或 `subject_id` 一律不採信；後端 B 在每次異動交易內重查授權，後端 A 遞送前重查授權。
-7. **本版規格與目標尚未量測。** 數值依 2026-10-01 PM 決議作為本版設定或驗收目標，不代表已驗證容量或 SLO。
+7. **規格值不是整體 SLO 證明。** 已有特定本機協定基線（第 12 節）；未量測的瀏覽器呈現／持久保存、雲端 VM 與容量目標不得由局部數據推論。
 
 <a id="arch-context"></a>
 ## 2. 系統脈絡
@@ -281,7 +281,7 @@ sequenceDiagram
 
 - 「多久內關閉連線」只是清理時間，不能代替資料交付政策。群組撤權分為裝置已有副本、服務端已授權待送內容與撤權後新查詢，分別依 G1、G2／E1、G3 處理。
 - 順序以 PostgreSQL 提交序判定。資料的位置是它的授權點，不是它的提交；與撤銷並行、授權點在撤銷之前的交易依 E1 上限處理。
-- W18 線上狀態沒有後端 B 的授權點，視為節點最近一次完整補齊時授權，適用相同新鮮度上限。
+- W18 聯絡人在線狀態以每次 `readPresenceTargets` 的 BB 當前授權／聯絡人查詢作讀取邊界，並只對該結果中的目標聚合；節點 freshness、Redis 可用性與每次送出前的授權重查仍適用。不得把 W18 解讀為前景、送達或已讀。
 - 保留連線不等於允許送資料：節點不新鮮時，連線保留，但只送 W04 與 W17。
 - A03 只使舊世代連線失效；A04 只撤銷目前裝置的工作階段；A02 重新登入會撤銷同帳號同裝置原有的工作階段；A18 只影響該對話，不關閉連線。
 - 同一瀏覽器設定檔只允許一個可操作分頁與一條 WSS；不做多分頁交接或活動租期。
@@ -435,18 +435,19 @@ flowchart TB
 ## 12. 容量與效能驗證
 
 - 本版課程基線：50 個測試使用者／50 條 WSS、25 個一對一聊天室，每使用者平均每 5 秒發 1 則不超過 1 KiB 的文字訊息，持續 10 分鐘；另做一個 50 人群組功能驗收，流量不混入基線。
-- 量測須記錄 VM、資料集、網路、測試工具與版本，並報告成功率、p95、CPU／RAM。初始目標為正常基線訊息送出至收件端呈現 p95 ≤ 2 秒；有效登入、網路恢復且待補不超過 100 則時，重連完成同步目標 ≤ 5 秒。已提交訊息須能經同步找回並去重；不得以空連線數代替聊天負載，也不得把 ACK 當成收件端顯示。數值未實測，未達標須揭露原因與結果，不宣稱高可用；正式評分表若有硬性門檻仍須保留。
-- 1,000／5,000／10,000 條連線僅作未來壓測，非本版必交容量。QA 自選一套熟悉的 HTTP＋WebSocket 測試工具或語言；協定負載報告與真實瀏覽器端到端驗收分開標示。
+- 基線目標為正常訊息送出至收件端呈現 p95 ≤ 2 秒；有效登入、網路恢復且待補不超過 100 則時，重連同步目標 ≤ 5 秒。已完成本機真 API／PostgreSQL／BA 協定基線：50 使用者／50 WSS、25 房間、600 秒，6,000/6,000 ACK＋收訊或同步成功，成功率 100%；6,000 個 protocol W07 收件樣本 p95 78.974 ms（[本機負載 JSON](../testing/evidence/product-direct-load.json)）。此為 W07 協定延遲，不是瀏覽器呈現 p95；該 run 未量瀏覽器保存／呈現、CPU／RAM、50 人群組、正式 VM／GCS 或公共容量。正式目標仍需獨立驗收。
+- 獨立 50 人群組 run 亦已完成：50 條已認證 WSS、1 個 50 人群組、600 秒、6,000/6,000 intent ACK 且每則均由 49 名收件者確認，共 294,000/294,000 fanout；50 名成員 A19 歷史皆驗證。群組 W07 fanout protocol p95 73.387 ms；單一 BA 程序 CPU 平均 15.263%、峰值 21.989%，RSS 峰值 48,824,320 bytes（[群組負載 JSON](../testing/evidence/product-group-load.json)、[共同 provenance](../testing/evidence/product-load-provenance.json)）。該回合是本機 loopback HTTPS/WSS、非正式 VM，測試期間同一開發主機另有自有 fault／regression 工作；沒有量瀏覽器保存／呈現，不能推論 VM／隔離環境容量或正式 p95。
+- 1,000／5,000／10,000 條連線僅作未來壓測，非本版必交容量。協定負載報告與真實瀏覽器端到端驗收分開標示。
 
 <a id="arch-code-map"></a>
 ## 13. 程式碼目錄對應
 
 | 目錄 | 負責角色 | 對應架構元件 |
 |---|---|---|
-| `frontend/app/auth/`、`frontend/app/contacts/`、`frontend/app/profile/` | 前端 B | Web 殼層、工作階段與非聊天頁面 |
-| `frontend/app/chat/` | 前端 A | 聊天模組與唯一 WSS |
-| `backend/api/` | 後端 B | `api` 服務 |
-| `backend/realtime/` | 後端 A | `realtime` 服務 |
+| `frontend/app/src/` | 前端 A＋B | 單一 Web 殼層、Session／路由／非聊天頁、唯一 WSS、聊天投影／同步及附件傳輸；入口文件 [`frontend/app/README.md`](../../frontend/app/README.md) |
+| `backend/api/src/hine_api/`、`backend/api/migrations/` | 後端 B | REST、JWT／工作階段、PostgreSQL 交易／migration、訊息／群組／回條／同步、GCS；[`backend/api/README.md`](../../backend/api/README.md) |
+| `backend/realtime/src/hine_realtime/` | 後端 A | WSS、Redis、presence、notice、receipts、synchronization；[`backend/realtime/README.md`](../../backend/realtime/README.md) |
+| `backend/api/src/hine_api/domain.py` (`readPresenceTargets`)＋`synchronization.py` (`presence_targets`)＋`backend/realtime/src/hine_realtime/presence.py` | BA／BB | 私有 W18 聯絡人 presence 交接，非公開 REST／WSS API；見[BA PRD](../prd/backend-a.md#ba-02) |
 | `backend/common/`（若採用） | 各模組負責人決定 | 可選共用實作；跨語言共同依據是介面文件、Schema 與測試樣例，不要求共用原始碼或 ORM |
 | `infra/docker/`、`infra/gcp/`、`infra/monitoring/`、`infra/scripts/` | 維運 | Compose、VM 部署、可選監控與維運腳本 |
 | `.github/workflows/` | 維運 | CI/CD |

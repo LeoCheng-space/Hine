@@ -16,8 +16,8 @@ from redis.asyncio.retry import Retry
 from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
 
+from . import presence, receipts, synchronization
 from . import protocol as p
-from . import receipts, synchronization
 from .config import Settings
 from .internal import Fault, InternalClient
 from .invalidation import Invalidations
@@ -50,6 +50,7 @@ class Outgoing:
     membership_version: int | None = None
     self_removal: bool = False
     sync_guard: object | None = None
+    presence_guard: object | None = None
 
 
 class Connection:
@@ -78,7 +79,9 @@ class Connection:
 
     def clear_queue(self):
         while not self.queue.empty():
-            self.queue.get_nowait()
+            outgoing = self.queue.get_nowait()
+            if outgoing.presence_guard is not None:
+                outgoing.presence_guard.release()
         self.queue_bytes = 0
 
     def invalidate(self, failure=None):
@@ -148,80 +151,100 @@ class Connection:
         removed_version = self.removed_versions.get(outgoing.conversation)
         return removed_version is None or (outgoing.membership_version is not None and outgoing.membership_version > removed_version)
 
-    def enqueue(self, frame, position=None, authorize=False, membership_version=None, self_removal=False, sync_guard=None):
+    def enqueue(self, frame, position=None, authorize=False, membership_version=None, self_removal=False, sync_guard=None, presence_guard=None):
         if self.invalid or self.closed:
-            return
+            return False
         if not self.valid() or not self.runtime.invalidations.fresh():
-            return
+            return False
         raw = p.dumps(frame)
         size = len(raw)
         if self.queue.full() or self.queue_bytes + size > self.runtime.settings.max_outgoing_bytes:
             self.invalidate(Fault("DEPENDENCY_UNAVAILABLE"))
-            return
+            return False
         self.queue_bytes += size
         message_id = frame["payload"]["message_id"] if frame["event"] in {"message.created", "message.status"} else None
-        self.queue.put_nowait(Outgoing(raw, size, position, authorize, frame.get("conversation_id"), message_id, membership_version, self_removal, sync_guard))
+        self.queue.put_nowait(Outgoing(raw, size, position, authorize, frame.get("conversation_id"), message_id, membership_version, self_removal, sync_guard, presence_guard))
+        return True
 
     async def write_loop(self):
         try:
             while True:
                 outgoing = await self.queue.get()
                 self.queue_bytes -= outgoing.size
-                if not self.valid():
-                    continue
-                if not self.runtime.invalidations.fresh() or not self.group_allows(outgoing):
-                    if outgoing.sync_guard is not None:
-                        await self.error(Fault(), outgoing.sync_guard.correlation)
-                    continue
-                if outgoing.position is not None and not await self.runtime.invalidations.gate(outgoing.position):
-                    continue
-                if outgoing.sync_guard is not None:
-                    try:
-                        await outgoing.sync_guard.authorize(self)
-                    except Fault as failure:
-                        await self.error(failure, outgoing.sync_guard.correlation)
-                        continue
-                    except (p.Invalid, TypeError, KeyError):
-                        await self.error(Fault(), outgoing.sync_guard.correlation)
-                        continue
-                if outgoing.authorize:
-                    try:
-                        resource_type = "message" if outgoing.message_id is not None else "conversation"
-                        resource_id = outgoing.message_id if outgoing.message_id is not None else outgoing.conversation
-                        result = await self.runtime.client.call("authorize", {**self.session_binding(), "action": "receive", "resource_type": resource_type, "resource_id": resource_id})
-                        p.check("allowed" in result and "authorization_version" in result)
-                        p.boolean(result["allowed"])
-                        p.string(result["authorization_version"], True)
-                        if not result["allowed"]:
-                            continue
-                    except Fault as failure:
-                        if failure.user_session:
-                            await self.error(failure)
-                        continue
-                    except (p.Invalid, TypeError, KeyError):
-                        LOG.warning("invalid_authorization_response")
-                        continue
-                async with self.write_lock:
-                    # No await between these checks and starting send_str. All
-                    # invalidation/admission mutation shares this asyncio loop.
-                    if self.invalid or self.closed:
-                        continue
-                    if not self.valid():
-                        continue
-                    blocked = (not self.runtime.invalidations.fresh() or not self.group_allows(outgoing)
-                               or (outgoing.position is not None and outgoing.position > self.runtime.invalidations.applied_position)
-                               or (outgoing.sync_guard is not None and not outgoing.sync_guard.allows(self)))
-                    raw = outgoing.raw
-                    if blocked:
-                        if outgoing.sync_guard is None:
-                            continue
-                        # The socket lock is held: send this control error here,
-                        # never reacquire the same lock through error/control.
-                        raw = p.dumps(p.event("error", Fault().payload(), correlation=outgoing.sync_guard.correlation))
-                    async with asyncio.timeout(self.runtime.settings.send_timeout):
-                        await self.ws.send_str(raw)
+                try:
+                    await self.write_outgoing(outgoing)
+                finally:
+                    if outgoing.presence_guard is not None:
+                        outgoing.presence_guard.release()
         except (aiohttp.ClientError, ConnectionError, TimeoutError, RuntimeError):
             self.invalidate(Fault())
+
+    async def write_outgoing(self, outgoing):
+        if not self.valid():
+            return
+        if not self.runtime.invalidations.fresh() or not self.group_allows(outgoing):
+            if outgoing.sync_guard is not None:
+                await self.error(Fault(), outgoing.sync_guard.correlation)
+            return
+        if outgoing.position is not None and not await self.runtime.invalidations.gate(outgoing.position):
+            return
+        if outgoing.sync_guard is not None:
+            try:
+                await outgoing.sync_guard.authorize(self)
+            except Fault as failure:
+                await self.error(failure, outgoing.sync_guard.correlation)
+                return
+            except (p.Invalid, TypeError, KeyError):
+                await self.error(Fault(), outgoing.sync_guard.correlation)
+                return
+        if outgoing.authorize:
+            try:
+                resource_type = "message" if outgoing.message_id is not None else "conversation"
+                resource_id = outgoing.message_id if outgoing.message_id is not None else outgoing.conversation
+                result = await self.runtime.client.call("authorize", {**self.session_binding(), "action": "receive", "resource_type": resource_type, "resource_id": resource_id})
+                p.check("allowed" in result and "authorization_version" in result)
+                p.boolean(result["allowed"])
+                p.string(result["authorization_version"], True)
+                if not result["allowed"]:
+                    return
+            except Fault as failure:
+                if failure.user_session:
+                    await self.error(failure)
+                return
+            except (p.Invalid, TypeError, KeyError):
+                LOG.warning("invalid_authorization_response")
+                return
+        try:
+            async with self.write_lock:
+                raw = outgoing.raw
+                if outgoing.presence_guard is not None:
+                    raw = await outgoing.presence_guard.prepare(self)
+                    if raw is None:
+                        return
+                # No await between the final checks and starting send_str.
+                # Presence's C2/contact read is after acquiring this lock.
+                if self.invalid or self.closed:
+                    return
+                if not self.valid():
+                    return
+                blocked = (not self.runtime.invalidations.fresh() or not self.group_allows(outgoing)
+                           or (outgoing.position is not None and outgoing.position > self.runtime.invalidations.applied_position)
+                           or (outgoing.sync_guard is not None and not outgoing.sync_guard.allows(self))
+                           or (outgoing.presence_guard is not None and not outgoing.presence_guard.allows(self)))
+                if blocked:
+                    if outgoing.sync_guard is None:
+                        return
+                    # The socket lock is held: never reacquire it via control.
+                    raw = p.dumps(p.event("error", Fault().payload(), correlation=outgoing.sync_guard.correlation))
+                async with asyncio.timeout(self.runtime.settings.send_timeout):
+                    await self.ws.send_str(raw)
+                if outgoing.presence_guard is not None:
+                    outgoing.presence_guard.sent(self)
+        except Fault as failure:
+            if failure.user_session:
+                await self.error(failure)
+        except (p.Invalid, TypeError, KeyError):
+            LOG.warning("invalid_presence_authorization_response")
 
     async def lifetime(self):
         while not self.closed and not self.invalid:
@@ -277,6 +300,7 @@ class Runtime:
         self.redis = None
         self.invalidations = None
         self.subscribed = False
+        self.presence = None
         self.tasks = []
         self.catchup_task = None
         self.seen = OrderedDict()
@@ -290,7 +314,8 @@ class Runtime:
         self.client = InternalClient(self.settings, self.session)
         self.invalidations = Invalidations(self.settings, self.client, self.connections)
         self.redis = Redis.from_url(self.settings.redis_url, decode_responses=False, protocol=2, socket_connect_timeout=1, socket_timeout=2, retry=Retry(NoBackoff(), 0), max_connections=32)
-        self.tasks = [asyncio.create_task(self.poll()), asyncio.create_task(self.subscribe()), asyncio.create_task(self.consume())]
+        self.presence = presence.Presence(self)
+        self.tasks = [asyncio.create_task(self.poll()), asyncio.create_task(self.subscribe()), asyncio.create_task(self.consume()), asyncio.create_task(self.presence.run())]
 
     async def stop(self):
         for connection in tuple(self.connections):
@@ -581,14 +606,7 @@ async def provider(request):
             p.keys(body, ["subject_id", "device_id"])
             p.string(body["subject_id"])
             p.string(body["device_id"])
-            online = "unknown"
-            try:
-                await runtime.redis.ping()
-                # Single-instance presence: authoritative local connection state,
-                # not an expired Redis marker or assumptions about user activity.
-                online = "online" if any(connection.valid() and connection.binding["subject_id"] == body["subject_id"] and connection.binding["device_id"] == body["device_id"] for connection in runtime.connections) else "offline"
-            except (RedisError, OSError, TimeoutError):
-                pass
+            online = await runtime.presence.device_presence(body["subject_id"], body["device_id"])
             return web.json_response({"data": {"online": online, "activity": "unknown", "valid_until": None}})
         raise p.Invalid("Unsupported operation")
     except (p.Invalid, TypeError, KeyError, web.HTTPRequestEntityTooLarge):

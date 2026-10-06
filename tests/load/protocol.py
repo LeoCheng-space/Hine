@@ -6,6 +6,7 @@ import copy
 import json
 import math
 import os
+import signal
 import sqlite3
 import stat
 import time
@@ -118,7 +119,7 @@ def same_message(actual, expected):
 
 
 def check_history(items, expected, viewer, conversation):
-    ids, previous = set(), None
+    ids, previous, intents = set(), None, {}
     for item in items:
         message_view(item, viewer)
         require(item["conversation_id"] == conversation, "HISTORY_WRONG_ROOM")
@@ -127,14 +128,15 @@ def check_history(items, expected, viewer, conversation):
         require(item["id"] not in ids, "HISTORY_DUPLICATE_MESSAGE")
         ids.add(item["id"])
         previous = key
+        intent = (item["sender_id"], item.get("text"))
+        intents[intent] = intents.get(intent, 0) + 1
         if item["id"] in expected:
             same_message(item, expected[item["id"]])
     require(set(expected) <= ids, "HISTORY_MISSING_PERSISTED_MESSAGE")
     for target in expected.values():
         if target.get("type") == "text" and target.get("text", "").startswith("hine-qa-"):
-            matching = [item for item in items if item.get("sender_id") == target["sender_id"]
-                        and item.get("text") == target["text"]]
-            require(len(matching) == 1, "RETRY_DUPLICATED_INTENT")
+            require(intents.get((target["sender_id"], target["text"])) == 1,
+                    "RETRY_DUPLICATED_INTENT")
 
 
 class Delivery:
@@ -189,6 +191,103 @@ class Delivery:
             while not self.complete or (sender_event and self.sender_event is None):
                 self.signal.clear()
                 await self.signal.wait()
+
+
+class GroupDelivery:
+    """One committed intent succeeds only after every distinct authorised W07 path."""
+    def __init__(self, conversation, sender, members, c1, text, started):
+        self.conversation, self.sender = conversation, sender
+        self.recipients = frozenset(members) - {sender}
+        require(sender in members and bool(self.recipients), "INVALID_GROUP_TARGETS")
+        self.c1, self.text, self.started = c1, text, started
+        self.ack_id = self.message = self.sender_event = None
+        self.receiver_counts, self.latencies_ms = {}, {}
+        self.signal = asyncio.Event()
+
+    @property
+    def complete(self):
+        return (self.ack_id is not None and self.sender_event is not None and
+                self.receiver_counts.keys() == self.recipients)
+
+    @property
+    def fanout_latency_ms(self):
+        return max(self.latencies_ms.values()) if self.latencies_ms else None
+
+    def accept_ack(self, event):
+        payload = envelope(event)
+        require(event["event"] == "message.ack" and event.get("conversation_id") == self.conversation
+                and payload.get("client_message_id") == self.c1 and
+                payload.get("status") == "persisted", "INVALID_W06")
+        uuid(payload.get("message_id"))
+        require(self.ack_id in (None, payload["message_id"]), "RETRY_CHANGED_M1")
+        require(self.message is None or self.message["id"] == payload["message_id"],
+                "ACK_RECEIVER_M1_MISMATCH")
+        self.ack_id = payload["message_id"]
+        self.signal.set()
+
+    def accept_created(self, event, viewer, received_at):
+        value = message_event(event, viewer)
+        require(value["conversation_id"] == self.conversation and value["sender_id"] == self.sender
+                and value.get("text") == self.text, "W07_INTENT_MISMATCH")
+        require(viewer == self.sender or viewer in self.recipients, "WRONG_RECIPIENT")
+        require(self.ack_id in (None, value["id"]), "ACK_RECEIVER_M1_MISMATCH")
+        if viewer == self.sender:
+            require(value.get("client_message_id") == self.c1, "SENDER_C1_MISMATCH")
+        if self.message is not None:
+            same_message(value, self.message)
+        else:
+            self.message = value
+        if viewer == self.sender:
+            self.sender_event = value
+        else:
+            self.receiver_counts[viewer] = self.receiver_counts.get(viewer, 0) + 1
+            self.latencies_ms.setdefault(viewer, (received_at - self.started) * 1000)
+        self.signal.set()
+
+    async def wait(self, timeout, sender_event=True):
+        if time.monotonic() >= self.started + timeout:
+            raise TimeoutError
+        async with asyncio.timeout_at(self.started + timeout):
+            while not self.complete:
+                self.signal.clear()
+                await self.signal.wait()
+
+
+def check_group_detail(detail, conversation, members, creator, version):
+    require(isinstance(detail, dict) and detail.get("id") == conversation and
+            detail.get("type") == "group" and string(detail.get("title")) and
+            type(detail.get("membership_version")) is int and
+            detail["membership_version"] == version and version >= 1 and
+            type(detail.get("unread_count")) is int and detail["unread_count"] >= 0 and
+            isinstance(detail.get("members"), list) and len(detail["members"]) == 50,
+            "INVALID_A12_GROUP")
+    timestamp(detail.get("created_at"))
+    require("subject_id" not in detail, "INTERNAL_ID_LEAK")
+    roles = {}
+    for member in detail["members"]:
+        require(isinstance(member, dict) and string(member.get("user_id")) and
+                member.get("role") in ("admin", "member"), "INVALID_A12_GROUP_MEMBER")
+        require("subject_id" not in member, "INTERNAL_ID_LEAK")
+        require(member["user_id"] not in roles, "A12_DUPLICATE_GROUP_MEMBER")
+        roles[member["user_id"]] = member["role"]
+    require(set(roles) == set(members) and len(set(members)) == 50 and
+            roles.get(creator) == "admin", "A12_GROUP_MEMBERSHIP_MISMATCH")
+
+
+def check_group_history(items, deliveries, viewer, conversation):
+    expected, by_id = {}, {}
+    for delivery in deliveries:
+        require(delivery.ack_id is not None and delivery.message is not None,
+                "GROUP_HISTORY_UNCONFIRMED_INTENT")
+        expected[delivery.ack_id] = delivery.message
+        require(delivery.ack_id not in by_id, "GROUP_INTENTS_SHARED_M1")
+        by_id[delivery.ack_id] = delivery
+    check_history(items, expected, viewer, conversation)
+    for item in items:
+        require(item["receipt"] is None, "GROUP_INDIVIDUAL_RECEIPT")
+        delivery = by_id.get(item["id"])
+        if delivery and viewer == delivery.sender:
+            require(item.get("client_message_id") == delivery.c1, "A19_SENDER_C1_MISMATCH")
 
 
 class ProjectionStore:
@@ -383,6 +482,10 @@ def validate_target(value, scheme):
 
 
 def validate_count(mode, count, available):
+    if mode == "group-load":
+        if count != 50 or available < 50:
+            raise InputFailure("GROUP_LOAD_REQUIRES_FIFTY_DISTINCT_USERS")
+        return
     if count < 2 or count % 2 or count > available or (mode == "e2e" and count != 2):
         raise InputFailure("USER_COUNT_REQUIRES_DISTINCT_PAIRS")
 
@@ -566,17 +669,22 @@ class Client:
     async def close(self):
         self.closing = True
         self.connection_state(False)
-        if self.heartbeat:
-            self.heartbeat.cancel()
-            await asyncio.gather(self.heartbeat, return_exceptions=True)
-        if self.ws:
-            await self.ws.close()
-        if self.reader:
-            await asyncio.gather(self.reader, return_exceptions=True)
+        tasks = [task for task in (self.heartbeat, self.reader) if task is not None]
+        for task in tasks:
+            task.cancel()
+        try:
+            if self.ws:
+                async with asyncio.timeout(self.timeout):
+                    await self.ws.close()
+        finally:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def rest(http, base, method, path, statuses, session=None, body=None, params=None):
+async def rest(http, base, method, path, statuses, session=None, body=None, params=None,
+               idempotency_key=None):
     headers = {"Authorization": "Bearer " + session["access_token"]} if session else {}
+    if idempotency_key is not None:
+        headers["Idempotency-Key"] = idempotency_key
     async with http.request(method, base + path, headers=headers, json=body, params=params,
                             allow_redirects=False) as response:
         try:
@@ -683,11 +791,12 @@ class ProcessSampler:
 
 class LoadEvidence:
     """Count the requested time slots against actual dispatch timestamps, per user."""
-    def __init__(self, users, duration, started):
+    def __init__(self, users, duration, started, offsets=None):
         self.duration, self.started = duration, started
         self.timestamps = [[] for _ in range(users)]
-        self.expected = [max(0, math.ceil((duration - (index % 2) * 2.5) / 5))
-                         for index in range(users)]
+        self.offsets = offsets
+        phases = offsets if offsets is not None else [(index % 2) * 2.5 for index in range(users)]
+        self.expected = [max(0, math.ceil((duration - phase) / 5)) for phase in phases]
 
     def record(self, index, dispatched):
         elapsed = dispatched - self.started
@@ -696,7 +805,13 @@ class LoadEvidence:
 
     @property
     def met(self):
-        return all(len(times) == expected for times, expected in zip(self.timestamps, self.expected))
+        if not all(len(times) == expected for times, expected in zip(self.timestamps, self.expected)):
+            return False
+        if self.offsets is not None:
+            return all(all(phase + slot * 5 <= elapsed < phase + (slot + 1) * 5
+                           for slot, elapsed in enumerate(times))
+                       for phase, times in zip(self.offsets, self.timestamps))
+        return True
 
     def require_met(self):
         require(self.met, "LOAD_REQUESTED_CADENCE_NOT_MET")
@@ -708,6 +823,7 @@ class LoadEvidence:
                                  for expected, actual in zip(self.expected, attempts)],
                 "send_offsets_seconds": self.timestamps,
                 "achieved_messages_per_second": [actual / self.duration for actual in attempts],
+                "requested_offsets_seconds": self.offsets,
                 "requested_cadence_met": self.met}
 
 
@@ -782,12 +898,17 @@ class Exercise:
         self.monitor = ProcessSampler(args.monitor_pid)
         self.connections = ConnectionEvidence()
         self.load_evidence = None
+        self.group_version = None
+        self.group_history_members_verified = 0
+        self.fanout_latencies = []
 
     def created(self, event, viewer, received_at):
         value = message_event(event, viewer)
         evidence = self.deliveries.get((value["conversation_id"], value["sender_id"], value.get("text")))
         if evidence:
             evidence.accept_created(event, viewer, received_at)
+        elif self.args.mode == "group-load" and value["conversation_id"] in self.rooms:
+            raise ProtocolFailure("GROUP_UNTRACKED_W07")
 
     async def prepare(self, http):
         base = self.config["api_base_url"]
@@ -807,30 +928,66 @@ class Exercise:
             require(session["user_id"] not in {x["user_id"] for x in self.sessions},
                     "DISTINCT_USERS_REQUIRED")
             self.sessions.append(session)
-        for index in range(0, len(self.sessions), 2):
-            left, right = self.sessions[index:index + 2]
-            value = await rest(http, base, "POST", "/api/v1/conversations/direct", {200, 201},
-                               left, {"peer_user_id": right["user_id"]})
+        if self.args.mode == "group-load":
+            require(urlsplit(self.config["ws_url"]).scheme == "wss", "GROUP_LOAD_REQUIRES_WSS")
+            members = [session["user_id"] for session in self.sessions]
+            require(len(members) == 50, "GROUP_LOAD_REQUIRES_FIFTY_DISTINCT_USERS")
+            body = {"title": "HINE QA group", "member_ids": members[1:]}
+            key = str(uuid4())
+            value = await rest(http, base, "POST", "/api/v1/conversations/groups", {201},
+                               self.sessions[0], body, idempotency_key=key)
             room = value["data"]
-            require(isinstance(room, dict) and string(room.get("id")) and room.get("type") == "direct"
-                    and "title" in room and room["title"] is None and "membership_version" in room
-                    and room["membership_version"] is None and isinstance(room.get("member_ids"), list)
-                    and len(room["member_ids"]) == 2 and set(room["member_ids"]) ==
-                    {left["user_id"], right["user_id"]}, "INVALID_A13_DIRECT")
+            require(isinstance(room, dict) and string(room.get("id")) and
+                    room.get("type") == "group" and room.get("title") == body["title"] and
+                    type(room.get("membership_version")) is int and room["membership_version"] >= 1
+                    and isinstance(room.get("member_ids"), list) and len(room["member_ids"]) == 50
+                    and set(room["member_ids"]) == set(members), "INVALID_A14_GROUP")
+            retry = await rest(http, base, "POST", "/api/v1/conversations/groups", {201},
+                               self.sessions[0], body, idempotency_key=key)
+            require(retry["data"] == room, "A14_RETRY_CHANGED_GROUP")
             self.rooms.append(room["id"])
+            self.group_version = room["membership_version"]
+            for index in range(50):
+                await self.group_detail(http, index)
+        else:
+            for index in range(0, len(self.sessions), 2):
+                left, right = self.sessions[index:index + 2]
+                value = await rest(http, base, "POST", "/api/v1/conversations/direct", {200, 201},
+                                   left, {"peer_user_id": right["user_id"]})
+                room = value["data"]
+                require(isinstance(room, dict) and string(room.get("id")) and room.get("type") == "direct"
+                        and "title" in room and room["title"] is None and "membership_version" in room
+                        and room["membership_version"] is None and isinstance(room.get("member_ids"), list)
+                        and len(room["member_ids"]) == 2 and set(room["member_ids"]) ==
+                        {left["user_id"], right["user_id"]}, "INVALID_A13_DIRECT")
+                self.rooms.append(room["id"])
         for session in self.sessions:
             client = Client(http, self.config["ws_url"], session, self.args.timeout, self.created,
                             self.connections.update)
             self.clients.append(client)
             await client.connect()
 
+    async def group_detail(self, http, index):
+        value = await rest(http, self.config["api_base_url"], "GET",
+                           "/api/v1/conversations/" + quote(self.rooms[0], safe=""), {200},
+                           self.sessions[index])
+        check_group_detail(value["data"], self.rooms[0],
+                           [session["user_id"] for session in self.sessions],
+                           self.sessions[0]["user_id"], self.group_version)
+
+
     def new_delivery(self, index):
         c1 = str(uuid4())
         # Generated QA text only; no user-provided message text appears in metrics.
         text = "hine-qa-" + c1
         require(len(text.encode("utf-8")) <= 1024, "BASELINE_TEXT_TOO_LARGE")
-        delivery = Delivery(self.rooms[index // 2], self.sessions[index]["user_id"],
-                            self.sessions[index ^ 1]["user_id"], c1, text, time.monotonic())
+        if self.args.mode == "group-load":
+            delivery = GroupDelivery(self.rooms[0], self.sessions[index]["user_id"],
+                                     [session["user_id"] for session in self.sessions],
+                                     c1, text, time.monotonic())
+        else:
+            delivery = Delivery(self.rooms[index // 2], self.sessions[index]["user_id"],
+                                self.sessions[index ^ 1]["user_id"], c1, text, time.monotonic())
         self.deliveries[(delivery.conversation, delivery.sender, delivery.text)] = delivery
         return delivery
 
@@ -846,14 +1003,22 @@ class Exercise:
         if self.load_evidence is not None and self.connections.window:
             self.load_evidence.record(index, delivery.started)
         self.attempted += 1
-        await self.ack(self.clients[index], delivery)
-        await delivery.wait(self.args.timeout, sender_event)
+        if self.args.mode == "group-load":
+            async with asyncio.timeout_at(delivery.started + self.args.timeout):
+                await self.ack(self.clients[index], delivery)
+                await delivery.wait(self.args.timeout)
+            self.latencies.extend(delivery.latencies_ms.values())
+            self.fanout_latencies.append(delivery.fanout_latency_ms)
+        else:
+            await self.ack(self.clients[index], delivery)
+            await delivery.wait(self.args.timeout, sender_event)
+            self.latencies.append(delivery.latency_ms)
         self.succeeded += 1
-        self.latencies.append(delivery.latency_ms)
         return delivery
 
     async def history_items(self, http, index):
-        session, conversation = self.sessions[index], self.rooms[index // 2]
+        session = self.sessions[index]
+        conversation = self.rooms[0] if self.args.mode == "group-load" else self.rooms[index // 2]
         items, cursor, seen = [], None, set()
         for _ in range(10000):
             params = {"limit": "50"}
@@ -874,6 +1039,13 @@ class Exercise:
         raise ProtocolFailure("HISTORY_PAGE_LIMIT")
 
     async def history(self, http):
+        if self.args.mode == "group-load":
+            for index, session in enumerate(self.sessions):
+                await self.group_detail(http, index)
+                items = await self.history_items(http, index)
+                check_group_history(items, self.deliveries.values(), session["user_id"], self.rooms[0])
+                self.group_history_members_verified += 1
+            return
         for index, session in enumerate(self.sessions):
             conversation = self.rooms[index // 2]
             expected = {}
@@ -953,11 +1125,14 @@ class Exercise:
     async def load(self, http):
         start = time.monotonic()
         deadline = start + self.args.duration
-        self.load_evidence = LoadEvidence(self.args.users, self.args.duration, start)
+        group = self.args.mode == "group-load"
+        phases = [index * 5 / self.args.users for index in range(self.args.users)] if group else None
+        self.load_evidence = LoadEvidence(self.args.users, self.args.duration, start, offsets=phases)
         if self.args.users == 50 and self.args.duration == 600:
             require(urlsplit(self.config["ws_url"]).scheme == "wss", "BASELINE_REQUIRES_WSS")
         async def user_loop(index):
-            scheduled = start + (index % 2) * 2.5
+            phase = phases[index] if group else (index % 2) * 2.5
+            scheduled = start + phase
             while scheduled < deadline:
                 await asyncio.sleep(max(0, scheduled - time.monotonic()))
                 if time.monotonic() >= deadline:
@@ -972,8 +1147,20 @@ class Exercise:
                     break
                 scheduled += 5
                 # Do not turn delayed operations into catch-up bursts.
-                scheduled = max(scheduled, time.monotonic())
-        await asyncio.gather(*(user_loop(i) for i in range(len(self.clients))))
+                if group:
+                    # Skip an elapsed slot rather than compressing overdue sends into a burst.
+                    now = time.monotonic()
+                    if scheduled < now:
+                        scheduled = start + phase + (math.floor((now - start - phase) / 5) + 1) * 5
+                else:
+                    scheduled = max(scheduled, time.monotonic())
+        users = [asyncio.create_task(user_loop(i)) for i in range(len(self.clients))]
+        try:
+            await asyncio.gather(*users)
+        finally:
+            for task in users:
+                task.cancel()
+            await asyncio.gather(*users, return_exceptions=True)
         if not self.errors:
             await asyncio.sleep(max(0, deadline - time.monotonic()))
         self.load_window = time.monotonic() - start
@@ -988,6 +1175,13 @@ class Exercise:
         await self.history(http)
 
     async def run(self):
+        owner = asyncio.current_task()
+        previous_sigint = signal.getsignal(signal.SIGINT)
+        def interrupt(_signum, _frame):
+            # A second Ctrl-C must not abort socket/task reaping.
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            owner.cancel()
+        signal.signal(signal.SIGINT, interrupt)
         monitoring = asyncio.create_task(self.monitor.run())
         try:
             timeout = aiohttp.ClientTimeout(total=self.args.timeout)
@@ -1005,16 +1199,42 @@ class Exercise:
                     self.connections.end_window()
                     await asyncio.gather(*(client.close() for client in self.clients), return_exceptions=True)
         finally:
-            monitoring.cancel()
-            await asyncio.gather(monitoring, return_exceptions=True)
-            self.monitor.sample()
+            try:
+                monitoring.cancel()
+                await asyncio.gather(monitoring, return_exceptions=True)
+                self.monitor.sample()
+            finally:
+                signal.signal(signal.SIGINT, previous_sigint)
 
     def report(self, status, failure=None):
         p95 = None
         if self.latencies:
             p95 = sorted(self.latencies)[math.ceil(len(self.latencies) * .95) - 1]
+        group = self.args.mode == "group-load"
+        fanout = [{"receivers_requested": len(delivery.recipients),
+                   "receivers_observed": len(delivery.receiver_counts),
+                   "receiver_frame_observations": sum(delivery.receiver_counts.values()),
+                   "all_receivers_and_sender_ack_verified": delivery.complete}
+                  for delivery in self.deliveries.values()] if group else []
+        group_measured = (status == "passed" and group and self.args.users == 50 and
+                          self.attempted > 0 and self.succeeded == self.attempted and
+                          all(delivery.complete for delivery in self.deliveries.values()) and
+                          self.group_history_members_verified == 50 and
+                          self.load_evidence is not None and self.load_evidence.met and
+                          self.connections.window_met(50, "wss"))
         return {"status": status, "mode": self.args.mode, "failure_code": failure,
-                "users": self.args.users, "rooms": self.args.users // 2,
+                "users": self.args.users, "rooms": 1 if group else self.args.users // 2,
+                "group_load_requested": group, "group_load_measured": group_measured,
+                "group_members": len(self.sessions) if group else None,
+                "group_receivers_per_intent_requested": 49 if group else None,
+                "group_receivers_requested": self.attempted * 49 if group else None,
+                "group_receivers_observed": sum(item["receivers_observed"] for item in fanout) if group else None,
+                "group_intent_receiver_counts": fanout if group else None,
+                "group_history_members_verified": self.group_history_members_verified if group else None,
+                "group_all_50_active_wss": self.connections.window_met(50, "wss") if group else None,
+                "group_fanout_protocol_p95_ms": sorted(self.fanout_latencies)[
+                    math.ceil(len(self.fanout_latencies) * .95) - 1] if self.fanout_latencies else None,
+                "group_delivery_deadline_seconds": self.args.timeout if group else None,
                 "baseline_requested": self.args.mode == "load" and self.args.users == 50
                                       and self.args.duration == 600,
                 "baseline_measured": status == "passed" and self.args.mode == "load"
@@ -1024,8 +1244,8 @@ class Exercise:
                 "load_window_seconds": getattr(self, "load_window", None),
                 "authenticated_connections": self.connections.report(),
                 "load_dispatch_evidence": self.load_evidence.report() if self.load_evidence else None,
-                "requested_duration_seconds": self.args.duration if self.args.mode == "load" else None,
-                "send_interval_seconds": 5 if self.args.mode == "load" else None,
+                "requested_duration_seconds": self.args.duration if self.args.mode != "e2e" else None,
+                "send_interval_seconds": 5 if self.args.mode != "e2e" else None,
                 "text_max_bytes": 1024, "attempted": self.attempted,
                 "ack_and_receiver_or_sync_success": self.succeeded,
                 "failed_or_unconfirmed": self.attempted - self.succeeded,
@@ -1039,11 +1259,12 @@ class Exercise:
 
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument("mode", choices=("e2e", "load"))
+    result.add_argument("mode", choices=("e2e", "load", "group-load"))
     result.add_argument("--config", required=True, type=Path,
                         help="Owner-only JSON: api_base_url, ws_url, users[session OR login]")
-    result.add_argument("--users", type=int, help="Even load user override; defaults 50 (e2e 2)")
-    result.add_argument("--duration", type=float, default=600, help="Load seconds; baseline 600")
+    result.add_argument("--users", type=int, help="Load users default 50; group-load requires 50; e2e 2")
+    result.add_argument("--duration", type=float, default=600,
+                        help="Load seconds; direct baseline 600, group-load reported separately")
     result.add_argument("--timeout", type=float, default=15, help="Per request/delivery timeout seconds")
     result.add_argument("--reconnect", action="store_true", help="Verify first room offline recovery W13-W16")
     result.add_argument("--state", type=Path, help="Owner-only SQLite projection/cursor file; contains QA text/IDs")
@@ -1058,7 +1279,8 @@ def main():
     try:
         if not math.isfinite(args.duration) or args.duration <= 0 or not math.isfinite(args.timeout) or \
                 args.timeout <= 0 or (args.reconnect and args.state is None) or \
-                (args.monitor_pid is not None and args.monitor_pid <= 0):
+                (args.monitor_pid is not None and args.monitor_pid <= 0) or \
+                (args.mode == "group-load" and (args.reconnect or args.state is not None)):
             raise InputFailure("INVALID_CLI_INPUT")
         config = read_config(args.config, args.mode, args.users)
         exercise = Exercise(args, config)
@@ -1077,7 +1299,7 @@ def main():
         code, exit_code = "QA_STATE_STORAGE_FAILED", 2
     except (ValueError, TypeError, KeyError, IndexError):
         code, exit_code = "MALFORMED_INPUT_OR_TARGET_RESPONSE", 1
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         code, exit_code = "INTERRUPTED", 130
     if exercise:
         result = exercise.report("failed", code)

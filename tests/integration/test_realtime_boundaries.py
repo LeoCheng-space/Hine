@@ -162,6 +162,9 @@ class TestAuthority:
         session = next((s for s in self.sessions.values() if s["session_id"] == body.get("session_id") and s["subject_id"] == body.get("subject_id")), None)
         if session is None or body.get("session_generation") != session["session_generation"] or self.invalid(session):
             return web.json_response(error("UNAUTHENTICATED", "user_session"), status=401)
+        if operation == "readPresenceTargets":
+            return web.json_response({"data": {"targets": [], "next_cursor": None,
+                                               "invalidation_position": self.head}})
         if body.get("device_id") != "device-" + session["session_id"].removeprefix("session-"):
             return web.json_response(error("UNAUTHENTICATED", "user_session"), status=401)
         if operation == "authorize":

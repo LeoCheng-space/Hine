@@ -1,14 +1,111 @@
 # HINE-IC-0.4 — 驗收矩陣
 
-**狀態：** 2026-10-01 PM 決議已整合；本矩陣列出本版驗收條件，仍未執行產品測試、部署或量測。
+**狀態：** 2026-10-01 PM 規格維持；使用者已要求跨全部角色補完產品。下方列出本版驗收條件；[目前實作與實測證據](#current-product-evidence)區分真正本機產品、協定量測、瀏覽器與仍缺存取的正式 VM／GCS，不把工具或文件當通過。
 
 各列先列主要負責角色，再列協作者。API 與事件連結直達共用契約中的對應登錄列。
 本輪局部交叉審查的補充定位：[REQ-01／身分](#ac-r03)、[REQ-02／07／16 錯誤分流](#ac-r02)、[REQ-03 已知 ID 查詢](#ac-r07)、[REQ-09／15 欄位排序分頁與心跳](#ac-r05)、[REQ-06／07／09／12 本地保存](#ac-r06)、[REQ-13 附件](#ac-r04)、[REQ-12 條件群組回條](#ac-r08)、[REQ-02／16 內部驗證分層](#ac-r09)、[REQ-12／20 未讀數](#ac-r10)；已讀正反案例放在 [REQ-20 詳細驗收](#req-20-detail)。這些案例不新增 REQ ID、不代表已執行。
 
+<a id="current-product-evidence"></a>
+## 目前實作與實測證據
+
+已合併基線 `fc9eb08ca484ef9495d98afb830e1f10ee5973d7`；本輪交付分支為
+`feature/product-integration`，依使用者要求 commit／push；實際 SHA／遠端狀態以 Git 及 Notion 發布紀錄為準。未建立新 PR，不冒稱遠端 Actions 已驗證。
+使用者直接合併 PR #4 的陳述是本輪依據，不另查 PR 來確認。角色欄是契約權責，
+不再以某角色未交付阻擋本輪實作，也不替組員簽核。
+
+### 已觀察的本機產品證據
+
+- Python3.12.3、PostgreSQL17.11（SCRAM）、aiohttp3.14.3、asyncpg0.31.0、
+  PyJWT2.15.1、Redis7.0.15／redis-py8.1.0、Caddy2.6.2；皆為真正原生服務，
+  不是 test-memory BB。API96、BA100（含23個 W18）、QA oracle36、infra25項通過。
+- [PF01–PF08 完整證據](evidence/product-native-faults.json)：API／BA SIGKILL、
+  真 PostgreSQL／Redis 停止／重啟、遺失已提交登出通知、遺失真寫入200回覆、
+  真 SQL trigger rollback，以及停止寫入者後 pg_dump／單交易 pg_restore 到自建 clone。
+  還原後逐表記錄、JWT／公開身分、已撤銷 session、原 M1／C1、read 回條和 feed 核對通過。
+  PostgreSQL 過期權威狀態時既有有效 socket 只保留 W04／W17，不誤要求立即斷線；
+  另以真正 API 發行及 SQL 保存的30秒 token 驗到期關線。
+- [正式模式 migration gate](evidence/product-production-migration.json)：對自建空 schema，
+  原容器命令會自行套用 DDL；切換後實際 `HINE_ENV=production` service 為 live200／ready503、
+  不建立 tables；明確 `migrate` 記錄3個checksum後，同一 service 命令 ready200。
+  這是 native正式模式，不是 Docker／VM啟動證據。正式容器不再自動遷移；
+  操作者須備份／停止寫入者，再以 `stack.sh migrate` 明確執行。
+- [一對一基線](evidence/product-direct-load.json)：50已認證 WSS持續600秒、
+  25聊天室、每人120次／合計6,000次，6,000全部 ACK＋收件成功，無遺漏時槽。
+  **協定 W07** p95＝78.974ms；單一 BA CPU平均2.607%／最大8.994%，RSS最大48,168,960bytes。
+- [獨立50人群組](evidence/product-group-load.json)：50已認證 WSS持續600秒、
+  6,000個 intent，294,000／294,000個 distinct recipient 觀察，寄件端原 C1＋持久 ACK均驗明；
+  所有50人 A12／A19核對。最慢收件者協定扇出 p95＝73.387ms；
+  單一 BA CPU平均15.263%／最大21.989%，RSS最大48,824,320bytes。群組不是一對一基線。
+- [協定重連](evidence/product-protocol-reconnect.json)：3／3訊息確認、
+  真事件流／保存游標重播去重，QA SQLite原子投影；首次協定復原23.188ms，
+  另一次保存游標重播6.864ms。**SQLite不是瀏覽器 IndexedDB**。
+- [量測環境／資料集](evidence/product-load-provenance.json)：自建開發主機 loopback、
+  私有CA驗證的HTTPS／WSS，52測試帳戶；兩個負載窗口後26個一對一、1群組、
+  12,001訊息、314,504 feed rows。群組窗口與自建 fault／隔離回歸共用同一主機；
+  CPU是單一 BA、單核心100%基準，RSS不是整台 VM。此後新增瀏覽器驗收資料另計。
+- Chrome154.0.8037.97已實際操作兩隔離帳戶註冊／登入、公開ID聯絡人／聊天、
+  發送／收件呈現、實際 IndexedDB訊息＋游標、重新載入、767／768草稿、
+  單一Web Lock阻擋第二分頁（沒有 auth／WSS請求）、登出仍持鎖及釋放後Cookie重新驗證。
+  瀏覽器只對本機私有CA使用測試例外；curl另已驗證憑證鏈與hostname，不是公開VM TLS。
+- 本輪 Web55個行為測試、typecheck與production build通過。真native W05跨會員界線、
+  混合W16舊正文、舊於20筆的group read刷新案例均已由失敗轉通過；原241筆／12頁UI
+  歷史丟失亦已修正，200筆有界保留仍呈現最早頁，跳最新重新A19取得head。
+  實際群組資訊dialog、Escape／焦點返回／767尺寸、A12網路失敗保留聊天室均驗明；
+  同工作階段重連交錯A19／A12不再卡住最新按鈕。
+- 實際UI A06個人資料重載、角色變更／最後admin退出HTTP409、同profile換帳號與
+  不可授權深連結不洩露前帳戶內容；真正IDB quota abort停止全部WSS且不切memory。
+  Chromium native IME組字Enter無W05、解除後Ctrl+Enter送出；兩頁W14bootstrap已實跑。
+  另在實際保存/W08後驗未開對話不W09、native dialog遮罩不W09、恢復連續可見後一次W09，
+  自己的訊息不W09。此headless環境兩頁原生visibility都為visible，不能冒稱真隱藏分頁驗收。
+- [完整Chrome／native browser證據](evidence/product-browser.json)：35個已觀察UI檢查、
+  7個真正API／PG／WSS／IDB場景全部通過，並保存修正前失敗與最後source SHA256。
+  真PG cursor expiry的兩個receipt recovery缺陷均已由失敗轉通過：不可存取首群組
+  不阻擋其他群組；完整目前歷史缺少舊target會保存原read意圖為terminal blocked，
+  不假造read確認，下一輪不再掃完整歷史。`loadHistory`等待同一個實際A19 single-flight，
+  221筆own＋peer的完整native歷史、舊response／換socket、原生draft／anchor／abort亦已驗明。
+  最後全套96＋100＋36＋25＋55＝**312項**通過；外部實機門檻仍如下，不冒稱正式release完成。
+
+### 逐需求實作與證據界線
+
+| REQ | 目前實作／已觀察 | 不能由此推論的驗收 |
+| --- | --- | --- |
+| 01 | `auth.py`／Session／W01–W02；真PG96項、實際UI註冊登入／可信公開ID | 特定組員批准 |
+| 02 | A03／A04、持久失效、唯一認證佇列與Web Lock；PF05、實際鎖／登出／釋放重驗 | 所有正式網路交錯的15秒統計SLO |
+| 03 | `profiles.py`／聯絡人／ProfilePage；真API、公開ID查詢確認 | 真GCS頭像位元組／零對話頭像雲端驗收 |
+| 04 | 唯一direct pair／A11–A13、Web導覽；真PG與實際兩人UI | 額外公開搜尋／邀請功能 |
+| 05 | A14–A18／版本／50人／最後admin／加入界線；真PG及50人群組 | 未批准的Title全域政策、正式VM群組驗收 |
+| 06 | 原子訊息／feed／C1、W06／W07、Web投影；6,000基線、真UI及PF08 | 收到ACK即等同收件端已保存／已讀 |
+| 07 | canonical／授權／C1／quota precedence、原intent保存；PF06／07、真PG | 不明結果盲目換C1／無限重試 |
+| 08 | 單BA、Redis通知＋PG事件流、當前授權；PF04、兩個50WSS窗口 | 多實例HA或Redis訊息持久性 |
+| 09 | frozen多頁W14／固定boundary W16／A19歷史；真PG＋協定重連 | 尚未逐環境實測的瀏覽器矩陣 |
+| 10 | staged快照＋即時C1合併、投影／游標原子保存；Web repository／controller | 存在程式碼即代表所有瀏覽器交錯通過 |
+| 11 | 每頁／每次授權、最小自身W12、撤權路由／新加入界線；真PG／BA回歸 | 遠端抹除已下載副本 |
+| 12 | 持久單調回條、W08保存後／W09可見後、群組receipt null；PF08／真UI | 群組已讀彙總、所有裝置實機可見性 |
+| 13 | 真GCS SDK簽章、create-only、固定generation/meta、A20–A22及Web傳輸 | 真bucket PUT／GET／412／內容核驗；缺真憑證 |
+| 14 | 範圍外；保留W15／W16復原 | 活動／背景推播 |
+| 15 | 私有op11 `readPresenceTargets`＋W18、multi-device／unknown；23回歸 | 應用前景／送達／已讀狀態 |
+| 16 | C13分層、受控錯誤、無私密日誌／公開ID隔離；API／BA／QA回歸 | 完整雲端告警平台 |
+| 17 | 真API／BA映像來源、Compose／Caddy／secret／migration／CI定義；native服務及配置驗證 | Docker映像實際建置／遠端Actions／正式VM部署 |
+| 18 | 兩個獨立50WSS600秒窗口、逐dispatch／全49扇出／全50歷史 | **收件端呈現**p95≤2秒、正式VM容量、瀏覽器≤100則復原≤5秒 |
+| 19 | 單React19.3／TS7／Bun1.4.2 Web、唯一768斷點；Chrome767／768觀察 | Edge desktop／實體Android Chrome |
+| 20 | IME／草稿／錨點／V3可見性與500ms計時程式、真UI草稿／read | 實體軟鍵盤／方向矩陣、所有V3正反幾何 |
+| 21 | 授權Router、replace初始化、Caddy路由允許清單；真TLS路由及UI鎖／重驗 | 公開VM／所有支援瀏覽器深連結矩陣 |
+| 22 | 範圍外，不建立SW／推播金鑰／native app | 關閉網頁後通知 |
+
+### 尚缺的外部實機輸入
+
+目前Notion只有公開網域／既有VM描述，沒有本輪可用VM登入目標／授權、
+GCP project／私有bucket／真簽章credential；環境未設GCS／GCP／VM、ADC不可用、
+SSH未設定host或alias。需提供正式VM存取、DNS／TLS／防火牆授權、真GCS bucket及
+簽章／物件操作權限和同源CORS；Edge與Android Chrome須可操作的真瀏覽器／裝置。
+本機沒有可用Docker daemon；容器／VM／真GCS驗收不能假造。已有VM的使用者陳述
+不被否定，缺的是本輪可用存取。單VM不承諾HA；O未知、D未量化、不算假RPN或RTO／RPO。
+
+
 <a id="first-integration-cases"></a>
 ## 首輪一對一文字串接：共同確認與驗收
 
-依[近期串接基線](../contracts/interface-contract.md#integration-baseline)先對齊下列情境，不要求先驗收整份矩陣。首輪 EntityID／text 限制與後端權威驗證責任已由 PM 正式確認；FA／FB／BA／BB 對接確認及產品執行結果尚未取得，尚未產品驗證。本節是可重跑的驗收條件，不是通過報告，也不取消其他需求。
+依[近期串接基線](../contracts/interface-contract.md#integration-baseline)核對下列情境，不要求先驗收整份矩陣。首輪 EntityID／text 限制與後端權威驗證責任已由 PM 正式確認；目前實作／執行結果見上方證據節，不冒充 FA／FB／BA／BB 全員簽核。本節仍是可重跑的驗收條件，不取消其他需求。
 
 | 範圍／角色 | 操作與必要邊界 | 預期結果與須留存證據 |
 |---|---|---|
@@ -68,7 +165,7 @@ QA／PM 保存實際環境、瀏覽器與模組版本、命令／步驟、提交
 
 ## REQ-19–REQ-22 Web 詳細驗收
 
-以下為 2026-10-01 PM 決議後的本版 Web 驗收條件；仍未執行。
+以下為 2026-10-01 PM 決議後的本版 Web 驗收條件；已實跑及仍未實跑的環境分列於上方證據節。
 
 | 需求 | 負責角色 | 協作者 | 介面 | 前置條件 | 操作 | 預期結果 |
 |---|---|---|---|---|---|---|
@@ -81,7 +178,7 @@ QA／PM 保存實際環境、瀏覽器與模組版本、命令／步驟、提交
 <a id="notify-invalidation-cases"></a>
 ## 通知與授權失效驗收案例（2026-10-01 PM 決議）
 
-以下案例依據[共用契約](../contracts/interface-contract.md#internal-notify-invalidation)與[交付與連線狀態表](../contracts/interface-contract.md#delivery-state-table)，均為本版驗收條件，尚未執行。N18 為不採用的比較方案（G2 選 E1）；N26 為 E1 驗收。
+以下案例依據[共用契約](../contracts/interface-contract.md#internal-notify-invalidation)及[交付與連線狀態表](../contracts/interface-contract.md#delivery-state-table)。它們是本版條件，不以某個元件測試通過推論整張正式部署矩陣通過。N18 為不採用的比較方案（G2 選 E1）；N26 為 E1 驗收。
 - 通知遺失案例需要能攔截 `publishCommitted` 並丟棄 Redis Pub/Sub 訊息。
 - 時間窗口案例需要能控制 `realtime` 實例的補齊時點。
 - **本版驗收環境為單一 `realtime` 實例（與單一 `api`）。** 下列案例中的「節點」「X」都指這個實例，不需要也不應為了案例增加第二個實例。多使用者、多裝置，以及以測試客戶端模擬的「同一工作階段新舊連線」（重連或 A03 換線交接期間尚未關閉的舊連線；屬工作階段安全測試，不代表支援多個可操作分頁）仍須測試。

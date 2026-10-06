@@ -12,9 +12,6 @@ configure_stack() {
     case "$MODE" in
         development) ;;
         production)
-            [ -n "${API_PROVIDER_COMPOSE:-}" ] || fail 'API_PROVIDER_COMPOSE is required: supply the real BB-owned Compose artifact'
-            [ -f "$API_PROVIDER_COMPOSE" ] || fail 'API_PROVIDER_COMPOSE must name an existing regular file'
-            case "$API_PROVIDER_COMPOSE" in /*) ;; *) fail 'API_PROVIDER_COMPOSE must be an absolute path' ;; esac
             [ -n "${WEB_ROOT:-}" ] || fail 'WEB_ROOT is required as the configured absolute release path (it need not exist for recovery)'
             case "$WEB_ROOT" in /*) ;; *) fail 'WEB_ROOT must be an absolute path' ;; esac
             [ "${HINE_ENV:-}" = production ] || fail 'production commands require HINE_ENV=production'
@@ -24,10 +21,15 @@ configure_stack() {
             [ -n "${HINE_DOMAIN:-}" ] || fail 'HINE_DOMAIN is required'
             case "$HINE_DOMAIN" in *[!a-zA-Z0-9.-]*|.*|*.) fail 'HINE_DOMAIN must be a DNS hostname without scheme or port' ;; esac
             [ -n "${ACME_EMAIL:-}" ] || fail 'ACME_EMAIL is required'
-            for name in postgres_password redis_password redis_url api_internal_token realtime_internal_token; do
+            for name in postgres_password redis_password redis_url api_internal_token realtime_internal_token database_url jwt_signing_key; do
                 [ -f "$HINE_SECRET_DIR/$name" ] && [ -s "$HINE_SECRET_DIR/$name" ] || fail "required production secret file missing: $name"
                 [ ! -L "$HINE_SECRET_DIR/$name" ] || fail 'production secret files must not be symlinks'
             done
+            if [ -n "${GCS_CREDENTIALS_FILE:-}" ]; then
+                case "$GCS_CREDENTIALS_FILE" in /*) ;; *) fail 'GCS_CREDENTIALS_FILE must be absolute' ;; esac
+                [ -f "$GCS_CREDENTIALS_FILE" ] && [ -s "$GCS_CREDENTIALS_FILE" ] || fail 'provision the actual GCS signing credential file'
+                [ ! -L "$GCS_CREDENTIALS_FILE" ] || fail 'GCS signing credential must not be a symlink'
+            fi
             ;;
         *) fail 'unknown stack mode' ;;
     esac
@@ -59,10 +61,13 @@ validate_down_arguments() {
 }
 compose() {
     if [ "$MODE" = production ]; then
+        if [ -n "${GCS_CREDENTIALS_FILE:-}" ]; then
+            set -- -f "$ROOT/infra/docker/compose.gcs.yml" "$@"
+        fi
         docker compose --project-directory "$ROOT" --env-file "$ROOT/.env" \
-            -f "$ROOT/docker-compose.yml" -f "$API_PROVIDER_COMPOSE" \
+            -f "$ROOT/docker-compose.yml" \
             -f "$ROOT/infra/docker/compose.production.yml" \
-            --profile realtime --profile production "$@"
+            --profile product --profile realtime --profile production "$@"
     else
         docker compose --project-directory "$ROOT" --env-file "$ROOT/.env" \
             -f "$ROOT/docker-compose.yml" "$@"

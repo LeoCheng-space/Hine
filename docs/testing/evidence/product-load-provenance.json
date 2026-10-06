@@ -1,0 +1,27 @@
+{
+  "analysis_baseline": "fc9eb08ca484ef9495d98afb830e1f10ee5973d7",
+  "collected_utc": "2026-10-05T18:16:30.116Z",
+  "source_sha256": {
+    "tests/load/protocol.py": "08265a59852257b5b0d6b70995aefd703177afeecfc3adf5588e72924d6f49ab",
+    "backend/api/src/hine_api/messages.py": "7a69eb78654b35501079508a95cb04a7da3d934b1d45f7849356d9173bc61bee",
+    "backend/api/src/hine_api/domain.py": "f2d4cadae6a3c8a7a25fbb3fadca700e1afc10f43f8fab7a62999b2afa052b6e",
+    "backend/api/src/hine_api/synchronization.py": "e70c47a68d9e2e13fb069ddb2fd7b305e81e02024d7069785aee08e520b2b3bb",
+    "backend/realtime/src/hine_realtime/server.py": "703db0084fd6920d07d15114f8f99fd2ad9332ec461f1e4df19d294ebbc46d50"
+  },
+  "environment": {
+    "os": "Linux",
+    "architecture": "x86_64",
+    "network": "owned loopback HTTPS/WSS; private Caddy CA verified by clients",
+    "formal_vm": false,
+    "browser_latency_measured": false,
+    "concurrent_group_window_work": "owned native fault scenarios and isolated product/realtime regression suites on the same development host",
+    "initial_load_users": 50
+  },
+  "dataset_after_both_load_windows": {
+    "users": 52,
+    "direct_rooms": 26,
+    "group_rooms": 1,
+    "persisted_messages": 12001,
+    "user_feed_rows": 314504
+  }
+}

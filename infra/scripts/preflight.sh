@@ -10,6 +10,7 @@ configure_stack production
 [ -f "$WEB_ROOT/index.html" ] && [ -s "$WEB_ROOT/index.html" ] || fail 'WEB_ROOT must contain the real frontend index.html build'
 [ -f "$ROOT/.env" ] || fail 'provision the protected .env before preflight'
 [ -f "$ROOT/backend/realtime/Dockerfile" ] || fail 'actual BA Dockerfile is missing'
+[ -f "$ROOT/backend/api/Dockerfile" ] || fail 'actual BB Dockerfile is missing'
 command -v python3 >/dev/null 2>&1 || fail 'Python3 is required for configuration and TLS probes'
 require_docker
 resolved=$(mktemp)
