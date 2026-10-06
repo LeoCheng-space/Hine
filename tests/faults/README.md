@@ -1,4 +1,56 @@
-# Backend A local-component fault drill
+# Product and Backend A fault drills
+ 
+## Real PostgreSQL product acceptance
+
+[`product_fault_drill.py`](product_fault_drill.py) runs the real API and BA
+modules, actual SQL migrations, private SCRAM-authenticated PostgreSQL 17,
+authenticated Redis, and Caddy HTTPS/WSS with a verified owned private CA.
+It never uses the test-only authority described below. Run as a non-root Linux
+user with Python 3.12+, both backend requirements installed, and native tools:
+
+```sh
+.venv/bin/python tests/faults/product_fault_drill.py \
+  --postgres-bin /operator/path/postgresql-17/bin \
+  --redis-server /operator/path/redis-server \
+  --caddy /operator/path/caddy \
+  --python /absolute/path/to/.venv/bin/python \
+  --output /protected/existing-directory/new-product-faults.json \
+  --web-root /absolute/path/to/frontend/app/dist
+```
+
+`--web-root` is optional; it must refer to an existing real build, not a sample
+shell. All other arguments shown are required. `--case PF03` may be repeated
+to select cases; omitted selects all eight. Unselected cases stay
+`NOT_EXERCISED`. Each case owns a fresh cluster, random ports, private files
+and process groups; listener attestation prevents accepting an unrelated
+service. Cleanup only signals recorded children, including cancellation.
+No operator PostgreSQL/Redis, Docker, SSH, global firewall or cloud write is used.
+
+| Case | Actual fault and observed invariants |
+| --- | --- |
+| PF01 | API SIGKILL; unchanged SQL records, existing JWT/public identity, saved cursor and original C1/M1 recovery. |
+| PF02 | BA SIGKILL; offline message recovered from saved cursor, stable event and original C1. |
+| PF03 | Native PostgreSQL stop/restart; live200/ready503, new W01 rejected, no fake ACK/data; after the real stale window existing sockets retain exact W04 and dependency W17 only; same sockets recover. Independent real 30-second API-issued/SQL-persisted token expiry closes stale sockets. |
+| PF04 | Native Redis reset; unknown presence, API still ready, confirmed PostgreSQL ACK without live fanout, durable feed recovery. |
+| PF05 | Drop actual committed A04 notification; durable invalidation rejects revoked JWT and closes its WSS, other device continues. |
+| PF06 | Drop the actual committed API write response; unknown outcome/no false ACK, same original C1 returns one SQL M1 mapping. |
+| PF07 | Owned SQL trigger forces a real transaction rollback; no message/C1 mapping or ACK; remove trigger and retry successfully. |
+| PF08 | Stop writers, prove zero source/clone sessions, real pg_dump and single-transaction pg_restore to a new owned clone; exact archived table records, JWT/public IDs, revoked session, history, receipt, feed and C1 survive. |
+
+Output is sanitized booleans/counts/monotonic timings/source hashes, never
+credentials, body, IDs, cursors or raw private logs. A new0600 JSON is published
+atomically with no-clobber and fsync; existing output including symlinks is
+refused before launching. Exit0 means all selected cases passed,1 means an
+observed case failed/interrupted,2 means input/prerequisite failure. The full run
+retains failed and subsequent observed case results rather than fabricating PASS.
+Execution evidence is linked from the [acceptance matrix](../../docs/testing/acceptance-matrix.md).
+
+This proves only the named **local native product** experiments. It does not
+certify public VM/TLS, GCS physical bytes, browser IndexedDB/rendering, disk loss,
+HA, RTO/RPO, a statistical SLO or a universal 15-second delivery boundary.
+The archived set has no post-backup acknowledged writes; it is not an RPO claim.
+
+## Historical Backend A local-component drill
 
 `ba_fault_drill.py` exercises **native BA and Redis processes, actual HTTP/WS
 clients, and an owned loopback forwarding socket**. Its BB endpoint subclasses

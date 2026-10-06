@@ -1,5 +1,26 @@
 # HINE 文件變更紀錄
 
+## 2026-10-06 — 修復 PR #5 的 Compose 交付遺漏
+
+- GitHub Actions run `37426162599` 的 `compose-data-services` 已失敗：根目錄 `docker-compose.yml` 在 `9a30c63` 仍是父分支版本，未包含真正 API provider；合併 development overlay 後 `api` 只有 ports，因此無 image/build context。這是提交範圍遺漏，不是以假 image 或額外 profile 可解決的服務實作問題。
+- 補納完整根檔：真 `api.build`／product profile、JWT／database_url secret、private backend／edge、readiness、trusted-proxy 預設 none。預設仍只啟動 PostgreSQL／Redis；沒有強制啟動 API 或改動 production migration／資料卷安全規則。
+- 驗證從實際 Git 暫存區檔案重建的隔離目錄，而非只測工作目錄：初始化後 default config、CI realtime development config、product config、product＋realtime development config 均通過。解析 model 驗明 default 為 PostgreSQL／Redis、product 才加入含真 build context 的 API。infra25、Ruff、actionlint 通過；完整遠端 CI 以修正提交的後續 run 為準。
+
+## 2026-10-06 — 全角色真實產品補完與本機驗收
+
+- 依使用者已直接合併 PR #4 與跨角色補完指示，由 `fc9eb08` 建立 `feature/product-integration`；不再以 BB／FA／FB／BA 的責任分工阻擋缺項。後續依使用者要求 commit／push，實際 SHA／遠端發布以 Git 紀錄及 Notion 發布紀錄為準；不建立新 PR、不修改 main 強制保護、不冒充組員批准或遠端 Actions。
+- `backend/api/` 交付真正 aiohttp／PostgreSQL17 migration、JWT／scrypt／session／Cookie、可信服務身分、C2／C13、聯絡人、50人群組／最後admin／新加入界線、C1／quota／訊息回條、原子user feed／frozen snapshot／opaque cursor與W18私有op11。原內容／Unicode／null欄位保持，不以記憶體authority取代BB。
+- 附件用真正 Google Cloud Storage3.16 SDK、V4 create-only PUT／固定原授權期限、核驗同generation／metageneration bytes／MIME／SHA256、固定版本A22與safe filename，以及短DB交易後cloud I/O／terminal abandoned exact-generation清理。沒有假GCS／本機storage fallback；真bucket／signing／ADC與CORS仍缺存取，未冒稱實際上下載。
+- `frontend/app/` 交付單React19.3／TS7／Bun1.4.2 Web：唯一Session／WSS／Web Lock、登入／路由／資料頁、IDB v1/v2→v3保留資料升級、投影／游標／原C1／回條原子保存、granular草稿／錨點、IME、唯一768斷點、V3可見性、附件復原與原生群組資訊dialog。Production bundle只定義公開NODE_ENV，關閉任意環境注入。
+- 實際失敗再修正：較舊A19頁被newest-only cache丟棄；同帳戶刷新卡住舊read；queued W05跨移除／重加入；W16等待B授權時重裝A舊正文；不可讀群組阻擋其他回條；完整目前歷史不存在的舊target無限重掃；initial A19 single-flight未等待；同工作階段重連卡住跳最新控制。現在保護requested history window與原意圖、所有touched conversation tickets、terminal blocked但不假read、Promise identity cleanup；原C1不更換、不盲目自動重送。
+- 補BA W18：private `readPresenceTargets` 查當前授權聯絡人，彙總所有有效裝置、Redis未知、不混活動／已讀；最後socket-lock後重查、過時／撤銷不送、metadata與frame／byte有界、單幀無法裝入即資源清理。23個W18回歸納入BA100項。
+- 移除外部 `API_PROVIDER_COMPOSE` cutover；root Compose包含真API／BA、JWT與database_url secret、可信proxy預設none／正式明確CIDR、真GCS credential overlay。正式API容器只校驗migration，新增零參數 `stack.sh migrate` 明確遷移；dotenv重複／空override／multiline／colon continuation 在任何secret mutation前fail closed。CI提供真正PG17＋Redis與兩套Python依賴、Web55行為／typecheck／build。
+- 最後96 API＋100 BA＋36 QA＋25 infra＋55 Web＝**312項通過**；Ruff／actionlint／shell／Compose及Caddy配置已驗。[完整逐REQ證據](testing/acceptance-matrix.md#current-product-evidence)區分實作與物理環境。
+- [Chrome證據](testing/evidence/product-browser.json)保存35個實際UI檢查、7個真正API／PG／WSS／IDB場景、修正前失敗與8份最後source SHA256。實跑註冊登入／換帳戶隔離、兩頁bootstrap、IDB quota abort、深241訊息12頁／有界200仍可看舊頁、原生IME、群組role／最後admin拒絕、dialog焦點／767、保存後W08／遮罩與連續可見後W09；hidden實機／Edge／Android未冒稱完成。
+- [native PF01–PF08](testing/evidence/product-native-faults.json)全部PASS：真process／PG／Redis／提交回覆／SQL rollback；停止寫入者後真正pg_dump／單交易pg_restore到自建clone，還原後表記錄／JWT／撤銷／原M1-C1／feed／read核對。[正式模式gate](testing/evidence/product-production-migration.json)驗無implicit DDL、明確3個checksum後ready200，不代表Docker或VM已啟動。
+- [一對一50WSS／600秒](testing/evidence/product-direct-load.json)：6,000／6,000成功，W07協定p95 78.974ms；[獨立50人群組／600秒](testing/evidence/product-group-load.json)：6,000 intent、294,000／294,000收件與全50歷史驗明，fanout協定p95 73.387ms。是loopback／私有CA／單BA程序CPU-RSS，不是瀏覽器呈現p95、正式VM容量或HA／RTO／RPO／SLO。
+- 現有Notion只有既有VM／網域描述，沒有本輪可用VM登入／GCP project／bucket／signing或ADC credentials；SSH無host/alias、本機無Docker daemon。完成可達程式與native產品驗收，正式VM／公開TLS／真GCS／Edge-Android實機仍須真存取。推播／活動租約／PWA／native app依既有決議範圍外；Title 1–80仍候選。
+
 ## 2026-10-05 — BA 專用失效分析與本地故障演練
 
 - 新增[BA 失效分析](testing/backend-a-failure-analysis.md)：30種模式，原因／影響／偵測／降級／復原、角色、主觀工程嚴重度、42筆既有測試trace及7個正式產品／部署gate。O未知、D未量化、不捏造RPN；歷史119項不當作失效模式數。

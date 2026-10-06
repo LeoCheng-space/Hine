@@ -1,6 +1,11 @@
-# Must be combined with docker-compose.yml AND the real BB-owned provider file.
-# The required api dependency intentionally fails if that provider is absent.
+# Combine with docker-compose.yml; api is built from the bundled product source.
+# Only the Caddy edge publishes ports; secrets and the Web release are provisioned.
 services:
+  api:
+    environment:
+      HINE_ENV: production
+      PUBLIC_ORIGIN: https://${HINE_DOMAIN:?Set HINE_DOMAIN to the approved DNS name}
+      TRUSTED_PROXY_NETWORKS: ${TRUSTED_PROXY_NETWORKS:?Set TRUSTED_PROXY_NETWORKS to the actual isolated proxy CIDRs}
   realtime:
     environment:
       HINE_ENV: production

@@ -1,0 +1,14 @@
+.git/
+.omp/
+.env
+.env.*
+.secrets/
+.local/
+.backups/
+.venv/
+**/__pycache__/
+**/*.pyc
+**/node_modules/
+frontend/app/dist/
+**/*.pem
+**/*.key

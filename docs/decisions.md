@@ -1,7 +1,9 @@
 <a id="hine-ic-04--待決策事項"></a>
 # HINE-IC-0.4 — PM 決議事項
 
-**狀態：** 下列 32 項均由 PM 於 2026-10-01 決定，來源為 Notion 資料庫「HINE 待 PM 批准項目（HINE-IC-0.4）」([來源](https://app.notion.com/p/f325ae03c65848aba8ddfd6e029e1f95))。本登錄記錄現行政策；決議不代表已實作、部署、測試或量測。已否決及本版不做項目標示「本版範圍外（2026-10-01 PM 決議）」。
+**狀態：** 下列 32 項均由 PM 於 2026-10-01 決定，來源為 Notion 資料庫「HINE 待 PM 批准項目（HINE-IC-0.4）」([來源](https://app.notion.com/p/f325ae03c65848aba8ddfd6e029e1f95))。本登錄記錄政策核准，不代表所有實作、部署、測試或量測均已完成；現況證據與範圍分層另見[架構程式碼對應](architecture/README.md#arch-code-map)、[驗收矩陣](testing/acceptance-matrix.md)與[變更紀錄](CHANGELOG.md)。不得把政策核准當作跨角色簽核或公有容量證明。已否決及本版不做項目標示「本版範圍外（2026-10-01 PM 決議）」。
+
+**目前實作／證據讀法：** 方案決議維持既有核准範圍；實際程式索引見[架構程式碼對應](architecture/README.md#arch-code-map)，不能以歷史「尚未實作」文字推翻現行程式碼。Backend A W18 私有聯絡人查詢、BB `readPresenceTargets` operation 11 與 23 項回歸測試已交付（父任務已驗證）。本機真 API／PG／BA fault PF01–PF08、50-WSS protocol 負載與 Chrome product proof 分別列於[故障證據](testing/evidence/product-native-faults.json)、[負載證據](testing/evidence/product-direct-load.json)及驗收紀錄；W07 protocol p95 不代表瀏覽器呈現。Edge／Android 裝置矩陣、正式 GCP VM、雲端 GCS／signed URL、遠端 CI 與公有容量仍須各自證明；本機測試沒有因此取得團隊簽核。以下歷史決議文字僅在政策範圍內解讀，不當作目前完成度清單。Title 1–80 字元仍是候選，未獲批准為全域政策。
 
 ## 2026-10-04 — main 分支保護暫緩
 
@@ -18,12 +20,12 @@
 | <a id="decision-group-receipts"></a>群組回條可見性 | 已否決；本版範圍外（2026-10-01 PM 決議）：不提供群組已讀人數／名單、read_count／member_count 彙總或群組 W10。 | 保留一對一回條與群組個別 W08／W09／W19 狀態，供同步、逐訊息已讀及 C14-S 使用。 | [回條交接](contracts/interface-contract.md#receipt-projection-handoff) |
 | <a id="decision-history-membership"></a>歷史與群組撤權（分項決議） | G1、G2、G3 均已批准：裝置副本、舊授權待送內容、新查詢分別依下方具名列決議；新成員只讀加入界線之後訊息，重加入採新界線。 | 三政策互相獨立；加入界線適用 A19／W14／W16／附件授權及 C14 未讀。 | [三項政策](contracts/interface-contract.md#group-revocation-policy) |
 | <a id="decision-attachment-policy"></a>附件限制與支援類型 | 需修改後採用：JPEG／PNG／PDF，≤10 MiB，檔名 1–255 Unicode 字元，伺服器產生物件鍵；上傳授權 10 分鐘、下載 5 分鐘；PDF 下載、不內嵌預覽。 | 不做影片、音訊、執行檔、SVG／HTML、分塊續傳；過期上傳重新 A20，不做 A25；保留內容核驗及 C9／C10 版本保護。 | [A20–A25](contracts/interface-contract.md#api-a20) |
-| <a id="decision-historical-slos"></a>歷史效能與重連目標 | 需修改後採用：課程基線為 50 使用者／WSS、25 一對一聊天室、每人平均每 5 秒一則 ≤1 KiB 訊息、10 分鐘；另做 50 人群組功能驗收。 | 目標送出至收件端呈現 p95≤2 秒；待補≤100 時重連同步≤5 秒。記錄環境及成功率／p95／CPU／RAM；尚未實測，1k／5k／10k 僅未來壓測。 | [REQ-18](testing/acceptance-matrix.md#req-18) |
+| <a id="decision-historical-slos"></a>歷史效能與重連目標 | 需修改後採用：課程基線為 50 使用者／WSS、25 一對一聊天室、每人平均每 5 秒一則 ≤1 KiB 訊息、10 分鐘；另做 50 人群組功能驗收。 | 目標送出至收件端呈現 p95≤2 秒；待補≤100 時重連同步≤5 秒。已有本機一對一 protocol run 50／50 WSS、25 rooms、600 秒，6,000／6,000 成功，W07 p95 78.974 ms；獨立 50 人群組 run 50 WSS、6,000 intents、294,000／294,000 fanout、50 人 A19 history 全驗，group W07 p95 73.387 ms。皆非 browser 呈現 p95 或正式 VM 容量；1k／5k／10k 僅未來壓測。 | [REQ-18](testing/acceptance-matrix.md#req-18) |
 | <a id="decision-runtime-platform"></a>GCP 執行環境與託管服務 | 需修改後採用：單台 GCP Compute Engine VM＋Docker Compose，含 Web 入口、api、realtime、PostgreSQL、單一 Redis；api／realtime 各一實例，附件用 GCS 私有桶。 | 不採 Cloud Run、Cloud SQL、Memorystore、外部 LB、執行個體群組、Kubernetes、自動擴縮；資料庫／Redis／內部 API 不公開。持久磁碟、備份還原與回滾；不承諾高可用，尚未建立資源。 | [DO-01](prd/devops.md#do-01)、[部署拓樸](architecture/README.md#arch-deployment) |
 | <a id="decision-tech-stack"></a>前後端框架與程式語言 | 需修改後採用：不指定全端 TypeScript或限制語言；各模組負責人自選熟悉語言／框架，跨語言依 HTTP／JSON、WebSocket 格式及介面文件／Schema／樣例整合。 | PostgreSQL 為主資料庫；Redis 僅既有通知用途；不要求共用 backend/common 原始碼／ORM或微前端平台，Web 交付單一體驗。 | [README 技術方向](../README.md#core-technology-direction)、[架構程式碼對應](architecture/README.md#arch-code-map) |
 | <a id="decision-service-topology"></a>`api`／`realtime` 部署單元與內部呼叫方式 | 需修改後採用：同一儲存庫／主機兩個獨立程序或容器，各一實例；可用不同語言，以 Compose 私有網路內 HTTP＋JSON 對接並驗證服務身分。 | 不依功能拆微服務；內部路由不得公開；本版不建立推播工作程序。 | [內部交接](contracts/interface-contract.md#internal-handoffs)、[架構元件](architecture/README.md#arch-components) |
-| <a id="decision-realtime-notify"></a>REST 寫入後的即時通知與授權失效 | 已批准：BB 交易提交後以內部 HTTP／JSON `publishCommitted` 通知單一 realtime，透過單一 Redis Pub/Sub；PostgreSQL 持久資料為準。 | 不用 Kafka／RabbitMQ／多節點廣播；W15／W16 與失效紀錄輪詢補漏；通知只加速、不可提交前發事件。尚未實作／量測。 | [失效通知](contracts/interface-contract.md#internal-notify-invalidation)、[架構 6.6](architecture/README.md#flow-invalidation) |
-| <a id="decision-load-tool"></a>負載測試工具 | 需修改後採用：QA 自選熟悉的一套 HTTP＋WebSocket 工具或語言，第一週在 `tests/load/README.md` 記錄選擇與啟動命令。 | 一套可重跑腳本與結果報告；必測 W01、W05、斷線後 W15／W16 同步去重；依 50 連線課程基線，不做分散式產生器。尚未壓測。 | [QA-05](prd/qa.md#qa-05)、[REQ-18](testing/acceptance-matrix.md#req-18)、[負載規劃](../tests/load/README.md) |
+| <a id="decision-realtime-notify"></a>REST 寫入後的即時通知與授權失效 | 已批准：BB 交易提交後以內部 HTTP／JSON `publishCommitted` 通知單一 realtime，透過單一 Redis Pub/Sub；PostgreSQL 持久資料為準。 | 不用 Kafka／RabbitMQ／多節點廣播；W15／W16 與失效紀錄輪詢補漏；通知只加速、不可提交前發事件。程式與本機 API／BA 整合已交付；正式 VM／雲端部署及公有容量另行驗收。 | [失效通知](contracts/interface-contract.md#internal-notify-invalidation)、[架構 6.6](architecture/README.md#flow-invalidation) |
+| <a id="decision-load-tool"></a>負載測試工具 | 需修改後採用：QA 選用一套 Python／aiohttp HTTP＋WebSocket 工具並保留可重跑腳本與結果。 | 一對一 baseline 與獨立 50 人群組協定 run 均已執行（[一對一](testing/evidence/product-direct-load.json)、[群組](testing/evidence/product-group-load.json)）；實際結果與 W07 協定／fanout p95 見本表課程基線列。browser 呈現 p95 及正式 VM 容量另行驗收。 | [QA-05](prd/qa.md#qa-05)、[REQ-18](testing/acceptance-matrix.md#req-18)、[負載規劃](../tests/load/README.md) |
 
 <a id="架構決策候選方案"></a>
 <a id="architecture-proposals"></a>
@@ -65,32 +67,32 @@
 <a id="spec-config-measure"></a>
 ### 規格目標、決議配置、實際量測結果
 
-下列規格與配置依 PM 決議；實際量測均未完成。決議不代表已實作、部署或達標。
+下表保留政策／目標值與各項實測狀態；本機協定基線另於「負載測試工具」列明，不據此外推瀏覽器呈現、雲端、設備或公有容量達標。決議本身不代表所有實作、部署或驗收完成。
 
 | 規格目標（2026-10-01 PM 決議） | 本版設定／政策 | 實際量測結果 |
 |---|---|---|
-| S1：撤銷後停止開始舊授權資料交付 | `INVALIDATION_STALE_SECONDS=15`；套用撤銷即停止，最遲提交後 15 秒 | 未量測 |
-| G2：E1 舊授權內容交付界線 | 採 E1，與 S1 同為 15 秒；單一 realtime 驗收 | 未量測 |
-| S2：BB 中斷與補齊 | 輪詢 5 秒；單事件補齊等待 1000 毫秒；失效超過 15 秒暫停交付 | 未量測 |
+| S1：撤銷後停止開始舊授權資料交付 | `INVALIDATION_STALE_SECONDS=15`；套用撤銷即停止，最遲提交後 15 秒 | 本機真 PG/API/BA：PF05 lost A04 notice 後 4.657 秒內關閉被撤銷連線並保留其他裝置；PF03 PG outage 過新鮮度窗口僅 control frames 並在 JWT 到期關閉。不是 VM／跨主機 SLO（[證據](testing/evidence/product-native-faults.json)） |
+| G2：E1 舊授權內容交付界線 | 採 E1，與 S1 同為 15 秒；單一 realtime 驗收 | 未完成真 A18 群組撤權／舊內容開始 write 競態驗收 |
+| S2：BB 中斷與補齊 | 輪詢 5 秒；單事件補齊等待 1000 毫秒；失效超過 15 秒暫停交付 | 本機真 PG outage PF03：ready 503、資料操作 fail closed、現有有效 socket 僅 control，PG 恢復後原 session/cursor 恢復；未證正式 VM／錯誤網路上的完整部署 SLO（[證據](testing/evidence/product-native-faults.json)） |
 | G2 的 60 秒移除紀錄保留窗 | 不是交付上限，不作交付保證 | 未量測 |
 | M2 活動租期 | 本版範圍外；`ACTIVITY_LEASE_SECONDS` 不使用 | 不適用 |
 | M3 A03 結果不明 | A03 等待 10 秒、舊 Cookie 寬限 0 秒；不明／401／失敗停止刷新並提示重登 | 未量測 |
 | 前景同步核對 | 每 10 秒；返回前景立即核對，背景不保證排程 | 未量測 |
-| B1 瀏覽器支援 | Chrome／Edge 桌面、Android Chrome；QA 記錄實際版本 | 尚無相容性實測 |
+| B1 瀏覽器支援 | Chrome／Edge 桌面、Android Chrome；QA 記錄實際版本 | 已有本機 Chrome product proof；Edge／Android 實機與完整版本相容性矩陣未驗，不能據單一 Chrome 場景宣稱全面支援 |
 | V3 已讀 | 最大可能交集為分母，50% 連續 500 毫秒，中斷歸零 | 未量測 |
 | 本版營運設定 | REST 20／50；W14 100；W16 每批 100、掃描 1000；心跳 30／90 秒；訊息每秒 5、突發 10；登入每帳號每分鐘 10、每 IP 每分鐘 60；群組 50 人；附件 JPEG／PNG／PDF ≤10 MiB；授權 10 分鐘、下載 5 分鐘 | 各項尚未量測 |
 
 **技術方案現行定義：**
 - 單一 VM＋Compose，`api`／`realtime` 各一實例；提交後通知採內部 HTTP／JSON 與單一 Redis Pub/Sub。
-- G2 採 E1 並整合其持久化紀錄及同步中繼資料；需求已決議，但尚未實作。
-- 技術棧依模組自選；負載工具由 QA 選一套，第一週記錄於 `tests/load/README.md`。
+- G2 採 E1，現行 BA 實作失效紀錄／同步中繼資料交接；真實 PostgreSQL 提交序、撤權競態與 15 秒開始交付界線仍需正式產品 gate 驗證。
+- 技術棧由模組自行選定並見目前源碼；QA 已提供一套 Python／aiohttp HTTP＋WebSocket 工具。協定基線結果與瀏覽器／VM／正式容量 gate 分開記錄。
 
 <a id="通知路徑與-apirealtime-部署單元合併提案"></a>
 <a id="proposal-notify-topology"></a>
 ### 通知路徑與 `api`／`realtime` 部署單元（已決議）
 
 - **採用：** 同一主機、Compose 內 `api` 與 `realtime` 各一實例，內部 HTTP／JSON 並驗證服務身分；BB 提交後呼叫 `publishCommitted`，由單一 Redis Pub/Sub 加速通知。
-- **正確性：** PostgreSQL 持久資料為準；提交前不發事件，Pub/Sub 遺失由同步與失效紀錄輪詢補齊。E1 撤權交付上限為 15 秒。尚未實作或量測。
+- **正確性：** PostgreSQL 持久資料為準；提交前不發事件，Pub/Sub 遺失由同步與失效紀錄輪詢補齊。BA／BB 對應程式已交付，本機 API／PG／BA 測試與協定負載另有證據；真實 VM／雲端、瀏覽器呈現與公有容量未由此核准／證明。
 - **已取代替代方案：** 同程序部署、任意多實例拓樸及後端 B 直接發布 Redis 均不採用。
 
 <a id="runtime-conditions"></a>

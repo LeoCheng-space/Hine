@@ -1,4 +1,5 @@
 """Consumer-risk tests for the real protocol tool's evidence checks; no servers/mocks."""
+import asyncio
 import copy
 import importlib.util
 import pathlib
@@ -268,6 +269,229 @@ class EvidenceTests(unittest.TestCase):
                 self.assertEqual(reopened.cursor, "end")
             finally:
                 reopened.close()
+
+
+def acknowledged():
+    return {"event": "message.ack", "event_id": EID,
+            "timestamp": "2026-10-01T08:00:04Z", "conversation_id": "room",
+            "correlation_id": C1, "payload": {"client_message_id": C1,
+            "message_id": MID, "status": "persisted"}}
+
+
+def sender_created():
+    event = created()
+    event["payload"]["client_message_id"] = C1
+    return event
+
+
+class GroupEvidenceTests(unittest.TestCase):
+    def delivery(self):
+        return qa.GroupDelivery("room", "alice", {"alice", "bob", "carol"},
+                                C1, "hello", 1.0)
+
+    def test_duplicates_cannot_replace_missing_group_receiver(self):
+        evidence = self.delivery()
+        evidence.accept_ack(acknowledged())
+        evidence.accept_created(sender_created(), "alice", 1.1)
+        evidence.accept_created(created(), "bob", 1.2)
+        evidence.accept_created(created(), "bob", 1.3)
+        self.assertFalse(evidence.complete)
+        self.assertEqual(evidence.receiver_counts, {"bob": 2})
+        evidence.accept_created(created(), "carol", 1.4)
+        self.assertTrue(evidence.complete)
+        self.assertAlmostEqual(evidence.latencies_ms["bob"], 200)
+        self.assertAlmostEqual(evidence.latencies_ms["carol"], 400)
+        self.assertAlmostEqual(evidence.fanout_latency_ms, 400)
+
+    def test_all_receivers_and_ack_without_sender_c1_path_is_incomplete(self):
+        evidence = self.delivery()
+        evidence.accept_ack(acknowledged())
+        evidence.accept_created(created(), "bob", 1.2)
+        evidence.accept_created(created(), "carol", 1.4)
+        self.assertFalse(evidence.complete)
+        evidence.accept_created(sender_created(), "alice", 1.5)
+        self.assertTrue(evidence.complete)
+
+    def test_group_rejects_wrong_actor_or_unauthorised_receiver(self):
+        for viewer, actor in (("outsider", "alice"), ("bob", "carol")):
+            evidence = self.delivery()
+            event = created()
+            event["sender_id"] = actor
+            with self.assertRaises(qa.ProtocolFailure):
+                evidence.accept_created(event, viewer, 1.2)
+            self.assertFalse(evidence.complete)
+
+    def test_group_each_receiver_must_observe_same_stable_event(self):
+        for field, value in (("event_id", "33333333-3333-4333-8333-333333333333"),
+                             ("timestamp", "2026-10-01T08:00:05Z")):
+            evidence = self.delivery()
+            evidence.accept_created(created(), "bob", 1.2)
+            changed = created()
+            changed[field] = value
+            with self.assertRaises(qa.ProtocolFailure):
+                evidence.accept_created(changed, "carol", 1.3)
+            self.assertNotIn("carol", evidence.receiver_counts)
+
+    def test_group_different_m1_order_or_text_cannot_satisfy_fanout(self):
+        for field, value in (("message_id", "33333333-3333-4333-8333-333333333333"),
+                             ("order_key", "00000000000000000042"), ("text", "changed")):
+            evidence = self.delivery()
+            evidence.accept_created(created(), "bob", 1.2)
+            changed = created()
+            changed["payload"][field] = value
+            with self.assertRaises(qa.ProtocolFailure):
+                evidence.accept_created(changed, "carol", 1.3)
+
+    def test_group_ack_after_fanout_must_match_every_m1(self):
+        evidence = self.delivery()
+        evidence.accept_created(created(), "bob", 1.2)
+        evidence.accept_created(created(), "carol", 1.3)
+        event = acknowledged()
+        event["payload"]["message_id"] = "33333333-3333-4333-8333-333333333333"
+        with self.assertRaises(qa.ProtocolFailure):
+            evidence.accept_ack(event)
+        self.assertFalse(evidence.complete)
+
+    def test_group_false_ack_and_receiver_c1_are_never_success(self):
+        evidence = self.delivery()
+        bad = acknowledged()
+        bad["payload"]["status"] = "accepted"
+        with self.assertRaises(qa.ProtocolFailure):
+            evidence.accept_ack(bad)
+        with self.assertRaises(qa.ProtocolFailure):
+            evidence.accept_created(sender_created(), "bob", 1.2)
+        self.assertFalse(evidence.complete)
+
+    def test_group_invalid_or_private_frame_cannot_add_a_receiver_observation(self):
+        private = created()
+        private["payload"]["subject_id"] = "internal-identity"
+        missing = created()
+        missing["payload"].pop("order_key")
+        malformed = created()
+        malformed["payload"] = None
+        for event in (private, missing, malformed):
+            evidence = self.delivery()
+            with self.assertRaises(qa.ProtocolFailure):
+                evidence.accept_created(event, "bob", 1.2)
+            self.assertEqual(evidence.receiver_counts, {})
+            self.assertFalse(evidence.complete)
+
+    def test_group_history_rejects_receipts_missing_own_c1_and_incomplete_history(self):
+        evidence = self.delivery()
+        evidence.accept_ack(acknowledged())
+        evidence.accept_created(sender_created(), "alice", 1.1)
+        evidence.accept_created(created(), "bob", 1.2)
+        evidence.accept_created(created(), "carol", 1.3)
+        own = view()
+        own["client_message_id"] = C1
+        qa.check_group_history([own], [evidence], "alice", "room")
+        qa.check_group_history([view()], [evidence], "carol", "room")
+        with self.assertRaises(qa.ProtocolFailure):
+            qa.check_group_history([view()], [evidence], "alice", "room")
+        with self.assertRaises(qa.ProtocolFailure):
+            qa.check_group_history([], [evidence], "carol", "room")
+        bad = view()
+        bad["receipt"] = {"kind": "direct", "message_id": MID, "recipient_id": "bob",
+                          "status": "delivered", "updated_at": "2026-10-01T08:00:05Z"}
+        with self.assertRaises(qa.ProtocolFailure):
+            qa.check_group_history([bad], [evidence], "carol", "room")
+
+    def test_group_detail_rejects_duplicate_members_wrong_version_and_nonadmin_creator(self):
+        members = ["user-" + str(index) for index in range(50)]
+        detail = {"id": "room", "type": "group", "title": "QA group", "unread_count": 0,
+                  "membership_version": 1, "created_at": "2026-10-01T08:00:04Z",
+                  "members": [{"user_id": user, "role": "admin" if index == 0 else "member"}
+                              for index, user in enumerate(members)]}
+        qa.check_group_detail(detail, "room", members, members[0], 1)
+        for mutation in ("duplicate", "version", "role", "type"):
+            bad = copy.deepcopy(detail)
+            if mutation == "duplicate":
+                bad["members"][-1] = bad["members"][0]
+            elif mutation == "version":
+                bad["membership_version"] = 2
+            elif mutation == "role":
+                bad["members"][0]["role"] = "member"
+            else:
+                bad["type"] = "direct"
+            with self.assertRaises(qa.ProtocolFailure):
+                qa.check_group_detail(bad, "room", members, members[0], 1)
+
+    def test_group_requires_exactly_fifty_configured_users(self):
+        qa.validate_count("group-load", 50, 50)
+        for count, available in ((2, 50), (48, 50), (52, 52), (50, 49)):
+            with self.assertRaises(qa.InputFailure):
+                qa.validate_count("group-load", count, available)
+
+    def test_group_cadence_cannot_be_met_by_duplicate_slot_dispatches(self):
+        evidence = qa.LoadEvidence(2, 10, 1, offsets=[0, 0.1])
+        for index, times in ((0, [1, 1.2]), (1, [1.1, 6.1])):
+            for when in times:
+                evidence.record(index, when)
+        self.assertFalse(evidence.met)
+        with self.assertRaises(qa.ProtocolFailure):
+            evidence.require_met()
+
+    def test_group_never_reports_direct_baseline_or_incomplete_fanout_as_measured(self):
+        args = SimpleNamespace(mode="group-load", users=50, duration=600,
+                               monitor_pid=None, timeout=15)
+        exercise = qa.Exercise(args, {"ws_url": "wss://example.test/ws/v1"})
+        report = exercise.report("passed")
+        self.assertFalse(report["baseline_measured"])
+        self.assertFalse(report["group_load_measured"])
+        self.assertEqual(report["rooms"], 1)
+        self.assertEqual(report["group_receivers_per_intent_requested"], 49)
+        self.assertNotIn("hello", str(report))
+
+    def test_group_report_counts_distinct_receivers_and_cannot_hide_one_missing_member(self):
+        args = SimpleNamespace(mode="group-load", users=50, duration=10,
+                               monitor_pid=None, timeout=15)
+        exercise = qa.Exercise(args, {"ws_url": "wss://example.test/ws/v1"})
+        members = ["alice"] + ["member-" + str(index) for index in range(49)]
+        evidence = qa.GroupDelivery("room", "alice", members, C1, "hello", 1)
+        evidence.accept_ack(acknowledged())
+        evidence.accept_created(sender_created(), "alice", 1.1)
+        for member in members[1:-1]:
+            evidence.accept_created(created(), member, 1.2)
+        evidence.accept_created(created(), members[1], 1.3)
+        exercise.deliveries[("room", "alice", "hello")] = evidence
+        exercise.attempted = 1
+        report = exercise.report("failed")
+        self.assertEqual(report["group_receivers_requested"], 49)
+        self.assertEqual(report["group_receivers_observed"], 48)
+        self.assertEqual(report["group_intent_receiver_counts"][0]["receiver_frame_observations"], 49)
+        self.assertFalse(report["group_load_measured"])
+        self.assertFalse(report["group_intent_receiver_counts"][0]["all_receivers_and_sender_ack_verified"])
+        for private in members + [C1, EID, MID, "hello"]:
+            self.assertNotIn(private, str(report))
+
+
+class GroupDeadlineTests(unittest.IsolatedAsyncioTestCase):
+    async def test_group_deadline_is_from_dispatch_not_after_ack(self):
+        evidence = qa.GroupDelivery("room", "alice", {"alice", "bob", "carol"},
+                                    C1, "hello", asyncio.get_running_loop().time() - 2)
+        evidence.accept_ack(acknowledged())
+        with self.assertRaises(TimeoutError):
+            await evidence.wait(1)
+
+    async def test_expired_group_intent_cannot_pass_wait_even_if_fanout_arrived(self):
+        started = asyncio.get_running_loop().time() - 2
+        evidence = qa.GroupDelivery("room", "alice", {"alice", "bob", "carol"},
+                                    C1, "hello", started)
+        evidence.accept_ack(acknowledged())
+        evidence.accept_created(sender_created(), "alice", started + .1)
+        evidence.accept_created(created(), "bob", started + .2)
+        evidence.accept_created(created(), "carol", started + .3)
+        with self.assertRaises(TimeoutError):
+            await evidence.wait(1)
+
+    async def test_client_cleanup_reaps_reader_without_waiting_for_remote_close(self):
+        client = qa.Client(None, "wss://example.test/ws/v1", {}, 1,
+                           lambda *_: None, lambda *_: None)
+        client.reader = asyncio.create_task(asyncio.sleep(100))
+        client.heartbeat = asyncio.create_task(asyncio.sleep(100))
+        await asyncio.wait_for(client.close(), .2)
+        self.assertTrue(client.reader.cancelled())
+        self.assertTrue(client.heartbeat.cancelled())
 
 
 if __name__ == "__main__":
