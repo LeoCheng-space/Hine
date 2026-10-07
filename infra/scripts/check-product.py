@@ -89,7 +89,7 @@ def isolated_subnets(docker, env):
     if identifiers:
         networks = json.loads(run([docker, "network", "inspect", *identifiers], env=env))
         for network in networks:
-            for config in network.get("IPAM", {}).get("Config", []):
+            for config in network.get("IPAM", {}).get("Config") or ():
                 subnet = config.get("Subnet")
                 if subnet:
                     try:

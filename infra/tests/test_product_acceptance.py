@@ -1,5 +1,6 @@
 """Evidence must not claim execution or overwrite an operator's saved result."""
 import contextlib
+import importlib.util
 import json
 import os
 import signal
@@ -10,6 +11,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[2]
 
@@ -95,3 +97,18 @@ class ContainerAcceptanceSafetyTests(unittest.TestCase):
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=5)
+
+    def test_null_ipam_configs_do_not_mask_occupied_subnets(self):
+        spec = importlib.util.spec_from_file_location(
+            "container_acceptance", SOURCE / "infra/scripts/check-product.py")
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        networks = [
+            {"IPAM": {"Config": None}},
+            {"IPAM": {"Config": [{"Subnet": "172.29.0.0/24"}]}},
+        ]
+        # Read-only Docker metadata seam; no product response or daemon success.
+        with patch.object(runner, "run", side_effect=[b"none\nbridge\n", json.dumps(networks).encode()]):
+            subnets = runner.isolated_subnets("docker", {})
+        self.assertEqual(tuple(str(subnet) for subnet in subnets),
+                         ("172.29.1.0/24", "172.29.2.0/24"))

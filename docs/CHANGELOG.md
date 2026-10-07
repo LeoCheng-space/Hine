@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — 修正真 Docker nullable network metadata
+
+- [run37656312011](https://github.com/LeoCheng-space/Hine/actions/runs/37656312011) 已保留sanitized reports；container真runtime指出 `isolated_subnets` 在Docker無IPAM的network遇到合法`Config:null`便TypeError，尚未建置映像。修正只把無地址配置視為空迭代，不略過已占用CIDR或放寬service隔離。
+- 新確定性consumer regression以null IPAM及已占用172.29.0.0/24驗明分配172.29.1.0/24、172.29.2.0/24；先重現同一TypeError，修正後完整infra30／Ruff通過。這是topology演算法邊界測試，不是偽造Docker、產品authority或映像成功。
+- 同run的Chrome／Edge均停在genuine hidden斷言：Playwright預設focus override令各tab可見。保持失敗、不跳過或合成visibility事件；後續native no-defaults browser驗收與遠端image啟動按實際結果記錄。
+
 ## 2026-10-08 — 保留功能分支 CI 的 sanitized 失敗證據
 
 - [首輪功能分支run37654735137](https://github.com/LeoCheng-space/Hine/actions/runs/37654735137) 實際5個jobs成功、Chrome／Edge／container三個新runtime gates失敗；不以本機56checks或Review當遠端成功。原product／data-services／QA-infra／scanner與完整native8faults均成功。
