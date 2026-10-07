@@ -1,0 +1,51 @@
+services:
+  api:
+    environment:
+      HINE_ENV: production
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set isolated acceptance origin}
+      TRUSTED_PROXY_NETWORKS: ${TRUSTED_PROXY_NETWORKS:?Set isolated edge CIDR}
+
+  realtime:
+    environment:
+      HINE_ENV: production
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set isolated acceptance origin}
+      API_INTERNAL_URL: http://api:8080
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [acceptance]
+    restart: unless-stopped
+    environment:
+      HINE_DOMAIN: ${HINE_DOMAIN:?Set isolated acceptance domain}
+    ports:
+      - "127.0.0.1:${ACCEPTANCE_HTTPS_PORT:?Set owned loopback port}:443"
+    volumes:
+      - type: bind
+        source: ./infra/docker/Caddyfile.acceptance
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - caddy_acceptance_data:/data
+      - caddy_acceptance_config:/config
+    networks:
+      - backend
+      - edge
+    depends_on:
+      api:
+        condition: service_started
+      realtime:
+        condition: service_started
+
+volumes:
+  caddy_acceptance_data:
+  caddy_acceptance_config:
+networks:
+  backend:
+    ipam:
+      config:
+        - subnet: ${ACCEPTANCE_BACKEND_SUBNET:?Set isolated acceptance backend subnet}
+  edge:
+    ipam:
+      config:
+        - subnet: ${ACCEPTANCE_EDGE_SUBNET:?Set isolated acceptance edge subnet}

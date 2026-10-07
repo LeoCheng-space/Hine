@@ -1,5 +1,14 @@
 # HINE 文件變更紀錄
 
+## 2026-10-07 — 功能分支補齊可重跑 browser／container／fault CI
+
+- 從使用者已合併的main `26f13f19c50d260bf65567a009098e36880410e6` 建立 `feature/acceptance-completion`；每個修改按驗證批次commit，不自行提出main PR／merge／auto-deploy。既有兩VM／Nginx／PG16與使用者原checkout保持原樣；正式存取缺件不拿假provider或角色分工代替。
+- 新 `tests/browser/browser_acceptance.py` 固定Playwright1.63.0，重用原native Components与真production React bundle；實際UI／HTTP／WSS／PG／Redis／IDB／reload／原C1／receipt／群組與session撤權。修正runner自身缺prerequisites、strict locator、SDK keyword-only callback、SQL JSON codec及async membercontrol等待；未變更production App／API／BA邏輯。
+- 本機Chrome154.0.8037.97 headless56個實際檢查全通過：100個offline期間已提交訊息由保存游標重連，raw DOM／native IDB各恰好一筆同M1／原文，加rAF驗回376.05ms；真committed-response loss令原C1仍unconfirmed時實際reload並核回同C1／M1／intent，sender read投影／owner撤權cache／33個frontend inputs與4個compiled assets provenance驗明。另一device登出後真WSS傳訊存續通過。不是50人／正式VM SLO；headed hidden與physical Android不可由headless代填。
+- 新fresh own-project container runner建置兩真image、production explicit migration、secret owner UID/GID／64hex／private CIDR、verifiedCA TLS／WSS／readreceipt／restart／完整archive及restored-product flow。4個no-clobber／private NOT_EXERCISED／實際SIGTERM child reaping回歸先red後green，完整infra29通過；本機缺Docker不冒稱映像已執行，Standalone Compose真解析private5service／sole loopback Caddy通過。
+- API109＋BA100＋QA36＋infra29＋Web63＝337項與完整8個native product faults通過；本次lost notify實際WSS撤銷4675.354ms。CI保留原四jobs／Gitleaks，新增Chrome／Edge headed/Xvfb、完整native故障／atomicrestore與container gates，加Unicode artifact `--check`。遠端Actions按後續真run記錄，不把workflow存在當全綠。
+- Repo／Notion／SSH／ADC／GitHub secrets-variable存取查核仍無正式target／授權；真VMrouting／GCSbytes/IAM/CORS／AndroidIME旋轉／正式50人與VMbackup/rollback/monitoring仍Blocked，原始歷史JSON與source時點不改寫。
+
 ## 2026-10-07 — PR #6 同步 main 並解決 CI／infra 衝突
 
 - 將 `origin/main`／`0736110178a186816b94731caa80149879c44931` 整合進 PR #6 來源，保留已發布 `828fd33` 的全部修正；這是 source branch 同步，不是 merge PR 到 main，不 rebase／force-push／刪分支。

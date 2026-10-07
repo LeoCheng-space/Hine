@@ -1,0 +1,24 @@
+name: Native product tools
+description: Install PostgreSQL17, Redis, Caddy and a virtual display on disposable Ubuntu24.04 runners
+runs:
+  using: composite
+  steps:
+    - name: Install signed native tool packages
+      shell: bash
+      run: |
+        set -eu
+        sudo install -d /usr/share/postgresql-common/pgdg
+        sudo curl --fail --silent --show-error \
+          https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+          --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+        printf '%s\n' \
+          'Types: deb' \
+          'URIs: https://apt.postgresql.org/pub/repos/apt' \
+          'Suites: noble-pgdg' \
+          'Architectures: amd64' \
+          'Components: main' \
+          'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' \
+          | sudo tee /etc/apt/sources.list.d/hine-pgdg.sources >/dev/null
+        sudo apt-get update
+        sudo apt-get install --yes --no-install-recommends \
+          postgresql-17 postgresql-client-17 redis-server caddy xvfb xauth

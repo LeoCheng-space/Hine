@@ -24,13 +24,36 @@
 M1／本文／order_key 一致、歷史去重與排序、同步邊界／游標原子保存及重播去重；
 這些 oracle 單元測試不能當產品 E2E。
 
-## 真實瀏覽器另行驗收
+## 可重跑真實瀏覽器驗收
 
-協定 CLI 只量收件 W07 與 QA 自己的 SQLite 同步投影，**本工具**
-不提供瀏覽器儲存、UI 呈現、Web Lock 或 Page Visibility 證據。
-實際 React Web 與 PostgreSQL API 已提供；父工作另以真實 Chrome 檢查，
-結果／尚未執行的正式 VM、Edge、Android Chrome、GCS 案例見[驗收矩陣](../../docs/testing/acceptance-matrix.md)。
-不得因 CLI exit0 填「瀏覽器送達／已讀／呈現通過」；工具不發 W08/W09。另記錄：
+[`../browser/browser_acceptance.py`](../browser/browser_acceptance.py) 使用
+Playwright1.63.0與production Web，重用原有owned native PG17／API／BA／Redis／
+Caddy生命週期，跑實際UI、WSS、IndexedDB、reload、保存游標重連、receipt、
+群組撤權與同帳號另一裝置的session存續；不是協定oracle單元測試。
+
+```sh
+.venv/bin/python -m pip install -r backend/api/requirements.txt \
+  -r backend/realtime/requirements.txt -r tests/browser/requirements.txt
+# 前端依賴先依frontend/app/bun.lock安裝；工具必須是可用的真native executables。
+.venv/bin/python tests/browser/browser_acceptance.py \
+  --postgres-bin /operator/path/postgresql-17/bin \
+  --redis-server /operator/path/redis-server --caddy /operator/path/caddy \
+  --python /absolute/path/to/.venv/bin/python --bun /operator/path/bun \
+  --browser chrome --output /protected/existing-directory/new-browser.json
+```
+
+`--browser msedge` 選真正Microsoft Edge，缺指定channel直接失敗、不偷偷退到
+Chromium。`--browser chromium --browser-executable PATH` 可用實際binary，
+但報告標明custom executable。`--headed` 原生hidden觀察需真display；
+CI使用Xvfb與真Chrome／Edge，headless明確不執行hidden，不能代表physical Android。
+報告僅新0600 JSON，不覆寫existing／symlink；exit0觀察通過、1失敗、2缺先決條件。
+不產生trace／HAR／video／auth screenshots，不輸出credential／ID／原文。
+owned Caddy CA由native client驗證；browser暫忽略私有CA錯誤，**不是browser/public CA信任證據**。
+
+協定 CLI 仍只量W07與QA SQLite；它本身不提供browser儲存、呈現、Web Lock或
+Page Visibility證據。各次本機／CI結果及正式VM、Android、GCS門檻見
+[驗收矩陣](../../docs/testing/acceptance-matrix.md)。
+不得因**協定 CLI** exit0 填「瀏覽器送達／已讀／呈現通過」；協定工具不發 W08/W09。另記錄：
 
 - Chrome／Edge 桌面版與 Android Chrome 的實測版本、資料集、VM／網路。
 - 使用兩個隔離瀏覽器設定檔登入兩帳戶，單操作分頁／Web Lock 與工作階段錯誤分流。

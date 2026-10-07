@@ -68,7 +68,7 @@ jobs:
           python -m pip install -r backend/realtime/requirements.txt -r tests/load/requirements.txt
           python -m pip install ruff==0.16.10
       - name: Lint implemented Python
-        run: ruff check backend/realtime/src tests/integration tests/load tests/e2e infra/scripts infra/tests
+        run: ruff check backend/realtime/src tests/integration tests/load tests/e2e tests/browser infra/scripts infra/tests
       - name: Exercise realtime boundaries with actual Redis
         run: python -m unittest discover -s tests/integration -p 'test_realtime*.py' -v
       - name: Exercise protocol evidence boundaries
@@ -163,6 +163,7 @@ jobs:
           PUBLIC_ORIGIN: https://hine.run.place
         run: |
           bun install --frozen-lockfile
+          python generate-email-casefold.py --check
           bun run typecheck
           bun run test
           bun run build
@@ -171,3 +172,115 @@ jobs:
         with:
           name: hine-web
           path: frontend/app/dist/
+
+  browser-acceptance:
+    name: Browser acceptance (${{ matrix.browser }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, msedge]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up frontend build runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: Install real browser and product dependencies
+        run: |
+          python -m pip install -r backend/api/requirements.txt -r backend/realtime/requirements.txt -r tests/browser/requirements.txt
+          bun install --frozen-lockfile --cwd frontend/app
+      - name: Install native owned-cluster tools
+        uses: ./.github/actions/native-product-tools
+      - name: Exercise production UI, WSS and IndexedDB in the requested branded browser
+        run: |
+          mkdir -m 700 .browser-evidence
+          xvfb-run --auto-servernum python tests/browser/browser_acceptance.py \
+            --postgres-bin /usr/lib/postgresql/17/bin \
+            --redis-server /usr/bin/redis-server \
+            --caddy /usr/bin/caddy \
+            --python "$(command -v python)" \
+            --bun "$(command -v bun)" \
+            --browser "${{ matrix.browser }}" --headed \
+            --output ".browser-evidence/${{ matrix.browser }}.json"
+      - name: Preserve sanitized browser observations only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-acceptance-${{ matrix.browser }}
+          path: .browser-evidence/*.json
+          if-no-files-found: ignore
+
+  product-fault-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install real product dependencies
+        run: python -m pip install -r backend/api/requirements.txt -r backend/realtime/requirements.txt
+      - name: Install native owned-cluster tools
+        uses: ./.github/actions/native-product-tools
+      - name: Exercise all eight real product faults and atomic archive restoration
+        run: |
+          mkdir -m 700 .fault-evidence
+          python tests/faults/product_fault_drill.py \
+            --postgres-bin /usr/lib/postgresql/17/bin \
+            --redis-server /usr/bin/redis-server \
+            --caddy /usr/bin/caddy \
+            --python "$(command -v python)" \
+            --output .fault-evidence/product-faults.json
+      - name: Preserve sanitized fault observations only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-product-fault-acceptance
+          path: .fault-evidence/*.json
+          if-no-files-found: ignore
+
+  container-product-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up frontend build runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: Install real protocol oracle dependencies
+        run: python -m pip install -r tests/load/requirements.txt
+      - name: Build the production Web artifact
+        working-directory: frontend/app
+        env:
+          PUBLIC_ORIGIN: https://localhost
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+      - name: Build and exercise both real images with production migration and TLS
+        run: |
+          mkdir -m 700 .container-evidence
+          python infra/scripts/check-product.py \
+            --web-root frontend/app/dist \
+            --output .container-evidence/product-containers.json
+      - name: Preserve sanitized container observations only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-product-acceptance
+          path: .container-evidence/*.json
+          if-no-files-found: ignore

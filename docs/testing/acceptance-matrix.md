@@ -8,13 +8,22 @@
 <a id="current-product-evidence"></a>
 ## 目前實作與實測證據
 
-本輪 PR #6 的已發佈來源為 `feature/hine-first-integration`／
-`315afd8a1242332c4091d20c8e45907f88e3da2c`，目標 `main`，尚未合併。
-Review 修正在原 PR 的隔離 worktree `pr-6`；尚未 commit／push／resolve 遠端 Review。
-既有315head的四個Actions jobs成功，不代表本輪新修正已有遠端CI。
-下列 `fc9eb08`／`feature/product-integration`／312項與product-* JSON為前輪歷史證據，
-不改寫來源SHA或冒稱全部已重跑。角色欄是契約權責，不以分工阻擋可達實作，
-也不替組員簽核。
+最新已合併 `main` 基線為 `26f13f19c50d260bf65567a009098e36880410e6`：
+使用者於2026-10-07合併PR #6，包含 `828fd33` 修正與 `8d1982f` 衝突整合。
+本輪新增驗收位於獨立 `feature/acceptance-completion`；不自行建立 main PR、
+merge main、部署既有 VM 或升級 PostgreSQL16。修改按驗證批次 commit。
+下列 `fc9eb08`／312項／product-* 與PR6 JSON保留原始歷史時點；
+新的 CLI、瀏覽器、容器與正式雲端證據分開，不以分工阻擋可達實作或替組員簽核。
+
+### 發布驗收自動化補完（2026-10-07，功能分支）
+
+- [`browser_acceptance.py`](../../tests/browser/browser_acceptance.py) 使用固定Playwright1.63.0、真production React bundle、原有owned PG17／API／BA／Redis／Caddy生命周期，沒有假authority／本機GCS fallback。三個隔離設定檔實際UI註冊登入／公開ID／一對一／群組、native IDB／草稿與DeviceID實體reload、原C1/M1、回條、成員撤權與同帳號另一裝置登出存續均覆蓋。
+- 本機Chrome154.0.8037.97 **headless56個實際檢查全部通過**。收件者真正offline期間提交100則，保存游標重連後以同一M1／原文驗raw DOM／native IDB各恰好一筆，等待實際rAF；本次376.05ms。另以真committed-response loss在原C1仍unconfirmed時實際reload，核回同一M1／原文／intent；sender read投影、已撤權owner partition與33份frontend inputs／4份compiled assets／Bun provenance均驗明。這是單一loopback recovery實驗，**不是50user／600秒正式VM呈現p95**。Headless的native hidden檢查明確未執行，不合成visibility事件。
+- 新4個container CLI安全回歸已先失敗、修正後通過：缺Docker不產生PASS，0600 `NOT_EXERCISED`／exit2；既有報告及symlink目標的bytes／mtime／mode不被改寫；實際SIGTERM reaps自己的blocking child並發布private非成功報告。既有API109／BA100／QA36／Web63與完整infra29均通過，合計337項；browser assertions／8個fault scenarios獨立計數。
+- 本輪重新執行完整PF01–PF08：8個owned native真故障／還原場景全部通過；遺失登出通知至實際WSS撤銷4675.354ms，實際pg_dump71.401ms、atomic clone restore48.049ms。不是正式VM RPO／RTO。
+- 新CI設定保留原四jobs與秘密掃描，加入 **Chrome及Microsoft Edge headed/Xvfb真browser gate、完整8個native產品故障gate、真API＋BA容器／production migration gate**，以及Unicode產物 `--check`。設定與本機驗證不冒稱遠端全部已通過；每個新run以實際Actions結果記錄。
+- [`check-product.py`](../../infra/scripts/check-product.py) 只使用fresh、具名、owned Compose project／0700 temp／0600 secrets；scrub inherited設定、拒絕remote Docker、使用secret owner UID/GID與64hex Redis、明確正式migration、verified privateCA TLS／真WSS／receipt／restart／archive。Standalone Compose實際解析驗明5services、private backend、只有loopback Caddy發布；本機無Docker，映像啟動證據須由功能分支CI取得。
+- **正式尚未解除：** repo／Notion／SSH capability無可用VM登入目標，ADC實際不可用，GitHub secrets／variables亦空；真project／private bucket／signing IAM／CORS與physical Android／IME／rotation無target。正式公開routing、真GCS、實機、50users/600秒及VM backup／rollback／monitoring保留Blocked，不用本機或CI代填。
 
 ### PR #6 本輪修正與新證據
 
