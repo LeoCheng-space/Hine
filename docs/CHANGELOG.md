@@ -1,5 +1,13 @@
 # HINE 文件變更紀錄
 
+## 2026-10-07 — PR #6 同步 main 並解決 CI／infra 衝突
+
+- 將 `origin/main`／`0736110178a186816b94731caa80149879c44931` 整合進 PR #6 來源，保留已發布 `828fd33` 的全部修正；這是 source branch 同步，不是 merge PR 到 main，不 rebase／force-push／刪分支。
+- CI 同時保留 main 的每分支 push／pull_request、`contents: read`、完整 checkout 與 Gitleaks v3，以及原四個 jobs 的真 PG／Redis、disposable restore、API／Web／QA／infra 測試。Checkout 統一 v6；秘密掃描仍按 push／PR commit 範圍執行，沒有關掉 scanner、comments／artifact 的既有 false 設定不變。
+- `infra/README.md` 保留現有兩台 VM／Nginx／Let's Encrypt／PostgreSQL16 與 GCP 記錄連結，分清單 VM Compose PostgreSQL17／Redis7 目標；保留真 API profiles、secret／trusted proxy／migration／GCS／備份安全。修補 code fence，`infra/gcp/README.md` 的 main 更新原樣保留，不操作或升級現有 VM／資料庫。
+- Gitleaks v8.24.3 實際 history scan 命中三個不可變歷史 evidence source SHA256；已對照真正 `auth.py`／`api.ts` bytes 驗明，不是憑證。`.gitleaksignore` 只列 commit＋path＋rule＋line 精確誤報指紋，不修改歷史 JSON、不略過整個 path／rule／未來 commit。同 evidence path 的新 synthetic PAT detector canary 仍被攔截；全46 commits redacted scan 通過。
+- 解衝突 Git index 的隔離 checkout 重新109 API＋100 BA＋36 QA＋25 infra＋63 Web＝333項及20個真HTTP/WSS/PG restart smoke通過；actionlint／Ruff／typecheck／release build／shell／default-realtime-product Compose通過，兩份獨立CI／infra Review無重要缺陷。新 merge commit／遠端 CI 以發布及 Notion 記錄為準；既有環境進度與正式產品驗收仍分開。
+
 ## 2026-10-06 — PR #6 八項 Review 修正與實際 UI 收斂
 
 - 由已發佈 `feature/hine-first-integration`／`315afd8a1242332c4091d20c8e45907f88e3da2c` 的原 PR #6 隔離 worktree `pr-6` 修正，不改原工作區／使用者 `.omp/`。本輪尚未 commit／push／resolve 遠端 Review／merge main／刪分支；既有 head 的 Actions 全綠不冒稱本輪新 CI。

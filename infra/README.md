@@ -1,7 +1,37 @@
-<a id="infrastructure"></a>
 # 基礎設施
 
 HINE 的部署與維運設定。
+
+## 目前開發環境
+
+目前 HINE 開發／整合環境部署於 Google Cloud Platform。
+
+- Web Server：GCP Compute Engine
+- Database Server：GCP Compute Engine
+- Database：PostgreSQL 16
+- Web Server：Nginx
+- TLS：Let's Encrypt
+- Domain：`hine.run.place`
+
+目前開發環境暫時採 Web 與 PostgreSQL 分離部署，詳細資訊請參考：
+
+- [`infra/gcp/README.md`](./gcp/README.md)
+
+## HINE-IC-0.4 目標架構
+
+課程版目標架構仍採：
+
+```text
+Single GCP Compute Engine VM
+└─ Docker Compose
+   ├─ Web
+   ├─ api
+   ├─ realtime
+   ├─ PostgreSQL
+   └─ Redis
+```
+
+目前分離部署的 PostgreSQL16／Nginx 環境紀錄與下列課程版 Compose PostgreSQL17 目標分開管理；本次整合不升級、搬移或覆寫既有 VM／資料庫。
 
 課程版部署採單台 GCP Compute Engine VM＋Docker Compose：單一 Web 入口、API、realtime（各一實例）、PostgreSQL 與單一 Redis；附件可選用 GCS 私有儲存桶。只有 HTTPS／WSS Web 入口對外，內部路由、PostgreSQL、Redis 不公開；不採 Cloud Run、Kubernetes 或自動擴縮，不承諾高可用。
 
@@ -18,4 +48,4 @@ docker compose --profile product --profile realtime up -d --build --wait --wait-
 
 GCS 為選配，只有實際私有 bucket 與可簽署的真實服務身分備妥後才啟用 `infra/docker/compose.gcs.yml`。正式 `stack.sh` 透過 `GCS_BUCKET`、絕對路徑 `GCS_CREDENTIALS_FILE` 加入 overlay；不產生假憑證。實際建置／設定、GCS 操作限制、私有資料備份還原與安全邊界請見[部署與維運手冊](../docs/deployment/README.md)。前端 build instructions 由[Web app README](../frontend/app/README.md) 管理。
 
-本文件不宣稱 VM、DNS、TLS、GCS 或產品正式部署已完成；Docker 啟動、雲端權限與實體環境驗收須依實際可用資源單獨記錄。
+上方既有 VM、DNS、Nginx／TLS 與分離 PostgreSQL16 進度以 [GCP 環境紀錄](./gcp/README.md) 為準；不能由此推論課程版完整 Compose API／WSS、真 GCS 或備份回滾已驗收。目標產品的 Docker 啟動、雲端權限與實體環境驗收須依實際可用資源單獨記錄。
