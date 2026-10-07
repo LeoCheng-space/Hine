@@ -56,8 +56,17 @@ def _native_startup_diagnostic(components, browser: str, child) -> tuple[str, di
         category = "NATIVE_LIBRARY_LOAD_FAILED"
     elif b"GLIBC_" in log_bytes and b"not found" in log_bytes:
         category = "NATIVE_RUNTIME_ABI_UNAVAILABLE"
+    elif b"zygote_host_impl_linux" in log_bytes:
+        category = "ZYGOTE_STARTUP_FATAL"
+    elif (b"sandbox_linux" in log_bytes or b"sandbox_policy_linux" in log_bytes
+          or b"credentials.cc" in log_bytes):
+        category = "LINUX_SANDBOX_COMPONENT_FATAL"
+    elif b"process_singleton_posix" in log_bytes:
+        category = "PROFILE_SINGLETON_FATAL"
+    elif b"crashpad" in log_bytes.lower():
+        category = "CRASHPAD_FATAL"
     elif b"FATAL:" in log_bytes:
-        category = "BROWSER_FATAL_LOGGED"
+        category = "CHROMIUM_FATAL_COMPONENT_UNCLASSIFIED"
     else:
         category = "EXITED_BEFORE_DEVTOOLS_UNCLASSIFIED"
     browser_name = "EDGE" if browser == "msedge" else "BROWSER"

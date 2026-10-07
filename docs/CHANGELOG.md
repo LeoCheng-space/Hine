@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — 完整container gate成功，保留Edge fatal分類
+
+- [run37674312851](https://github.com/LeoCheng-space/Hine/actions/runs/37674312851) 七個jobs SUCCESS，僅native Edge startup失敗。真API／BA images、production migration、verifiedTLS、雙WSS原C1／M1／W08-W09／history、PG／Redis restart後原session、停止writers後full tables／sequence atomic clone restore、API綁clone保留JWT並真新寫入與static Web全部通過。
+- Chrome headed59checks／真正hidden→foreground回條及100則補回通過；Edge private startup log318bytes、SIGTRAP(-5)，目前只能辨明fatal，不能由主SDK launch成功推論native Edge通過。擴充固定Chromium component category（zygote／sandbox／profile singleton／crashpad／unclassified），不發布rawlog／source path／本文，不猜變更sandbox。
+- Matrix更新338項／完整container實測與仍未完成的Edge／正式五門檻。新分類Ruff／privacy canary formatter通過；每個新增／修改批次commit，仍僅feature-only push、無main PR。
+
 ## 2026-10-08 — Redis private runtime config與fixed startup diagnostics
 
 - [run37666361557](https://github.com/LeoCheng-space/Hine/actions/runs/37666361557) 的Chrome headed59checks全通過、100則復原273.82ms；Edge在native child/CDP ready之前退出，PG healthy但Redis restart unhealthy。保持兩gate失敗，不以主SDK Edge啟動或初始container flow冒稱整體完成。
