@@ -186,7 +186,21 @@ def wait_healthy(compose, env, docker, services, timeout=180):
         if ready_services:
             return
         time.sleep(2)
-    raise AcceptanceFailure("PRODUCT_HEALTHCHECK_TIMEOUT")
+    states = {}
+    for service in services:
+        try:
+            container = run(compose + ["ps", "-q", service], env=env).decode().strip()
+            if not container:
+                states[service] = "absent"
+                continue
+            state = run([docker, "inspect", "--format", "{{.State.Health.Status}}", container],
+                        env=env).decode().strip()
+            states[service] = state if state in {"healthy", "unhealthy", "starting"} else "unknown"
+        except AcceptanceFailure:
+            states[service] = "unavailable"
+    failure = AcceptanceFailure("PRODUCT_HEALTHCHECK_TIMEOUT")
+    failure.service_health = states
+    raise failure
 
 def ready(compose, env, docker, ca_path, port):
     import ssl
@@ -679,7 +693,12 @@ def main():
                 exercise_messages_and_receipts(exercise, protocol, ca))
             report["evidence"]["authenticated_wss"] = "two_user_c1_m1_w08_w09_receipt_history"
             report["protocol"] = {**protocol_summary, **receipt_summary}
-            run(compose + ["restart", "postgres", "redis", "api", "realtime"], env=compose_env, timeout=240)
+            # Recover dependencies before restarting their consumers, as in the
+            # production handoff; retain the same containers, secrets and volumes.
+            run(compose + ["stop", "--timeout", "20", "api", "realtime"], env=compose_env, timeout=60)
+            run(compose + ["restart", "postgres", "redis"], env=compose_env, timeout=120)
+            wait_healthy(compose, compose_env, docker, ("postgres", "redis"))
+            run(compose + ["start", "api", "realtime"], env=compose_env, timeout=60)
             wait_healthy(compose, compose_env, docker, ("api", "realtime", "postgres", "redis"))
             ready(compose, compose_env, docker, ca, port)
             asyncio.run(verify_restarted_product_state(exercise, protocol, ca, target_delivery))
@@ -759,6 +778,8 @@ def main():
     except AcceptanceFailure as error:
         report["failure_code"] = error.code
         report["failure_sites"] = _failure_sites(error)
+        if hasattr(error, "service_health"):
+            report["service_health"] = error.service_health
     except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         report["failure_code"] = "INVALID_TOOL_OR_PRODUCT_RESULT"
         report["failure_sites"] = _failure_sites(error)

@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — 容器復原先恢復data services再啟動consumers
+
+- [run37661758660](https://github.com/LeoCheng-space/Hine/actions/runs/37661758660) 的sanitized report證明真API／BA images建置、production migration、verified privateCA HTTPS及2個original C1/M1／W08-W09／history均通過；整體仍在四service同時restart後的health gate失敗，restore未執行，不宣稱全部容器完成。
+- 對owned project沿用正式handoff順序：先停止API／BA，重啟原PG／Redis並等真健康，再啟動原API／BA與完整health/JWT/history/C1/receipt驗證。same containers／keys／volumes不變，不增timeout、不盲重試、不略過失敗；若仍timeout，只記固定service名稱與health enum，不上傳private logs。
+- 修改後Ruff與infra30通過，實際Docker recovery／完整clone restore仍由新功能分支CI決定；既有VM／PG16不涉及此操作。
+
 ## 2026-10-08 — 真native headed hidden／foreground browser驗收
 
 - 不使用Playwright強制visible的recipient context：headed收件者使用同指定Chrome／Edge真binary、fresh0700 native profile、原Components持有／清理child，透過公開 `connect_over_cdp(no_defaults=True)` 接管default context。保留SDK固定版本、privateCA限制；不接用operator profile或browser，不合成visibility事件。
