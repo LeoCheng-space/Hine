@@ -50,6 +50,16 @@ class AcceptanceFailure(Exception):
         self.code = code
 
 
+def _failure_sites(error: BaseException) -> list[dict]:
+    sites = []
+    trace = error.__traceback__
+    while trace is not None:
+        if trace.tb_frame.f_code.co_filename == __file__:
+            sites.append({"function": trace.tb_frame.f_code.co_name, "line": trace.tb_lineno})
+        trace = trace.tb_next
+    return sites
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -828,14 +838,16 @@ def main() -> int:
         code = 2
     except AcceptanceFailure as failure:
         evidence["failure_code"] = failure.code
+        evidence["failure_sites"] = _failure_sites(failure)
         record["status"] = "FAIL"
         code = 1
     except (KeyboardInterrupt, asyncio.CancelledError):
         evidence["failure_code"] = "RUN_INTERRUPTED"
         record["status"] = "FAIL"
         code = 1
-    except Exception:  # noqa: BLE001 - sanitize arbitrary product/browser exceptions at the evidence boundary.
+    except Exception as failure:  # noqa: BLE001 - sanitize arbitrary product/browser exceptions at the evidence boundary.
         evidence["failure_code"] = "REAL_PRODUCT_OR_BROWSER_RUNNER_ERROR"
+        evidence["failure_sites"] = _failure_sites(failure)
         record["status"] = "FAIL" if record["checks"] else "NOT_EXERCISED"
         code = 1 if record["checks"] else 2
     finally:

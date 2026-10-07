@@ -34,6 +34,16 @@ class AcceptanceFailure(Exception):
 class AcceptanceUnavailable(AcceptanceFailure):
     pass
 
+
+def _failure_sites(error):
+    sites = []
+    trace = error.__traceback__
+    while trace is not None:
+        if trace.tb_frame.f_code.co_filename == __file__:
+            sites.append({"function": trace.tb_frame.f_code.co_name, "line": trace.tb_lineno})
+        trace = trace.tb_next
+    return sites
+
 def run(command, *, env=None, input_data=None, timeout=900, cwd=ROOT):
     try:
         result = subprocess.run(command, cwd=cwd, env=env, input=input_data,
@@ -748,12 +758,16 @@ def main():
         report.update(status="NOT_EXERCISED", failure_code=error.code)
     except AcceptanceFailure as error:
         report["failure_code"] = error.code
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        report["failure_sites"] = _failure_sites(error)
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         report["failure_code"] = "INVALID_TOOL_OR_PRODUCT_RESULT"
-    except (OSError, subprocess.SubprocessError):
+        report["failure_sites"] = _failure_sites(error)
+    except (OSError, subprocess.SubprocessError) as error:
         report["failure_code"] = "LOCAL_TOOL_FAILED"
-    except Exception:  # noqa: BLE001 - CLI privacy boundary never exposes product credentials or private traceback data.
+        report["failure_sites"] = _failure_sites(error)
+    except Exception as error:  # noqa: BLE001 - CLI privacy boundary never exposes product credentials or private traceback data.
         report["failure_code"] = "PRODUCT_ACCEPTANCE_FAILED"
+        report["failure_sites"] = _failure_sites(error)
     finally:
         for signum in old_signals:
             signal.signal(signum, signal.SIG_IGN)

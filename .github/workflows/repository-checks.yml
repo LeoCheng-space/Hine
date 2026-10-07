@@ -216,6 +216,7 @@ jobs:
           name: browser-acceptance-${{ matrix.browser }}
           path: .browser-evidence/*.json
           if-no-files-found: ignore
+          include-hidden-files: true
 
   product-fault-acceptance:
     runs-on: ubuntu-24.04
@@ -247,6 +248,7 @@ jobs:
           name: native-product-fault-acceptance
           path: .fault-evidence/*.json
           if-no-files-found: ignore
+          include-hidden-files: true
 
   container-product-acceptance:
     runs-on: ubuntu-24.04
@@ -284,3 +286,4 @@ jobs:
           name: container-product-acceptance
           path: .container-evidence/*.json
           if-no-files-found: ignore
+          include-hidden-files: true

@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — 保留功能分支 CI 的 sanitized 失敗證據
+
+- [首輪功能分支run37654735137](https://github.com/LeoCheng-space/Hine/actions/runs/37654735137) 實際5個jobs成功、Chrome／Edge／container三個新runtime gates失敗；不以本機56checks或Review當遠端成功。原product／data-services／QA-infra／scanner與完整native8faults均成功。
+- GitHub artifact API實際只列`hine-web`，三類報告在hidden directories被 `actions/upload-artifact@v4` 的預設`include-hidden-files:false`略過。只對既有明確的sanitized JSON glob啟用hidden files；不擴大上傳secret／log／browser profile／trace／HAR。
+- 兩個acceptance CLI失敗報告補充**本runner函式名與行號**，不保留exception message、local path、SQL、credential、ID或本文；用真失敗external command驗明exit1及兩個source-only位置，4個CLI安全回歸／Ruff／actionlint通過。這批恢復可診斷證據，不抑制或跳過仍失敗的runtime assertions；新CI按後續實際run判定。
+
 ## 2026-10-07 — 功能分支補齊可重跑 browser／container／fault CI
 
 - 從使用者已合併的main `26f13f19c50d260bf65567a009098e36880410e6` 建立 `feature/acceptance-completion`；每個修改按驗證批次commit，不自行提出main PR／merge／auto-deploy。既有兩VM／Nginx／PG16與使用者原checkout保持原樣；正式存取缺件不拿假provider或角色分工代替。
