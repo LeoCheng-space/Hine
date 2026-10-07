@@ -585,6 +585,27 @@ class AttachmentCleanupPgIsolationTests(ProductCase):
             json={"upload_attempt_id": attempt, "sha256": PNG_SHA})
         self.assertEqual((status, result["error"]["code"]), (409, "CONFLICT"))
 
+    async def test_confirmed_absent_expired_object_finishes_cleanup_and_is_not_rescanned(self):
+        aid, attempt = await self.seed()
+        calls = []
+
+        async def object_absent(bucket, key):
+            calls.append((bucket, key))
+
+        runtime = SimpleNamespace(pool=self.runtime.pool,
+            storage=SimpleNamespace(configured=True, delete_abandoned=object_absent))
+        # The metric counts physical object deletes, not confirmed absence.
+        self.assertEqual(await cleanup_abandoned(runtime), 0)
+        async with self.runtime.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT state,cleaned_at FROM attachments WHERE attachment_id=$1", aid)
+        self.assertEqual(row["state"], "abandoned")
+        self.assertIsNotNone(row["cleaned_at"])
+        self.assertEqual(await cleanup_abandoned(runtime), 0)
+        self.assertEqual(calls, [("unit-isolation", "attempts/" + aid)])
+        status, result = await self.request("POST", f"/api/v1/uploads/{aid}/complete", self.access,
+            json={"upload_attempt_id": attempt, "sha256": PNG_SHA})
+        self.assertEqual((status, result["error"]["code"]), (409, "CONFLICT"))
+
     async def test_locked_completion_and_provider_outage_do_not_delete_or_reopen(self):
         aid, _ = await self.seed()
         async def provider_down(bucket, key):

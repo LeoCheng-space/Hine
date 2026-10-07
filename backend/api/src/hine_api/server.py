@@ -8,7 +8,7 @@ import asyncpg
 from aiohttp import web
 from hine_realtime import protocol as p
 
-from . import db
+from . import db, maintenance
 from .config import Settings
 from .support import Fault, body, error, response
 
@@ -62,16 +62,31 @@ class Runtime:
             if reply.status != 200:
                 LOG.warning("committed_notice_unavailable")
 
+    async def _maintain(self):
+        while True:
+            await asyncio.sleep(60)
+            if self.pool is not None:
+                try:
+                    await maintenance.prune_expired(self)
+                except (asyncpg.PostgresError, OSError, TimeoutError):
+                    # Never log database errors containing private row values.
+                    LOG.warning("retention_cleanup_unavailable")
+
     async def lifecycle(self, app):
         self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.settings.dependency_timeout), trust_env=False)
+        maintenance_task = None
         try:
             if self.settings.valid:
                 try:
                     await self.connect()
                 except (asyncpg.PostgresError, OSError, TimeoutError):
                     LOG.warning("database_unavailable")
+                maintenance_task = asyncio.create_task(self._maintain(), name="api-retention-maintenance")
             yield
         finally:
+            if maintenance_task is not None:
+                maintenance_task.cancel()
+                await asyncio.gather(maintenance_task, return_exceptions=True)
             await self.storage.close()
             if self.pool is not None:
                 await self.pool.close()

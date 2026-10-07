@@ -1,4 +1,5 @@
 import { ApiError, describeError, isRecord, validateConfig, wireRequest, type RequestInit } from './api';
+import { emailCasefold } from './email-casefold';
 import type { AccessSession, ApiResult, RuntimeConfig, SessionContext, UserProfile } from './types';
 export interface SessionSnapshot { context: SessionContext; phase: 'initializing' | 'ready' | 'blocked' | 'unsupported'; error: string | null }
 const loggedOut: SessionContext = Object.freeze({ state: 'logged_out', user_id: null, device_id: null, session_generation: null, access_token: null, expires_at: null });
@@ -26,25 +27,29 @@ export class DeviceStore {
     const owners: DeviceBindings['owners'] = {}, aliases: DeviceBindings['aliases'] = {};
     for (const [id, binding] of Object.entries(value.owners)) {
       if (!isRecord(binding) || typeof binding.device_id !== 'string' || typeof binding.canonical_email !== 'string') throw new ApiError('STORAGE_UNAVAILABLE');
-      Object.defineProperty(owners, id, { value: { device_id: binding.device_id, canonical_email: binding.canonical_email }, enumerable: true, configurable: true });
+      Object.defineProperty(owners, id, { value: { device_id: binding.device_id, canonical_email: emailCasefold(binding.canonical_email) }, enumerable: true, configurable: true });
     }
     for (const [alias, id] of Object.entries(value.aliases)) {
       if (typeof id !== 'string' || !Object.hasOwn(owners, id)) throw new ApiError('STORAGE_UNAVAILABLE');
-      Object.defineProperty(aliases, alias, { value: id, enumerable: true, configurable: true });
+      Object.defineProperty(aliases, emailCasefold(alias), { value: id, enumerable: true, configurable: true });
     }
+    // Canonical server profiles are authoritative even when the old lowercase
+    // store saved only a submitted spelling. No owner/device partition is moved.
+    for (const [id, binding] of Object.entries(owners)) Object.defineProperty(aliases, binding.canonical_email, { value: id, enumerable: true, configurable: true });
     return { owners, aliases };
   }
   lookup(submittedEmail: string): string | null {
     try {
-      const bindings = this.read(), alias = submittedEmail.toLowerCase();
+      const bindings = this.read(), alias = emailCasefold(submittedEmail);
       const owner = Object.hasOwn(bindings.aliases, alias) ? bindings.aliases[alias] : undefined;
       return owner && Object.hasOwn(bindings.owners, owner) ? bindings.owners[owner].device_id : null;
     } catch { throw new ApiError('STORAGE_UNAVAILABLE'); }
   }
   save(profile: UserProfile, deviceId: string, submittedEmail?: string): void {
     const bindings = this.read(), storage = this.storage ?? localStorage;
-    Object.defineProperty(bindings.owners, profile.id, { value: { device_id: deviceId, canonical_email: profile.email }, enumerable: true, configurable: true });
-    for (const alias of [profile.email.toLowerCase(), ...(submittedEmail ? [submittedEmail.toLowerCase()] : [])]) Object.defineProperty(bindings.aliases, alias, { value: profile.id, enumerable: true, configurable: true });
+    const canonicalEmail = emailCasefold(profile.email);
+    Object.defineProperty(bindings.owners, profile.id, { value: { device_id: deviceId, canonical_email: canonicalEmail }, enumerable: true, configurable: true });
+    for (const alias of [canonicalEmail, ...(submittedEmail ? [emailCasefold(submittedEmail)] : [])]) Object.defineProperty(bindings.aliases, alias, { value: profile.id, enumerable: true, configurable: true });
     storage.setItem('hine-device-store', JSON.stringify(bindings));
     // Clean cutover from this app's obsolete email-only storage; it is never read as a shim.
     const obsolete: string[] = [];

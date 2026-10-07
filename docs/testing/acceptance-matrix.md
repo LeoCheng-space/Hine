@@ -8,10 +8,22 @@
 <a id="current-product-evidence"></a>
 ## 目前實作與實測證據
 
-已合併基線 `fc9eb08ca484ef9495d98afb830e1f10ee5973d7`；本輪交付分支為
-`feature/product-integration`，依使用者要求 commit／push；實際 SHA／遠端狀態以 Git 及 Notion 發布紀錄為準。未建立新 PR，不冒稱遠端 Actions 已驗證。
-使用者直接合併 PR #4 的陳述是本輪依據，不另查 PR 來確認。角色欄是契約權責，
-不再以某角色未交付阻擋本輪實作，也不替組員簽核。
+本輪 PR #6 的已發佈來源為 `feature/hine-first-integration`／
+`315afd8a1242332c4091d20c8e45907f88e3da2c`，目標 `main`，尚未合併。
+Review 修正在原 PR 的隔離 worktree `pr-6`；尚未 commit／push／resolve 遠端 Review。
+既有315head的四個Actions jobs成功，不代表本輪新修正已有遠端CI。
+下列 `fc9eb08`／`feature/product-integration`／312項與product-* JSON為前輪歷史證據，
+不改寫來源SHA或冒稱全部已重跑。角色欄是契約權責，不以分工阻擋可達實作，
+也不替組員簽核。
+
+### PR #6 本輪修正與新證據
+
+- [八項Review及source SHA256](evidence/pr6-review-remediation.json)：過期SyncCursor有界清理、invalidation contiguous-prefix retention、確認缺物件終止cleanup、原PUT/A21 attempt重試、A14唯一recipient拆包、聊天清單事件刷新、完整Unicode canonical DeviceID、queued A12單調metadata。每项均保留實際失敗前／修正後觀察，無新公開介面／假provider。
+- 109 API／100 BA／36 QA／25 infra／63 Web＝**333項**；typecheck、production bundle、Ruff、actionlint、shell及生成表檢查通過。60秒真背景tick、1,000筆有界刪除、floor／空head／frontier lock、真三WSS全部W11／stable feed／冪等／byte拆包均已驗。
+- 10個真native metadata案例涵蓋old2/new3反序role/title/members、queuedIDB、withdraw/rejoin/session refresh、direct-null、201群組detail eviction、summary-only title/roles與uncached snapshot replay；4個fresh opening案例及實際release A14兩人表單直接開composer通過。特定fresh-join route handoff保持原票據安全與route/epoch/owner隔離，不泛用重試。
+- 固定/chats remote join／rename／remove／server未讀、2次burst refresh／max concurrent1、A11分頁20＋3／23唯一render及舊owner response拒絕通過。Python3.12／Unicode15.0.0全部1,112,064 scalars consumer＋exact fold比對、真未知拼法login DeviceID／IDB draft／原C1／實際reload通過。
+- 新[真native PF08](evidence/pr6-native-restore.json)停止自建writers並pg_dump／atomic clone restore通過；真HTTP/WSS/PG restart smoke20項通過。20個real peer W05／原C1持久W06到production DOM＋rAF的sample p95 37.7ms、max42.3ms，**不是50user／正式VM SLO**。
+- apex／www公開API與WSS升級實際均nginx404；www首頁驗證TLS200只證明既有入口。SDK實際ADC unavailable、無project/bucket/signing／SSH target與Edge/adb/Docker/gcloud；正式VM、GCS physical bytes/CORS、physical hidden/soft keyboard及正式效能/restore門檻仍未通過。
 
 ### 已觀察的本機產品證據
 

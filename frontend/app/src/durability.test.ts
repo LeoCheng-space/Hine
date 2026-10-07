@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { applyEvents, boundedPartition, ConversationAuthority, emptyPartition, installSnapshot, recordReceiptFailure, receiptCanRetryAutomatically, storeMessage } from './repository';
+import { parseServerFrame } from './chat';
 import type { ConversationDetail, MessageView } from './types';
 const m:MessageView={id:'00000000-0000-4000-8000-000000000001',event_id:'00000000-0000-4000-8000-000000000002',conversation_id:'g',sender_id:'peer',created_at:'2026-10-01T00:00:00Z',order_key:'00000000000000000001',type:'text',text:'old membership body',receipt:null};
 const detail:ConversationDetail={id:'g',type:'group',title:'renamed after rejoin',unread_count:0,members:[{user_id:'me',role:'member'}],membership_version:4,created_at:m.created_at};
@@ -13,6 +14,27 @@ test('a successful A12 or A19 from before withdrawal remains stale after rejoin'
  const authority=new ConversationAuthority(),old=authority.capture('g');authority.invalidate('g');authority.invalidate('g');
  expect(authority.isCurrent('g',old)).toBe(false);expect(authority.isCurrent('other',authority.capture('other'))).toBe(true);
  const newRead=authority.capture('g');authority.invalidateAll();expect(authority.isCurrent('g',newRead)).toBe(false);
+});
+test('non-self W20 metadata versions do not consume the self-join boundary or pending C2',()=>{
+ const state=emptyPartition();state.details.g={...detail,title:'version one',membership_version:1,members:[{user_id:'me',role:'admin'},{user_id:'peer',role:'member'}]};state.conversations.g=state.details.g;state.selfMembershipVersions.g=1;
+ storeMessage(state,m,'me');state.receipts[m.id].desired='read';
+ const title=parseServerFrame({event:'conversation.updated',event_id:'00000000-0000-4000-8000-000000000010',timestamp:m.created_at,conversation_id:'g',payload:{actor_id:'me',membership_version:2,changes:{kind:'title',title:'version two'}}},'me');
+ const promoted=parseServerFrame({event:'conversation.updated',event_id:'00000000-0000-4000-8000-000000000011',timestamp:m.created_at,conversation_id:'g',payload:{actor_id:'me',membership_version:3,changes:{kind:'role',member_id:'peer',role:'admin'}}},'me');
+ applyEvents(state,[title,promoted],'me');
+ expect(state.details.g.title).toBe('version two');expect(state.details.g.membership_version).toBe(3);expect(state.details.g.members).toEqual([{user_id:'me',role:'admin'},{user_id:'peer',role:'admin'}]);
+ expect(state.selfMembershipVersions.g).toBe(1);expect(state.messages.g).toEqual([m]);expect(state.receipts[m.id].desired).toBe('read');expect(state.receipts[m.id].blocked).toBe(false);
+});
+test('late non-self metadata events leave newer title, roles, members and pending C2 intact',()=>{
+ const state=emptyPartition();state.cursor='current cursor';state.details.g={...detail,title:'version three',membership_version:3,members:[{user_id:'me',role:'admin'},{user_id:'peer',role:'admin'}]};state.conversations.g=state.details.g;state.selfMembershipVersions.g=1;
+ storeMessage(state,m,'me');state.receipts[m.id].desired='read';
+ const stale=[
+  {event:'conversation.updated',event_id:'00000000-0000-4000-8000-000000000012',timestamp:m.created_at,conversation_id:'g',payload:{actor_id:'me',membership_version:2,changes:{kind:'title',title:'obsolete title'}}},
+  {event:'conversation.updated',event_id:'00000000-0000-4000-8000-000000000013',timestamp:m.created_at,conversation_id:'g',payload:{actor_id:'me',membership_version:2,changes:{kind:'role',member_id:'peer',role:'member'}}},
+  {event:'conversation.member_removed',event_id:'00000000-0000-4000-8000-000000000014',timestamp:m.created_at,conversation_id:'g',payload:{actor_id:'me',membership_version:2,member_id:'peer',change:'removed'}},
+ ].map(value=>parseServerFrame(value,'me'));
+ applyEvents(state,stale,'me');
+ expect(state.details.g.title).toBe('version three');expect(state.conversations.g.title).toBe('version three');expect(state.details.g.membership_version).toBe(3);expect(state.details.g.members).toEqual([{user_id:'me',role:'admin'},{user_id:'peer',role:'admin'}]);
+ expect(state.cursor).toBe('current cursor');expect(state.selfMembershipVersions.g).toBe(1);expect(state.messages.g).toEqual([m]);expect(state.receipts[m.id].desired).toBe('read');expect(state.receipts[m.id].blocked).toBe(false);expect(state.seen).toEqual(stale.map(event=>event.event_id));
 });
 test('replacement H never reinstalls cached old group messages, receipts or statuses',()=>{
  const state=emptyPartition(),staged=emptyPartition();state.cursor='expired';state.conversations.g=detail;storeMessage(state,m,'me');state.statuses[m.id]={kind:'direct',message_id:m.id,recipient_id:'me',status:'read',updated_at:m.created_at};

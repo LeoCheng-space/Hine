@@ -305,10 +305,12 @@ async def cleanup_abandoned(runtime, limit=100):
             generation = await runtime.storage.delete_abandoned(row["bucket"], row["object_key"])
         except StorageFault:
             continue  # State stays closed; the next bounded sweep can retry.
+        # Successful absence is terminal too; the attempt has already closed
+        # beyond its signed PUT and completion/reconciliation horizon.
+        async with transaction(runtime) as conn:
+            await conn.execute("""UPDATE attachments SET cleaned_at=clock_timestamp()
+                WHERE attachment_id=$1 AND state='abandoned' AND cleaned_at IS NULL""", row["attachment_id"])
         if generation is not None:
-            async with transaction(runtime) as conn:
-                await conn.execute("""UPDATE attachments SET cleaned_at=clock_timestamp()
-                    WHERE attachment_id=$1 AND state='abandoned' AND cleaned_at IS NULL""", row["attachment_id"])
             deleted += 1
     return deleted
 

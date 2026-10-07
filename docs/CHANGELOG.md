@@ -1,5 +1,15 @@
 # HINE 文件變更紀錄
 
+## 2026-10-06 — PR #6 八項 Review 修正與實際 UI 收斂
+
+- 由已發佈 `feature/hine-first-integration`／`315afd8a1242332c4091d20c8e45907f88e3da2c` 的原 PR #6 隔離 worktree `pr-6` 修正，不改原工作區／使用者 `.omp/`。本輪尚未 commit／push／resolve 遠端 Review／merge main／刪分支；既有 head 的 Actions 全綠不冒稱本輪新 CI。
+- 新增有界 API retention：每60秒各最多1,000筆 expired SyncCursor／invalidation，reuse既有索引、維持live TTL、frontier序列化 contiguous prefix／floor／空log head。MAC／owner／kind驗過但已prune的SyncCursor仍回 `SYNC_RESET_REQUIRED`，真Web會bootstrap；非法MAC／scope／REST不混同。無新增migration或其他table清理。
+- provider確認不存在的closed attachment亦終止 `cleaned_at`，之後不重掃；cloud錯誤仍可重試，ready／fresh／24h reconciliation horizon及固定generation刪除不變。PUT503／不明結果先核原A21；確認不存在才用原grant／attempt／bytes／SHA／key／create-only headers再PUT，不偽造412成功或更新過期授權。
+- A14 private notices遇重複recipient或既有700KB預算即拆批，保留全部stable events／durable Cartesian feed／順序／冪等。聊天清單消費既有事件，以single-flight＋trailing A11刷新，server未讀／20筆分頁及舊owner/token/lifetime拒絕維持。DeviceStore完整Python3.12／Unicode15 casefold，未知等價拼法保留server DeviceID與原draft/C1 partition；無locale／NFKC／單字元特例。
+- A12在queued nativeIDB commit比較獨立metadata floor，與self-join boundary分離，涵蓋detail eviction、summary-only title／roles、uncached staged snapshot replay。舊成功read不降版／假unknown／重連，equal／direct-null仍更新。正式bundle A14初開UI另實際重現兩種self-join交错，修正為identity／epoch／ticket限定的fresh authorized route handoff，不重試failed work、不安裝舊read、不讓close／withdraw／換binding啟動舊房間。
+- 實際先red再green；109 API＋100 BA＋36 QA＋25 infra＋63 Web＝**333項通過**。10個真API/WSS/IDB metadata案例、4個fresh opening／close／withdraw案例、queued原C1／all-touched W16／PG prune後Web自動bootstrap通過；正式A14兩人表單直接顯示composer及實際group dialog／Escape／767 layout驗明。13份source SHA256及界線見[本輪證據](testing/evidence/pr6-review-remediation.json)。
+- 新[owned PF08](testing/evidence/pr6-native-restore.json)真pg_dump／單交易clone restore通過；20個peer原C1持久W06到production DOM+rAF全部成功，sample p95 37.7ms、max42.3ms，僅loopback/privateCA小樣本。公開www首頁TLS200但apex／www API和WSS升級均nginx404；沒有SSH／ADC／bucket／signing／Edge／adb／Docker／gcloud可用目標，正式VM/GCS/physical browser/50user呈現SLO/RTO-RPO仍保留具體門檻，不冒充完成。
+
 ## 2026-10-06 — 修復 PR #5 的 Compose 交付遺漏
 
 - GitHub Actions run `37426162599` 的 `compose-data-services` 已失敗：根目錄 `docker-compose.yml` 在 `9a30c63` 仍是父分支版本，未包含真正 API provider；合併 development overlay 後 `api` 只有 ports，因此無 image/build context。這是提交範圍遺漏，不是以假 image 或額外 profile 可解決的服務實作問題。

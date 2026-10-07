@@ -37,21 +37,28 @@ export async function uploadAttachment(session:SessionController,file:File,scope
  const binding:UploadOwner={user_id:context.user_id,device_id:context.device_id};
  const valid=():boolean=>canResumeUpload(session.getSnapshot().context,binding);
  const digest=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());const sha256=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
- const idempotencyKey=crypto.randomUUID();let grant:UploadGrant|null=null;let putAttempted=false;
+ const idempotencyKey=crypto.randomUUID();let grant:UploadGrant|null=null;let putAttempted=false;let putUnconfirmed=false;
  const attempt=async():Promise<AttachmentView>=>{
   try{
    if(!valid())throw new AttachmentTransferError('UNAUTHENTICATED',false);
    if(!grant){const response=await session.request<unknown>('/uploads',{method:'POST',idempotencyKey,json:{scope,conversation_id:conversationId,filename:file.name,content_type:file.type,size_bytes:file.size,sha256}});if(!valid())throw new AttachmentTransferError('UNAUTHENTICATED',false);grant=validateUploadGrant(response.data,file.type);}
-   if(!putAttempted){putAttempted=true;try{await fetch(grant.upload_url,{method:'PUT',body:file,headers:grant.required_headers,credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',cache:'no-store',signal:AbortSignal.timeout(60_000)});}catch{/* Unknown PUT outcome is reconciled only by the original A21 attempt. */}}
+   if(!putAttempted&&Date.parse(grant.expires_at)>Date.now()){
+    putAttempted=true;putUnconfirmed=true;
+    try{const response=await fetch(grant.upload_url,{method:'PUT',body:file,headers:grant.required_headers,credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',cache:'no-store',signal:AbortSignal.timeout(60_000)});putUnconfirmed=!response.ok;}
+    catch{/* Unknown PUT outcome is reconciled only by the original A21 attempt. */}
+   }
    if(!valid())throw new AttachmentTransferError('UNAUTHENTICATED',false);
    const response=await session.request<unknown>(`/uploads/${encodeURIComponent(grant.attachment_id)}/complete`,{method:'POST',json:{upload_attempt_id:grant.upload_attempt_id,sha256}});
    if(!valid())throw new AttachmentTransferError('UNAUTHENTICATED',false);return readyAttachment(response.data,grant,scope,conversationId,file,sha256,binding.user_id);
   }catch(error){
    const current=session.getSnapshot().context;
    if(error instanceof Error&&'code' in error&&error.code==='UNAUTHENTICATED'&&current.state!=='logged_out'&&current.user_id===binding.user_id&&current.device_id===binding.device_id)throw new AttachmentTransferError('AUTH_REFRESH_PENDING',true,attempt);
-   if(error instanceof AttachmentTransferError){if(error.code==='UPLOAD_NOT_READY'){if(grant&&Date.parse(grant.expires_at)<=Date.now())throw new AttachmentTransferError('UPLOAD_EXPIRED',false);throw new AttachmentTransferError(error.code,true,attempt);}throw error;}
+   if(error instanceof AttachmentTransferError&&error.code!=='UPLOAD_NOT_READY')throw error;
    const fault=error instanceof Error&&'code' in error?String(error.code):'TRANSFER_UNCONFIRMED';
-   if(fault==='UPLOAD_NOT_READY'&&grant&&Date.parse(grant.expires_at)<=Date.now())throw new AttachmentTransferError('UPLOAD_EXPIRED',false);
+   if(fault==='UPLOAD_NOT_READY'){
+    if(grant&&Date.parse(grant.expires_at)<=Date.now())throw new AttachmentTransferError('UPLOAD_EXPIRED',false);
+    if(putUnconfirmed)putAttempted=false;
+   }
    const retryable=!['FORBIDDEN','NOT_FOUND','INVALID_ARGUMENT','CONFLICT','UNSUPPORTED_MEDIA_TYPE','PAYLOAD_TOO_LARGE','UNAUTHENTICATED','IDEMPOTENCY_CONFLICT'].includes(fault);
    throw new AttachmentTransferError(fault,retryable,retryable?attempt:null);
   }

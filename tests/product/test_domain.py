@@ -82,8 +82,196 @@ class DomainConsumer:
             finally:
                 await redis.aclose()
 
+    async def receive_group_frame(self, socket, event, *, reject_live=False):
+        try:
+            async with asyncio.timeout(10):
+                while True:
+                    value = await socket.receive_json()
+                    self.assertNotEqual(value['event'], 'error', value)
+                    if reject_live:
+                        self.assertNotIn(value['event'],
+                            ('conversation.member_added', 'conversation.updated'),
+                            'Idempotent A14 retry published another live event')
+                    if value['event'] == event:
+                        return value
+        except TimeoutError:
+            self.fail(f'Missing live {event} on actual BA WebSocket before any sync request')
+
+    @asynccontextmanager
+    async def group_live_consumers(self, server, accesses):
+        from hine_realtime import protocol as p
+        from hine_realtime.server import RUNTIME
+
+        sockets, cursors = [], []
+        runtime = server.app[RUNTIME]
+        try:
+            async with runtime.redis.pubsub() as pubsub:
+                await pubsub.subscribe(runtime.channel)
+                async with asyncio.timeout(10):
+                    while True:
+                        message = await pubsub.get_message(timeout=1)
+                        if message is not None and message['type'] == 'subscribe':
+                            break
+                for access in accesses:
+                    socket = await self.client.ws_connect(server.make_url('/ws/v1'),
+                        headers={'Origin': self.api.origin}, max_msg_size=1048576)
+                    sockets.append(socket)
+                    await socket.send_str(p.dumps(p.event('auth.authenticate',
+                        {'access_token': access['access_token'], 'device_id': access['device_id']})))
+                    accepted = await self.receive_group_frame(socket, 'auth.accepted')
+                    self.assertEqual(accepted['payload']['user_id'], access['user_id'])
+                    await socket.send_str(p.dumps(p.event('sync.bootstrap.request',
+                        {'reason': 'first_login'})))
+                    bootstrap = await self.receive_group_frame(socket, 'sync.bootstrap.page')
+                    self.assertFalse(bootstrap['payload']['has_more'])
+                    cursors.append(bootstrap['payload']['start_cursor'])
+                yield sockets, cursors, pubsub
+        finally:
+            for socket in sockets:
+                await socket.close()
+
+    async def read_group_notices(self, pubsub, source, delivery_count):
+        from hine_realtime import protocol as p
+
+        notices, count = [], 0
+        try:
+            async with asyncio.timeout(10):
+                while count < delivery_count:
+                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
+                    if message is None:
+                        continue
+                    raw = message['data']
+                    self.assertLessEqual(len(raw), 1048576)
+                    value = p.notice(p.loads(raw), external=True)
+                    self.assertEqual(value['type'], 'conversation_events')
+                    self.assertEqual(value['conversation_events']['source'], source)
+                    deliveries = value['conversation_events']['deliveries']
+                    recipients = [delivery['recipient_user_id'] for delivery in deliveries]
+                    self.assertEqual(len(recipients), len(set(recipients)),
+                        'Every private notice must have unique recipients')
+                    self.assertLessEqual(sum(len(p.dumps(delivery).encode('utf-8')) + 1
+                        for delivery in deliveries), 700000)
+                    notices.append(value)
+                    count += len(deliveries)
+        except TimeoutError:
+            self.fail(f'Actual Redis channel delivered only {count}/{delivery_count} {source} deliveries')
+        self.assertEqual(count, delivery_count)
+        self.assertEqual(len({notice['notice_id'] for notice in notices}), len(notices))
+        return notices
+
 
 class DomainTests(DomainConsumer, ProductCase):
+    async def test_a14_three_members_each_receive_all_live_w11_matching_feed_and_retry_is_noop(self):
+        from hine_realtime import protocol as p
+
+        alice, a = await self.account('alice')
+        bob, b = await self.account('bob')
+        carol, c = await self.account('carol')
+        profiles, accesses = [alice, bob, carol], [a, b, c]
+        member_ids = sorted(profile['id'] for profile in profiles)
+        key = str(uuid.uuid4())
+        payload = {'title': 'Three initial members', 'member_ids': [bob['id'], carol['id']]}
+        async with self.real_realtime() as server, self.group_live_consumers(server, accesses) as (sockets, cursors, pubsub):
+            status, created = await self.request('POST', '/api/v1/conversations/groups', a,
+                json=payload, headers={'Idempotency-Key': key})
+            self.assertEqual(status, 201)
+            gid = created['data']['id']
+            self.assertEqual(created['data']['member_ids'], member_ids)
+            async with self.runtime.pool.acquire() as conn:
+                rows = await conn.fetch('''SELECT user_id,envelope FROM user_feed
+                    WHERE envelope->>'conversation_id'=$1 ORDER BY user_id COLLATE "C",position''', gid)
+            self.assertEqual(len(rows), 9, 'A14 must retain all three events for all three recipients')
+            expected = {profile['id']: [row['envelope'] for row in rows
+                if row['user_id'] == profile['id']] for profile in profiles}
+            for user_id, events in expected.items():
+                self.assertEqual([event['event'] for event in events],
+                    ['conversation.member_added'] * 3)
+                self.assertEqual([event['payload']['member_id'] for event in events], member_ids)
+                for event in events:
+                    member_id = event['payload']['member_id']
+                    self.assertEqual(event['payload'], {'member_id': member_id,
+                        'role': 'admin' if member_id == alice['id'] else 'member',
+                        'actor_id': alice['id'], 'membership_version': 1})
+                    self.assertEqual(event['conversation_id'], gid)
+            self.assertEqual(len({event['event_id'] for event in expected[alice['id']]}), 3)
+            for user_id in (bob['id'], carol['id']):
+                self.assertEqual(expected[user_id], expected[alice['id']])
+
+            async def live_events(socket):
+                return [await self.receive_group_frame(socket, 'conversation.member_added')
+                    for _ in range(3)]
+
+            live = await asyncio.gather(*(live_events(socket) for socket in sockets))
+            for profile, events in zip(profiles, live):
+                self.assertEqual(events, expected[profile['id']])
+            notices = await self.read_group_notices(pubsub, 'A14', 9)
+            delivered = [delivery for notice in notices
+                for delivery in notice['conversation_events']['deliveries']]
+            for profile in profiles:
+                self.assertEqual([delivery['envelope'] for delivery in delivered
+                    if delivery['recipient_user_id'] == profile['id']], expected[profile['id']])
+            self.assertEqual({delivery['recipient_user_id'] for delivery in delivered}, set(member_ids))
+
+            status, repeated = await self.request('POST', '/api/v1/conversations/groups', a,
+                json=payload, headers={'Idempotency-Key': key})
+            self.assertEqual(status, 201)
+            self.assertEqual(repeated['data'], created['data'])
+            async with self.runtime.pool.acquire() as conn:
+                self.assertEqual(await conn.fetchval('''SELECT count(*) FROM user_feed
+                    WHERE envelope->>'conversation_id'=$1''', gid), 9)
+            self.assertIsNone(await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.5),
+                'Idempotent A14 retry must not publish another Redis notice')
+            for profile, socket, cursor in zip(profiles, sockets, cursors):
+                await socket.send_str(p.dumps(p.event('sync.request', {'cursor': cursor})))
+                batch = await self.receive_group_frame(socket, 'sync.batch', reject_live=True)
+                self.assertFalse(batch['payload']['has_more'])
+                self.assertEqual(batch['payload']['events'], expected[profile['id']])
+
+    async def test_group_notice_byte_split_preserves_unique_recipients_and_live_feed_replay(self):
+        from hine_realtime import protocol as p
+
+        alice, a = await self.account('alice')
+        bob, b = await self.account('bob')
+        carol, c = await self.account('carol')
+        profiles, accesses = [alice, bob, carol], [a, b, c]
+        status, created = await self.request('POST', '/api/v1/conversations/groups', a,
+            json={'title': 'Before byte split', 'member_ids': [bob['id'], carol['id']]},
+            headers={'Idempotency-Key': str(uuid.uuid4())})
+        self.assertEqual(status, 201)
+        gid = created['data']['id']
+        # 20,000 supplementary codepoints serialize to 240,000 ASCII JSON bytes:
+        # three legal single-recipient W13 deliveries exceed the 700k batch budget.
+        title = '😀' * 20000
+        async with self.real_realtime() as server, self.group_live_consumers(server, accesses) as (sockets, cursors, pubsub):
+            status, renamed = await self.request('PATCH', f'/api/v1/conversations/{gid}', a,
+                json={'title': title})
+            self.assertEqual(status, 200)
+            self.assertEqual(renamed['data']['membership_version'], 2)
+            async with self.runtime.pool.acquire() as conn:
+                rows = await conn.fetch('''SELECT user_id,envelope FROM user_feed
+                    WHERE envelope->>'conversation_id'=$1 AND envelope->>'event'='conversation.updated'
+                    ORDER BY user_id COLLATE "C",position''', gid)
+            self.assertEqual(len(rows), 3)
+            expected = {row['user_id']: row['envelope'] for row in rows}
+            live = await asyncio.gather(*(self.receive_group_frame(socket, 'conversation.updated')
+                for socket in sockets))
+            for profile, event in zip(profiles, live):
+                self.assertEqual(event, expected[profile['id']])
+                self.assertEqual(event['payload'], {'changes': {'kind': 'title', 'title': title},
+                    'actor_id': alice['id'], 'membership_version': 2})
+            notices = await self.read_group_notices(pubsub, 'A15', 3)
+            self.assertGreaterEqual(len(notices), 2, 'Byte budget must split distinct recipients too')
+            delivered = [delivery for notice in notices
+                for delivery in notice['conversation_events']['deliveries']]
+            self.assertEqual(len({delivery['recipient_user_id'] for delivery in delivered}), 3)
+            self.assertEqual(sum(len(p.dumps(delivery).encode('utf-8')) + 1
+                for delivery in delivered) > 700000, True)
+            for profile, socket, cursor in zip(profiles, sockets, cursors):
+                await socket.send_str(p.dumps(p.event('sync.request', {'cursor': cursor})))
+                batch = await self.receive_group_frame(socket, 'sync.batch')
+                self.assertFalse(batch['payload']['has_more'])
+                self.assertEqual(batch['payload']['events'], [expected[profile['id']]])
+
     async def test_concurrent_c1_commits_one_message_and_one_feed_per_user(self):
         await self.setup_direct()
         c1 = str(uuid.uuid4())

@@ -1,7 +1,7 @@
 import type { SessionController } from './session';
 import type { ApiResult, AttachmentView, BootstrapConversation, ConversationDetail, ConversationSummary, MessageView } from './types';
 import { applyEvents, boolean, ChatRepository, compareMessage, ConversationAuthority, emptyPartition, entity, fields, installSnapshot, integer, parseMessage, parseReceipt, receiptCanRetryAutomatically, record, recordReceiptFailure, rejoinConversation, RepositoryCancelled, settleIntent, status, StorageFault, storeMessage, string, timestamp, uuid, withdrawConversation } from './repository';
-import type { Partition, ScrollAnchor, SendIntent, SendPayload, WireEvent } from './repository';
+import type { ConversationTicket, Partition, ScrollAnchor, SendIntent, SendPayload, WireEvent } from './repository';
 import { AttachmentTransferError } from './attachment-transfer';
 
 class ChatFault extends Error {constructor(readonly code:string,readonly retryable=false,readonly retryAfterMs?:number){super(code);}}
@@ -79,12 +79,17 @@ interface Binding {user:string;device:string;generation:number;token:string;expi
 export interface AttachmentSendState {phase:'uploading'|'waiting'|'ready';error:string|null;retryable:boolean}
 interface AttachmentOperation {userId:string;deviceId:string;conversationId:string;task:()=>Promise<AttachmentView>;ready:AttachmentView|null;running:Promise<void>|null;blocked:boolean;state:AttachmentSendState}
 interface SocketScope {socket:WebSocket;queue:ReceiveQueue}
+interface SelfJoinWork {epoch:number;ticket:ConversationTicket;work:Promise<void>}
+interface RouteOpening {id:string;epoch:number;join?:SelfJoinWork}
 export class ChatController {
  private listeners=new Set<()=>void>();private snapshot:ChatSnapshot={connection:'stopped',error:null,currentConversation:null,messages:{},conversations:{},details:{},intents:{},receipts:{},drafts:{},anchors:{},denied:[],presence:{},historyMore:{}};
  private state=emptyPartition();private repository:ChatRepository|null=null;private binding:Binding|null=null;private epoch=0;private ws:WebSocket|null=null;private accepted=false;private started=false;private fatal=false;private unsubscribe:(()=>void)|null=null;
  private pending=new Map<string,PendingRequest>();private heartbeat=new Map<string,PendingHeartbeat>();private heartbeatNonce=0;private timers:number[]=[];private interval:number|undefined;private heartbeatTimer:number|undefined;
  private scope:SocketScope|null=null;private authority=new ConversationAuthority();private verifiedGroups=new Set<string>();private observedDenied=new Set<string>();private authorityReconciled=false;
  private reconnectBoundaries=new Map<string,number>();private recoveringReceipts:Promise<void>|null=null;
+ // Metadata versions survive detail-cache eviction independently of self-join authorization.
+ private metadataVersions=new Map<string,number>();
+ private selfJoins=new Map<string,SelfJoinWork>();private pendingOpening:RouteOpening|null=null;
  private reads=new Set<{id:string|null;abort:AbortController}>();private manualIntentRetries=new Set<string>();
  private bindingWork:Promise<void>=Promise.resolve();private syncing:Promise<void>|null=null;private flushing:Promise<void>|null=null;private liveDuringBootstrap:WireEvent[]|null=null;private revocationVersion=0;private historyCursors:Record<string,string|null|undefined>={};private historyLoading=new Map<string,Promise<void>>();private currentRoute:string|null=null;private blockedToken:string|null=null;
  private flushRequested=false;
@@ -109,8 +114,8 @@ export class ChatController {
  private valid(epoch=this.epoch):boolean {const context=this.session.getSnapshot().context;return this.started&&!this.fatal&&epoch===this.epoch&&this.binding!==null&&this.blockedToken!==this.binding.token&&context.state==='authenticated'&&context.access_token===this.binding.token&&Date.parse(context.expires_at)>Date.now();}
  private rememberGroupBoundaries():void {this.reconnectBoundaries.clear();for(const conversation of Object.values(this.state.conversations))if(conversation.type==='group'&&!this.state.denied.includes(conversation.id)&&(this.state.selfMembershipVersions[conversation.id]??0)>0)this.reconnectBoundaries.set(conversation.id,this.state.selfMembershipVersions[conversation.id]);}
  private verifyCompletedReconnection():void {for(const [id,boundary] of this.reconnectBoundaries)if(this.state.selfMembershipVersions[id]===boundary&&!this.state.denied.includes(id)&&!this.observedDenied.has(id))this.verifiedGroups.add(id);this.reconnectBoundaries.clear();}
- private disconnect():void {this.rememberGroupBoundaries();this.accepted=false;this.authorityReconciled=false;this.scope?.queue.close();this.scope=null;for(const read of this.reads)read.abort.abort();this.reads.clear();this.authority.invalidateAll();this.verifiedGroups.clear();this.observedDenied.clear();this.historyLoading.clear();this.liveDuringBootstrap=null;this.syncing=null;this.flushing=null;this.recoveringReceipts=null;window.clearInterval(this.heartbeatTimer);this.heartbeatTimer=undefined;for(const timer of this.timers)window.clearTimeout(timer);this.timers=[];for(const pending of this.pending.values()){window.clearTimeout(pending.timer);pending.reject(new ChatFault('OUTCOME_UNCONFIRMED',true));}this.pending.clear();this.heartbeat.clear();const socket=this.ws;this.ws=null;if(socket){socket.onopen=null;socket.onmessage=null;socket.onclose=null;socket.onerror=null;socket.close(1000);} }
- private invalidateConversation(id:string):void {this.authority.invalidate(id);this.verifiedGroups.delete(id);this.reconnectBoundaries.delete(id);delete this.historyCursors[id];this.historyLoading.delete(id);for(const read of this.reads)if(read.id===id)read.abort.abort();}
+ private disconnect():void {this.rememberGroupBoundaries();this.pendingOpening=null;this.selfJoins.clear();this.accepted=false;this.authorityReconciled=false;this.scope?.queue.close();this.scope=null;for(const read of this.reads)read.abort.abort();this.reads.clear();this.authority.invalidateAll();this.metadataVersions.clear();this.verifiedGroups.clear();this.observedDenied.clear();this.historyLoading.clear();this.liveDuringBootstrap=null;this.syncing=null;this.flushing=null;this.recoveringReceipts=null;window.clearInterval(this.heartbeatTimer);this.heartbeatTimer=undefined;for(const timer of this.timers)window.clearTimeout(timer);this.timers=[];for(const pending of this.pending.values()){window.clearTimeout(pending.timer);pending.reject(new ChatFault('OUTCOME_UNCONFIRMED',true));}this.pending.clear();this.heartbeat.clear();const socket=this.ws;this.ws=null;if(socket){socket.onopen=null;socket.onmessage=null;socket.onclose=null;socket.onerror=null;socket.close(1000);} }
+ private invalidateConversation(id:string,resetMetadata=true):void {this.authority.invalidate(id);this.selfJoins.delete(id);if(this.pendingOpening?.id===id)this.pendingOpening.join=undefined;if(resetMetadata)this.metadataVersions.delete(id);this.verifiedGroups.delete(id);this.reconnectBoundaries.delete(id);delete this.historyCursors[id];this.historyLoading.delete(id);for(const read of this.reads)if(read.id===id)read.abort.abort();}
  private rest<T>(path:string,id:string|null,valid:()=>boolean):Promise<ApiResult<T>> {
   const read={id,abort:new AbortController()};this.reads.add(read);
   return new Promise<ApiResult<T>>((resolve,reject)=>{
@@ -172,23 +177,61 @@ export class ChatController {
   const selfJoin=frame.event==='conversation.member_added'&&frame.payload.member_id===this.binding?.user;
   const selfRemoval=frame.event==='conversation.member_removed'&&frame.payload.member_id===this.binding?.user;
   const id=frame.conversation_id,sourceValid=():boolean=>this.scope===scope&&!scope.queue.abort.signal.aborted&&this.valid(epoch);
-  if((selfJoin||selfRemoval)&&id){if(integer(frame.payload.membership_version,1)<=(this.state.selfMembershipVersions[id]??0))return;this.invalidateConversation(id);if(selfRemoval){this.observedDenied.add(id);++this.revocationVersion;this.liveDuringBootstrap=null;}this.publish();}
+  if((selfJoin||selfRemoval)&&id){if(integer(frame.payload.membership_version,1)<=(this.state.selfMembershipVersions[id]??0))return;this.invalidateConversation(id);if(selfRemoval){if(this.pendingOpening?.id===id)this.pendingOpening=null;this.observedDenied.add(id);++this.revocationVersion;this.liveDuringBootstrap=null;}this.publish();}
   else if(this.state.seen.includes(frame.event_id))return;
   const ticket=id?this.authority.capture(id):null,frameValid=():boolean=>sourceValid()&&(!id||ticket!==null&&this.authority.isCurrent(id,ticket));
-  const joins:Record<string,ConversationDetail>={};
-  if(selfJoin&&id){try{joins[frame.event_id]=await this.readDetail(id,epoch,frameValid);}catch(error){if(frameValid())this.operationError(error);return;}}
+  if(selfJoin&&id&&ticket){
+   const joining:SelfJoinWork={epoch,ticket,work:this.commitSelfJoin(frame,id,epoch,frameValid)};this.selfJoins.set(id,joining);
+   if(this.pendingOpening?.id===id&&this.pendingOpening.epoch===epoch)this.pendingOpening.join=joining;
+   try{await joining.work;}catch(error){if(frameValid())this.operationError(error);return;}finally{if(this.selfJoins.get(id)===joining)this.selfJoins.delete(id);}
+   if(frameValid())void this.loadHistory(id).catch(error=>this.operationError(error));return;
+  }
   if(!frameValid())return;
-  this.liveDuringBootstrap?.push(frame);await this.commit(state=>applyEvents(state,[frame],this.binding?.user??'',joins),epoch,frameValid);
-  if(selfJoin&&id){this.observedDenied.delete(id);this.verifiedGroups.add(id);this.publish();}
+  const events=[frame],metadata=id&&frame.event.startsWith('conversation.');
+  this.liveDuringBootstrap?.push(frame);await this.commit(state=>applyEvents(state,events,this.binding?.user??''),epoch,frameValid,id&&metadata?[id]:undefined,metadata?events:undefined);
   if(frame.event==='conversation.member_removed'&&frame.payload.member_id===this.binding?.user){this.blockAttachments(string(frame.conversation_id));if(this.currentRoute===frame.conversation_id){this.currentRoute=null;this.publish({currentConversation:null,error:'你已無法存取這個群組。'});}window.dispatchEvent(new Event('hine-conversations-changed'));}
   if(!selfJoin&&['conversation.member_added','conversation.updated','conversation.member_removed'].includes(frame.event)&&!this.state.denied.includes(frame.conversation_id??''))void this.fetchDetail(string(frame.conversation_id),epoch).catch(error=>this.operationError(error));
-  if(selfJoin)void this.loadHistory(string(frame.conversation_id)).catch(error=>this.operationError(error));
   if(frame.event==='message.created')void this.flush();
  }
+ private async commitSelfJoin(frame:WireEvent,id:string,epoch:number,valid:()=>boolean):Promise<void> {
+  const detail=await this.readDetail(id,epoch,valid);if(!valid())throw new RepositoryCancelled();
+  const events=[frame],joins={[frame.event_id]:detail};this.liveDuringBootstrap?.push(frame);
+  await this.commit(state=>applyEvents(state,events,this.binding?.user??'',joins),epoch,valid,[id],events);
+  if(!valid())throw new RepositoryCancelled();this.observedDenied.delete(id);this.verifiedGroups.add(id);this.publish();
+ }
  private invalidate():void {this.blockedToken=this.binding?.token??null;++this.epoch;this.disconnect();this.state=emptyPartition();this.publish({connection:'blocked',currentConversation:null,error:'工作階段已失效，請重新登入。',presence:{}});this.session.invalidateAuthentication();}
- private async commit(change:(state:Partition)=>void,epoch=this.epoch,guard:()=>boolean=()=>true):Promise<void> {
+ private async commit(change:(state:Partition)=>void,epoch=this.epoch,guard:()=>boolean=()=>true,metadataIds?:Iterable<string>,metadataEvents?:Iterable<WireEvent>,snapshotAuthorities?:Record<string,ConversationDetail>):Promise<void> {
   const repository=this.repository;if(!repository||!this.valid(epoch))throw new ChatFault('UNAUTHENTICATED');
-  try{const result=await repository.update(change,()=>this.valid(epoch)&&guard());if(!this.valid(epoch)||!guard())throw new RepositoryCancelled();this.state=result;this.publish();}catch(error){if(epoch===this.epoch&&!(error instanceof RepositoryCancelled))this.failClosed(error);throw error;}
+  const versions=metadataIds?new Map<string,number>():null;
+  try{
+   const result=await repository.update(metadataIds?state=>{
+    // Live metadata is accepted for an authorized group even when its detail is evicted.
+    if(versions&&metadataEvents&&!snapshotAuthorities)for(const event of metadataEvents){
+     const id=event.conversation_id;if(!event.event.startsWith('conversation.')||!id||state.conversations[id]?.type!=='group'||state.seen.includes(event.event_id)||state.denied.includes(id))continue;
+     const version=integer(event.payload.membership_version,1);
+     if(version>=(state.details[id]?.membership_version??0)&&version>(this.metadataVersions.get(id)??0))versions.set(id,Math.max(version,versions.get(id)??0));
+    }
+    change(state);
+    // Snapshot replay accepts observed metadata against the newly installed projection,
+    // not the old partition's seen/denied/detail state. Self boundaries remain separate.
+    if(versions&&metadataEvents&&snapshotAuthorities)for(const event of metadataEvents){
+     const id=event.conversation_id;if(!event.event.startsWith('conversation.')||!id||state.conversations[id]?.type!=='group'||state.denied.includes(id)||(event.event!=='conversation.updated'&&event.payload.member_id===this.binding?.user))continue;
+     const version=integer(event.payload.membership_version,1);if(version>(this.metadataVersions.get(id)??0))versions.set(id,Math.max(version,versions.get(id)??0));
+    }
+    if(versions){
+     for(const id of versions.keys())if(state.conversations[id]?.type!=='group'||state.denied.includes(id))versions.delete(id);
+     if(metadataIds)for(const id of metadataIds){
+      if(state.conversations[id]?.type!=='group'||state.denied.includes(id))continue;
+      // The snapshot authority may have been bounded out inside installSnapshot.
+      const version=Math.max(state.details[id]?.membership_version??0,snapshotAuthorities?.[id]?.membership_version??0);
+      if(version>(this.metadataVersions.get(id)??0))versions.set(id,Math.max(version,versions.get(id)??0));
+     }
+    }
+   }:change,()=>this.valid(epoch)&&guard());
+   if(!this.valid(epoch)||!guard())throw new RepositoryCancelled();
+   if(versions)for(const [id,version] of versions)this.metadataVersions.set(id,Math.max(version,this.metadataVersions.get(id)??0));
+   this.state=result;this.publish();
+  }catch(error){if(epoch===this.epoch&&!(error instanceof RepositoryCancelled))this.failClosed(error);throw error;}
  }
  private operationError(error:unknown):void {if(error instanceof StorageFault||error instanceof RepositoryCancelled||!this.valid())return;if(error instanceof ChatFault&&error.code==='UNAUTHENTICATED')return;this.publish({error:'操作尚未完成，請稍後核對或重試。'});}
  async reconcile():Promise<void> {
@@ -206,6 +249,7 @@ export class ChatController {
     const events=(p.events as unknown[]).map(value=>parseServerFrame(value,this.binding?.user??''));
     const boundaries=events.filter(event=>(event.event==='conversation.member_added'||event.event==='conversation.member_removed')&&event.payload.member_id===this.binding?.user&&integer(event.payload.membership_version,1)>(this.state.selfMembershipVersions[string(event.conversation_id)]??0));
     const changed=new Set(boundaries.map(event=>string(event.conversation_id)));
+    for(const event of boundaries)if(event.event==='conversation.member_removed'&&this.pendingOpening?.id===event.conversation_id)this.pendingOpening=null;
     for(const id of changed)this.invalidateConversation(id);
     const touched=new Set(events.flatMap(event=>event.conversation_id?[event.conversation_id]:[]));
     const tickets=new Map([...touched].map(id=>[id,this.authority.capture(id)]));
@@ -217,7 +261,7 @@ export class ChatController {
      catch(error){if(!batchValid())throw new RepositoryCancelled();if(error instanceof Error&&'code' in error&&['FORBIDDEN','NOT_FOUND'].includes(String(error.code)))deniedInBatch.push(id);else throw error;}
     }
     if(boundaries.some(event=>event.event==='conversation.member_removed')){++this.revocationVersion;this.liveDuringBootstrap=null;}
-    if(events.length||next!==cursor)await this.commit(state=>{for(const id of deniedInBatch)withdrawConversation(state,id);applyEvents(state,events,this.binding?.user??'',joins);state.cursor=next;},epoch,batchValid);
+    if(events.length||next!==cursor)await this.commit(state=>{for(const id of deniedInBatch)withdrawConversation(state,id);applyEvents(state,events,this.binding?.user??'',joins);state.cursor=next;},epoch,batchValid,events.some(event=>event.event.startsWith('conversation.'))?touched:undefined,events);
     void this.flush();
     for(const id of changed){if(this.state.denied.includes(id)){this.observedDenied.add(id);this.blockAttachments(id);}else{this.observedDenied.delete(id);this.verifiedGroups.add(id);}}
     for(const event of events)if(['conversation.member_added','conversation.updated','conversation.member_removed'].includes(event.event)&&event.payload.member_id!==this.binding?.user&&!this.state.denied.includes(event.conversation_id??''))void this.fetchDetail(string(event.conversation_id),epoch).catch(error=>this.operationError(error));
@@ -253,7 +297,7 @@ export class ChatController {
     staged.messages[group.id]=page.messages;
    }
    const observed=this.liveDuringBootstrap;if(!observed||!stageValid())throw new RepositoryCancelled();
-   await this.commit(state=>installSnapshot(state,staged,observed,start??'',this.binding?.user??'',authorities),epoch,stageValid);
+   await this.commit(state=>installSnapshot(state,staged,observed,start??'',this.binding?.user??'',authorities),epoch,stageValid,tickets.keys(),observed,authorities);
    for(const group of groups){this.observedDenied.delete(group.id);this.verifiedGroups.add(group.id);delete this.historyCursors[group.id];}
    this.publish();
   }finally{if(this.scope===scope)this.liveDuringBootstrap=null;}
@@ -263,17 +307,18 @@ export class ChatController {
   const response=await this.rest<unknown>(`/conversations/${encodeURIComponent(id)}`,id,valid);
   if(!valid())throw new RepositoryCancelled();const detail=conversationDetail(response.data);if(detail.id!==id)throw new ChatFault('INVALID_WIRE');return detail;
  }
- private async fetchDetail(id:string,epoch:number,opening=false):Promise<ConversationDetail> {
+ private async fetchDetail(id:string,epoch:number,opening=false):Promise<ConversationDetail|undefined> {
   let ticket=this.authority.capture(id);const valid=():boolean=>this.valid(epoch)&&this.authority.isCurrent(id,ticket);
   try{
    const detail=await this.readDetail(id,epoch,valid);if(!valid())throw new RepositoryCancelled();
    const restore=this.state.denied.includes(id),unknownGroup=opening&&detail.type==='group'&&!this.verifiedGroups.has(id);
-   if(restore||unknownGroup){this.invalidateConversation(id);ticket=this.authority.capture(id);}
+   if(restore||unknownGroup){this.invalidateConversation(id,restore);ticket=this.authority.capture(id);}
    await this.commit(state=>{
+    const current=state.details[id];if(detail.membership_version!==null&&detail.membership_version<Math.max(current?.membership_version??0,this.metadataVersions.get(id)??0))return;
     if(restore)rejoinConversation(state,detail);
     else{if(unknownGroup){delete state.messages[id];delete state.anchors[id];for(const receipt of Object.values(state.receipts))if(receipt.conversationId===id&&receipt.confirmed!==receipt.desired){receipt.blocked=true;receipt.error='MEMBERSHIP_RECHECK_REQUIRED';}}state.details[id]=detail;state.conversations[id]={id:detail.id,type:detail.type,title:detail.title,unread_count:detail.unread_count};}
-   },epoch,valid);
-   if(restore)this.observedDenied.delete(id);this.publish();return detail;
+   },epoch,valid,[id]);
+   if(restore)this.observedDenied.delete(id);this.publish();return this.state.details[id];
   }catch(error){if(valid()&&error instanceof Error&&'code' in error&&['FORBIDDEN','NOT_FOUND'].includes(String(error.code)))await this.withdraw(id);throw error;}
  }
  async refreshConversation(conversationId:string):Promise<void> {
@@ -283,15 +328,31 @@ export class ChatController {
   await this.fetchDetail(id,epoch,false);
   if(!this.valid(epoch)||!this.authority.isCurrent(id,ticket))throw new RepositoryCancelled();
  }
- async openChat(conversationId:string):Promise<void> {
-  const id=entity(conversationId),epoch=this.epoch;this.currentRoute=id;this.publish({currentConversation:null,error:null});if(!this.valid(epoch)||!this.repository)return;
-  if(this.syncing)await this.syncing;
-  if(!this.valid(epoch)||this.currentRoute!==id)return;
-  await this.fetchDetail(id,epoch,true);if(!this.valid(epoch)||this.currentRoute!==id)return;
-  this.publish({currentConversation:id});if(this.historyCursors[id]===undefined)await this.loadHistory(id);
+ private currentOpening(opening:RouteOpening):boolean {return this.pendingOpening===opening&&this.currentRoute===opening.id&&this.valid(opening.epoch);}
+ private async activateOpening(opening:RouteOpening,joining?:SelfJoinWork):Promise<void> {
+  if(joining){
+   if(joining.epoch!==opening.epoch||!this.authority.isCurrent(opening.id,joining.ticket))throw new RepositoryCancelled();
+   await joining.work;if(!this.authority.isCurrent(opening.id,joining.ticket))throw new RepositoryCancelled();
+  }
+  if(!this.currentOpening(opening))return;if(this.state.denied.includes(opening.id)||this.observedDenied.has(opening.id))throw new RepositoryCancelled();
+  this.publish({currentConversation:opening.id});if(this.historyCursors[opening.id]===undefined)await this.loadHistory(opening.id);
  }
- closeChat():void {this.currentRoute=null;this.publish({currentConversation:null});}
- async withdraw(conversationId:string):Promise<void> {this.invalidateConversation(conversationId);this.observedDenied.add(conversationId);++this.revocationVersion;this.liveDuringBootstrap=null;this.blockAttachments(conversationId);this.publish();await this.commit(state=>withdrawConversation(state,conversationId));if(this.currentRoute===conversationId){this.currentRoute=null;this.publish({currentConversation:null,error:'你已無法存取這個群組。'});}window.dispatchEvent(new Event('hine-conversations-changed'));}
+ async openChat(conversationId:string):Promise<void> {
+  const id=entity(conversationId),epoch=this.epoch,opening:RouteOpening={id,epoch,join:this.selfJoins.get(id)};this.pendingOpening=opening;this.currentRoute=id;this.publish({currentConversation:null,error:null});
+  let joined:SelfJoinWork|undefined;
+  try{
+   if(!this.valid(epoch)||!this.repository)return;if(this.syncing)await this.syncing;if(!this.currentOpening(opening))return;
+   if(!opening.join)await this.fetchDetail(id,epoch,true);
+   joined=opening.join;await this.activateOpening(opening,joined);
+  }catch(error){
+   const joining=opening.join;
+   // A cancelled old read is replaced only by this route's current authorized self-join.
+   if(joined||!(error instanceof RepositoryCancelled)||!this.currentOpening(opening)||!joining||joining.epoch!==epoch||!this.authority.isCurrent(id,joining.ticket))throw error;
+   await this.activateOpening(opening,joining);
+  }finally{if(this.pendingOpening===opening)this.pendingOpening=null;}
+ }
+ closeChat():void {this.pendingOpening=null;this.currentRoute=null;this.publish({currentConversation:null});}
+ async withdraw(conversationId:string):Promise<void> {if(this.pendingOpening?.id===conversationId)this.pendingOpening=null;this.invalidateConversation(conversationId);this.observedDenied.add(conversationId);++this.revocationVersion;this.liveDuringBootstrap=null;this.blockAttachments(conversationId);this.publish();await this.commit(state=>withdrawConversation(state,conversationId));if(this.currentRoute===conversationId){this.currentRoute=null;this.publish({currentConversation:null,error:'你已無法存取這個群組。'});}window.dispatchEvent(new Event('hine-conversations-changed'));}
  private async readHistory(id:string,epoch:number,before:string|undefined,extra:()=>boolean=()=>true):Promise<{messages:MessageView[];cursor:string|null}> {
   const ticket=this.authority.capture(id),valid=():boolean=>this.valid(epoch)&&extra()&&this.authority.isCurrent(id,ticket);
   const response=await this.rest<{items:unknown[]}>(`/conversations/${encodeURIComponent(id)}/messages?limit=20${before?`&before=${encodeURIComponent(before)}`:''}`,id,valid);

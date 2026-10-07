@@ -103,7 +103,7 @@ async def sync_load(runtime, conn, token, user_id, kind):
     cursor_verify(runtime, token, user_id, 'sync:'+kind)
     row = await conn.fetchrow('SELECT * FROM sync_cursors WHERE token=$1 AND user_id=$2 AND kind=$3', token, user_id, kind)
     if row is None:
-        raise Fault('CURSOR_INVALID')
+        raise Fault('SYNC_RESET_REQUIRED')
     if row['expires_at']<=await conn.fetchval('SELECT clock_timestamp()'):
         raise Fault('SYNC_RESET_REQUIRED')
     return row

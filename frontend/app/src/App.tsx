@@ -12,7 +12,12 @@ import type { ConversationDetail, ConversationSummary } from './types';
 import './Shell.css';
 function ChatList({ session, path, onNavigate }: { session: SessionController; path: string; onNavigate: (path: string) => void }) {
   const list = usePagedList<ConversationSummary>(session, 'conversations', item => item.id), [filter, setFilter] = useState('');
-  useEffect(() => { void list.load(true); }, [path]);
+  useEffect(() => { void list.load(true); }, [path, list.load]);
+  useEffect(() => {
+    const changed = () => { void list.load(true); };
+    window.addEventListener('hine-conversations-changed', changed);
+    return () => window.removeEventListener('hine-conversations-changed', changed);
+  }, [list.load]);
   const items = list.items.filter(item => (item.title ?? '').toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
   return <aside className="list-panel chat-list"><header className="panel-header"><p className="eyebrow">STAY CONNECTED</p><h1 tabIndex={-1}>聊天</h1><p className="muted">每段關係，從一句話開始。</p></header><CreateGroup session={session} onCreated={id => onNavigate(`/chats/${encodeURIComponent(id)}`)} /><label htmlFor="chat-filter">篩選已載入的對話標題</label><input id="chat-filter" type="search" value={filter} onChange={event => setFilter(event.target.value)} /><p className="small muted">僅篩選已載入項目。一對一對話沒有標題。</p>{list.error && <p role="alert" className="notice error">{list.error}</p>}<ul className="item-list">{items.map(item => <li key={item.id}><button className={`list-item ${path === `/chats/${encodeURIComponent(item.id)}` ? 'selected' : ''}`} onClick={() => onNavigate(`/chats/${encodeURIComponent(item.id)}`)}><span className="avatar" aria-hidden="true">{item.type === 'group' ? '群' : '聊'}</span><span className="item-copy"><strong>{item.title ?? '一對一對話'}</strong><span className="small muted identifier">{item.id}</span></span>{item.unread_count > 0 && <span className="unread" aria-label={`${item.unread_count} 則伺服器查詢未讀`}>{item.unread_count}</span>}</button></li>)}</ul>{list.busy && <p role="status">載入對話…</p>}{!items.length && !list.busy && <div className="empty-state"><strong>{filter ? '沒有符合的已載入對話' : '還沒有對話'}</strong><p>選擇聯絡人開始聊天，或建立您的群組。</p><button onClick={() => onNavigate('/contacts')}>前往聯絡人</button></div>}<div className="actions"><button disabled={list.busy} onClick={() => { void list.load(true); }}>重新整理</button>{list.cursor && <button disabled={list.busy} onClick={() => { void list.load(); }}>載入下一頁</button>}</div></aside>;
 }

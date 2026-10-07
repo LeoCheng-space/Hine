@@ -199,13 +199,17 @@ async def authorize(runtime, value):
 async def publish_group(runtime, source, conversation_id, version, deliveries, position, committed_at):
     """Notices are acceleration only; every matching feed record already committed."""
     batches, batch, size = [], [], 0
+    recipients = set()
     from hine_realtime import protocol as p
     for delivery in deliveries:
+        recipient = delivery['recipient_user_id']
         encoded_size = len(p.dumps(delivery).encode('utf-8')) + 1
-        if batch and size + encoded_size > 700_000:
+        if batch and (recipient in recipients or size + encoded_size > 700_000):
             batches.append(batch)
             batch, size = [], 0
+            recipients.clear()
         batch.append(delivery)
+        recipients.add(recipient)
         size += encoded_size
     if batch:
         batches.append(batch)

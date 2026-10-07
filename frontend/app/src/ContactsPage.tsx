@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ApiError, describeError, ownerPartition } from './api';
 import { downloadAttachment } from './attachment-transfer';
 import type { SessionController } from './session';
@@ -8,30 +8,81 @@ interface PageCache<T> { items: T[]; cursor: string | null }
 export function usePagedList<T>(session: SessionController, scope: 'contacts' | 'conversations', identify: (item: T) => string) {
   const context = session.getSnapshot().context;
   const key = `hine-list:${ownerPartition(context.user_id, context.device_id)}:${scope}`;
-  const [items, setItems] = useState<T[]>([]), [cursor, setCursor] = useState<string | null>(null), [busy, setBusy] = useState(true), [error, setError] = useState<string | null>(null);
-  async function load(reset = false) {
-    setBusy(true); setError(null);
-    try {
-      const result = await session.request<Page<T>>(`/${scope}?limit=20${!reset && cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
-      const incoming = result.data.items, next = result.meta?.next_cursor ?? null;
-      const merged = reset ? incoming : [...items.filter(item => !incoming.some(newItem => identify(newItem) === identify(item))), ...incoming];
-      try { localStorage.setItem(key, JSON.stringify({ items: merged, cursor: next })); } catch (error) { session.failStorage(error); throw error; }
-      setItems(merged);
-      setCursor(next);
-    } catch (error) {
-      if (error instanceof ApiError && (error.code === 'CURSOR_INVALID' || error.code === 'CURSOR_EXPIRED') && !reset) { await load(true); return; }
-      setError(describeError(error));
-    } finally { setBusy(false); }
-  }
-  useEffect(() => {
-    try {
-      const cached = localStorage.getItem(key);
-      if (cached && scope === 'contacts') { const value: unknown = JSON.parse(cached); if (typeof value === 'object' && value !== null && 'items' in value && Array.isArray(value.items) && 'cursor' in value && (value.cursor === null || typeof value.cursor === 'string')) { const cache = value as PageCache<T>; setItems(cache.items); setCursor(cache.cursor); setBusy(false); return; } }
-    } catch (error) { session.failStorage(error); return; }
-    // REST cursors are owner/device/query scoped, never the chat SyncCursor.
-    if (scope === 'contacts') void load(true);
-  }, [key]);
-  return { items, cursor, busy, error, load };
+  const identifyRef = useRef(identify); identifyRef.current = identify;
+  const [view, setView] = useState<PageCache<T> & { key: string; busy: boolean; error: string | null }>({ key, items: [], cursor: null, busy: true, error: null });
+  const lifecycle = useMemo(() => {
+    let page: PageCache<T> = { items: [], cursor: null }, active = false, epoch = 0, queuedReset = false;
+    let running: Promise<void> | null = null, activeAbort: AbortController | null = null;
+    const publish = (busy: boolean, error: string | null = null) => setView({ key, ...page, busy, error });
+    const load = (reset = false): Promise<void> => {
+      if (!active) return Promise.resolve();
+      if (running) { if (reset) queuedReset = true; return running; }
+      const source = session.getSnapshot().context, requestEpoch = epoch;
+      if (source.state !== 'authenticated' || source.user_id !== context.user_id || source.device_id !== context.device_id) return Promise.resolve();
+      const valid = () => {
+        const current = session.getSnapshot().context;
+        return active && requestEpoch === epoch && current.state === 'authenticated' && current.user_id === source.user_id && current.device_id === source.device_id && current.session_generation === source.session_generation && current.access_token === source.access_token;
+      };
+      let task!: Promise<void>;
+      task = (async () => {
+        let resetPage = reset;
+        publish(true);
+        try {
+          do {
+            queuedReset = false;
+            const abort = new AbortController(); activeAbort = abort;
+            try {
+              const result = await session.request<Page<T>>(`/${scope}?limit=20${!resetPage && page.cursor ? `&cursor=${encodeURIComponent(page.cursor)}` : ''}`, { signal: abort.signal });
+              if (!valid()) return;
+              // A change arrived while A11 was in flight. Do not display/cache the
+              // now-obsolete page; one trailing reset consumes the current server state.
+              if (!queuedReset) {
+                const incoming = result.data.items, next = result.meta?.next_cursor ?? null;
+                let merged = incoming;
+                if (!resetPage) {
+                  const incomingIds = new Set(incoming.map(item => identifyRef.current(item)));
+                  merged = [...page.items.filter(item => !incomingIds.has(identifyRef.current(item))), ...incoming];
+                }
+                const updated = { items: merged, cursor: next };
+                try { localStorage.setItem(key, JSON.stringify(updated)); } catch (error) { session.failStorage(error); throw error; }
+                page = updated; publish(true);
+              }
+            } catch (error) {
+              if (!valid()) return;
+              if (error instanceof ApiError && (error.code === 'CURSOR_INVALID' || error.code === 'CURSOR_EXPIRED') && !resetPage) queuedReset = true;
+              if (!queuedReset) publish(true, describeError(error));
+            } finally { if (activeAbort === abort) activeAbort = null; }
+            resetPage = true;
+          } while (queuedReset && valid());
+        } finally {
+          if (running === task) running = null;
+          if (valid()) setView(current => ({ ...current, busy: false }));
+        }
+      })();
+      running = task; return task;
+    };
+    return {
+      load,
+      activate() {
+        active = true; ++epoch; page = { items: [], cursor: null }; publish(true);
+        try {
+          const cached = scope === 'contacts' ? localStorage.getItem(key) : null;
+          if (cached) {
+            const value: unknown = JSON.parse(cached);
+            if (typeof value === 'object' && value !== null && 'items' in value && Array.isArray(value.items) && 'cursor' in value && (value.cursor === null || typeof value.cursor === 'string')) {
+              page = value as PageCache<T>; publish(false); return;
+            }
+          }
+        } catch (error) { session.failStorage(error); return; }
+        // REST cursors are owner/device/query scoped, never the chat SyncCursor.
+        if (scope === 'contacts') void load(true);
+      },
+      dispose() { active = false; ++epoch; queuedReset = false; activeAbort?.abort(); activeAbort = null; running = null; },
+    };
+  }, [session, key, scope, context.user_id, context.device_id]);
+  useEffect(() => { lifecycle.activate(); return () => lifecycle.dispose(); }, [lifecycle]);
+  const current = view.key === key ? view : { items: [], cursor: null, busy: true, error: null };
+  return { items: current.items, cursor: current.cursor, busy: current.busy, error: current.error, load: lifecycle.load };
 }
 export async function fetchAvatarBytes(grant: DownloadGrant, fetcher: (url: string, init: globalThis.RequestInit) => Promise<Response> = fetch, signal?: AbortSignal): Promise<Blob> {
   if (!['image/jpeg', 'image/png'].includes(grant.content_type)) throw new Error('頭像類型不正確，請重新取得授權。');
