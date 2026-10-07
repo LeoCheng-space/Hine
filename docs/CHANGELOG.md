@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — 真Chrome／Edge与完整八job CI全數通過
+
+- [run37689818571](https://github.com/LeoCheng-space/Hine/actions/runs/37689818571)／`e77b8aa3a02f2889c899ef0be3d2760724bdd697` **8／8 SUCCESS**。Chrome154.0.8037.97／Microsoft Edge154.0.4258.37各headed59個真UI／WSS／IDB／native hidden-read檢查通過，100則DOM／IDB／rAF復原334.83ms／555.34ms，unexercised均空；未替換Edge或合成visibility。
+- 真API／BA container production image＋migration、verifiedTLS、原session／C1／M1／read restart存續、停止writers後full table／sequence atomic clone restore、API綁clone保留JWT並真新WSS寫入與static Web再通過。完整PF01–PF08共183checks通過，notify loss至WSS撤銷4568.896ms；實際pg_dump71.164ms／atomicrestore61.096ms。
+- 最終Browser與Container兩份Read-only Review均無actionable finding。SDK fixture launch policy的sandbox設定明列報告，不當正式browser安全證據；公開VM／真GCS／physical Android／50user600秒／正式backup-rollback-monitoring仍因target與授權不可用保留Blocked。仍僅feature branch commit/push，不自行PR或merge main。
+
 ## 2026-10-08 — Native browser沿用已成功的SDK測試啟動政策
 
 - [run37685811437](https://github.com/LeoCheng-space/Hine/actions/runs/37685811437) 的七個jobs仍SUCCESS，Edge仍`CRASHPAD_FATAL`／SIGTRAP(-5)；單獨`--disable-breakpad`沒有解除故障，不再宣稱它是完整policy parity。
