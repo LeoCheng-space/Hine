@@ -50,6 +50,11 @@ headed收件者使用fresh native profile／真指定browser binary，公開
 `connect_over_cdp(no_defaults=True)` 不啟用SDK強制focus／visible；原Components
 持有並清理自己的browser child。實际tab foreground／background決定visibility，
 不合成事件；只在真UI操作時foreground，不為hidden等待偷換可見條件。
+native啟動參數透過公開CDP `Browser.getBrowserCommandLine` 沿用已啟動的pinned SDK
+測試browser政策，替換profile與debugging transport、不複製原profile／proxy／crash dump路徑。
+這包含SDK測試專用的sandbox設定；JSON明記`native_chromium_sandbox`，
+**不是production browser sandbox安全驗收**。只載入owned fixture的本機可信Web，
+不接用日常browser、外部網站或既有user profile；`no_defaults`仍禁止focus模擬。
 報告僅新0600 JSON，不覆寫existing／symlink；exit0觀察通過、1失敗、2缺先決條件。
 不產生trace／HAR／video／auth screenshots，不輸出credential／ID／原文。
 owned Caddy CA由native client驗證；browser暫忽略私有CA錯誤，**不是browser/public CA信任證據**。

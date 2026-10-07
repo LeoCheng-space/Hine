@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — Native browser沿用已成功的SDK測試啟動政策
+
+- [run37685811437](https://github.com/LeoCheng-space/Hine/actions/runs/37685811437) 的七個jobs仍SUCCESS，Edge仍`CRASHPAD_FATAL`／SIGTRAP(-5)；單獨`--disable-breakpad`沒有解除故障，不再宣稱它是完整policy parity。
+- Native recipient從已成功的同channel managed browser透過公開CDP取得實際啟動switches，替換owned profile／loopback debugging transport，排除proxy與crash dump路徑。`no_defaults`與真正tab visibility驗收不變，不退換browser或略過失敗。
+- 這是SDK測試啟動政策（包含其測試sandbox設定），不是production sandbox安全證明；報告明記`native_launch_policy`及`native_chromium_sandbox`，只用fresh owned fixture／可信local Web。不改production browser、global kernel或trust。是否修復Edge仍由新hosted實際gate決定。
+- 修正後本機Chrome154 headed59個真UI／WSS／IDB／native hidden-read檢查PASS，100則DOM／IDB／rAF復原344.99ms；Ruff／infra30通過。公開CDP需要headed-only `--enable-automation`明確opt-in（SDK1.63已不預設），不改headless政策。Final browser Read-only Review無actionable finding；hosted Edge仍待新run。
+
 ## 2026-10-08 — Native browser使用pinned SDK的crash reporting policy
 
 - [run37681214482](https://github.com/LeoCheng-space/Hine/actions/runs/37681214482) 的bounded native Edge diagnostic已分類為`CRASHPAD_FATAL`／SIGTRAP(-5)，不是已驗明的sandbox故障；不猜加`--no-sandbox`或替換browser。

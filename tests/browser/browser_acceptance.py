@@ -188,7 +188,7 @@ async def web_build_provenance(bun: str, destination: Path) -> tuple[str, dict[s
     return version, source_hashes, asset_hashes, executable_hash
 
 
-async def _native_recipient(playwright, args, components, private, evidence):
+async def _native_recipient(playwright, managed_browser, args, components, private, evidence):
     executable = args.browser_executable or {
         "chrome": "/opt/google/chrome/chrome",
         "msedge": "/opt/microsoft/msedge/msedge",
@@ -198,12 +198,22 @@ async def _native_recipient(playwright, args, components, private, evidence):
         raise PrerequisiteFailure("REQUESTED_NATIVE_BROWSER_UNAVAILABLE")
     profile = private / "native-recipient-profile"
     profile.mkdir(mode=0o700)
-    child = await components.spawn("native-recipient-browser", executable,
+    # Reuse the startup policy of the already-running pinned SDK browser. Only
+    # replace its owned profile/debugging transport and request a native tab.
+    launch_cdp = await managed_browser.new_browser_cdp_session()
+    try:
+        command_line = await launch_cdp.send("Browser.getBrowserCommandLine")
+    finally:
+        await launch_cdp.detach()
+    replaced = ("--user-data-dir", "--remote-debugging", "--no-startup-window",
+                "--crash-dumps-dir", "--proxy-server", "--proxy-bypass-list")
+    policy = [argument for argument in command_line["arguments"]
+              if argument.startswith("--") and not argument.startswith(replaced)]
+    evidence["configuration"]["native_launch_policy"] = "PINNED_SDK_TEST_BROWSER"
+    evidence["configuration"]["native_chromium_sandbox"] = "--no-sandbox" not in policy
+    child = await components.spawn("native-recipient-browser", executable, *policy,
         f"--user-data-dir={profile}", "--remote-debugging-port=0",
-        "--remote-debugging-address=127.0.0.1", "--no-first-run",
-        # Match pinned SDK test-browser crash reporting policy, not its focus or
-        # sandbox overrides. Hosted Edge's classified fatal is in crashpad.
-        "--disable-breakpad", "--no-default-browser-check", "--ignore-certificate-errors", "about:blank",
+        "--remote-debugging-address=127.0.0.1", "--ignore-certificate-errors", "about:blank",
         env=dict(os.environ))
     port_file = profile / "DevToolsActivePort"
     async with asyncio.timeout(20):
@@ -408,7 +418,9 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
         check(test_record, "actual_owned_postgresql17_available", postgres_version // 10000 == 17)
         check(test_record, "actual_owned_redis_authenticated_and_available", await components.redis.ping())
         async with async_playwright() as playwright:
-            launch = {"headless": not args.headed}
+            # Browser.getBrowserCommandLine requires this explicit CDP opt-in;
+            # pinned SDK 1.63 no longer includes it in its default switches.
+            launch = {"headless": not args.headed, "args": ["--enable-automation"] if args.headed else []}
             if args.browser_executable:
                 browser_type = playwright.chromium
                 launch["executable_path"] = args.browser_executable
@@ -427,7 +439,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             page_a = await context_a.new_page()
             if args.headed:
                 native_receiver, context_b, page_b = await _native_recipient(
-                    playwright, args, components, private, evidence)
+                    playwright, browser, args, components, private, evidence)
                 evidence["configuration"]["recipient_focus_emulation"] = False
                 evidence["environment"]["native_recipient_browser_version"] = native_receiver.version
             else:
