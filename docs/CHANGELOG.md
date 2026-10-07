@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — 真native headed hidden／foreground browser驗收
+
+- 不使用Playwright強制visible的recipient context：headed收件者使用同指定Chrome／Edge真binary、fresh0700 native profile、原Components持有／清理child，透過公開 `connect_over_cdp(no_defaults=True)` 接管default context。保留SDK固定版本、privateCA限制；不接用operator profile或browser，不合成visibility事件。
+- 已實驗驗明secondary CDP session無法取消Playwright原session的focus override；真native no-defaults同window兩tab切換才觀察hidden／visible。實際UI互動先foreground，純收件／hidden觀察不foreground；所有role／HTTP／WSS／IDB／原C1／reload／receipt／撤權路徑保持。
+- owned非rootauthenticated Xvfb＋Chrome154.0.8037.97 **headed59checks全通過**：真正hidden時只提交delivered、不提交read，實際foreground後才read；100則已提交訊息DOM／IDB各單筆與rAF404.99ms。無unexercised browser case；這仍非physical Android／IME、正式VM或50users/600秒SLO。
+
 ## 2026-10-08 — 修正真 Docker nullable network metadata
 
 - [run37656312011](https://github.com/LeoCheng-space/Hine/actions/runs/37656312011) 已保留sanitized reports；container真runtime指出 `isolated_subnets` 在Docker無IPAM的network遇到合法`Config:null`便TypeError，尚未建置映像。修正只把無地址配置視為空迭代，不略過已占用CIDR或放寬service隔離。

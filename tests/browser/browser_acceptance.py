@@ -26,7 +26,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from playwright.async_api import Error as PlaywrightError
 
@@ -150,12 +150,46 @@ async def web_build_provenance(bun: str, destination: Path) -> tuple[str, dict[s
     return version, source_hashes, asset_hashes, executable_hash
 
 
+async def _native_recipient(playwright, args, components, private):
+    executable = args.browser_executable or {
+        "chrome": "/opt/google/chrome/chrome",
+        "msedge": "/opt/microsoft/msedge/msedge",
+        "chromium": playwright.chromium.executable_path,
+    }[args.browser]
+    if not valid_exec(executable):
+        raise PrerequisiteFailure("REQUESTED_NATIVE_BROWSER_UNAVAILABLE")
+    profile = private / "native-recipient-profile"
+    profile.mkdir(mode=0o700)
+    child = await components.spawn("native-recipient-browser", executable,
+        f"--user-data-dir={profile}", "--remote-debugging-port=0",
+        "--remote-debugging-address=127.0.0.1", "--no-first-run",
+        "--no-default-browser-check", "--ignore-certificate-errors", "about:blank",
+        env=dict(os.environ))
+    port_file = profile / "DevToolsActivePort"
+    async with asyncio.timeout(20):
+        while not port_file.is_file():
+            if child.returncode is not None:
+                raise PrerequisiteFailure("REQUESTED_NATIVE_BROWSER_EXITED")
+            await asyncio.sleep(0.02)
+    port = int(port_file.read_text().splitlines()[0])
+    # Public no_defaults applies to the real default context, unlike a second
+    # CDP session which cannot undo Playwright's own forced-visible session.
+    native = await playwright.chromium.connect_over_cdp(
+        f"http://127.0.0.1:{port}", no_defaults=True)
+    context = native.contexts[0]
+    page = context.pages[0]
+    await page.set_viewport_size({"width": 1365, "height": 900})
+    return native, context, page
+
+
 async def wait_visible(locator, timeout: int = 15000) -> None:
     await locator.wait_for(state="visible", timeout=timeout)
 
 
 async def register(page, email: str, password: str, name: str, record: dict, tag: str) -> None:
-    await page.goto("/register", wait_until="domcontentloaded")
+    target = urlsplit(page.url)
+    await page.goto(f"{target.scheme}://{target.netloc}/register", wait_until="domcontentloaded")
+    await page.bring_to_front()
     await page.get_by_label("電子郵件").fill(email)
     await page.get_by_label("顯示名稱").fill(name)
     await page.get_by_label("密碼").fill(password)
@@ -168,7 +202,9 @@ async def register(page, email: str, password: str, name: str, record: dict, tag
 
 
 async def login(page, email: str, password: str, record: dict, tag: str) -> None:
-    await page.goto("/login", wait_until="domcontentloaded")
+    target = urlsplit(page.url)
+    await page.goto(f"{target.scheme}://{target.netloc}/login", wait_until="domcontentloaded")
+    await page.bring_to_front()
     await page.get_by_label("電子郵件").fill(email)
     await page.get_by_label("密碼").fill(password)
     await page.get_by_role("button", name="登入").click()
@@ -178,6 +214,7 @@ async def login(page, email: str, password: str, record: dict, tag: str) -> None
 
 
 async def public_id(page) -> str:
+    await page.bring_to_front()
     await page.get_by_role("navigation", name="主要導覽").get_by_role("button", name="個人檔案").click()
     field = page.get_by_label("公開 ID（分享給對方以加入聯絡人）")
     await wait_visible(field)
@@ -188,12 +225,14 @@ async def public_id(page) -> str:
 
 
 async def goto_chat_list(page) -> None:
+    await page.bring_to_front()
     await page.get_by_role("navigation", name="主要導覽").get_by_role("button", name="聊天", exact=True).click()
     await page.wait_for_url(re.compile(r"/chats$"))
     await page.locator(".chat-list").wait_for(state="visible")
 
 
 async def open_direct(page, recipient_id: str, record: dict) -> str:
+    await page.bring_to_front()
     await page.get_by_role("navigation", name="主要導覽").get_by_role("button", name="聯絡人").click()
     await page.wait_for_url(re.compile(r"/contacts$"))
     await page.get_by_label("已知公開 ID").fill(recipient_id)
@@ -208,6 +247,7 @@ async def open_direct(page, recipient_id: str, record: dict) -> str:
 
 
 async def send_text(page, text: str) -> None:
+    await page.bring_to_front()
     composer = page.locator(".chat-composer textarea")
     await composer.fill(text)
     await page.locator(".send-button").click()
@@ -286,6 +326,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
     ports = iter(native_ports)
     components.port = lambda: next(ports)
     browser = None
+    native_receiver = None
     contexts = []
     pages = []
     try:
@@ -340,15 +381,21 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             except PlaywrightError:
                 raise PrerequisiteFailure("REQUESTED_BROWSER_CHANNEL_UNAVAILABLE") from None
             context_a = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
-            context_b = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
+            page_a = await context_a.new_page()
+            if args.headed:
+                native_receiver, context_b, page_b = await _native_recipient(playwright, args, components, private)
+                evidence["configuration"]["recipient_focus_emulation"] = False
+                evidence["environment"]["native_recipient_browser_version"] = native_receiver.version
+            else:
+                context_b = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
+                page_b = await context_b.new_page()
             contexts.extend([context_a, context_b])
-            page_a, page_b = await context_a.new_page(), await context_b.new_page()
             pages.extend([page_a, page_b])
             observed_websockets: list[str] = []
             page_a.on("websocket", lambda websocket: observed_websockets.append(websocket.url))
             page_b.on("websocket", lambda websocket: observed_websockets.append(websocket.url))
-            await page_a.goto("/")
-            await page_b.goto("/")
+            await page_a.goto(origin + "/")
+            await page_b.goto(origin + "/")
             test_record["checks"]["real_browser_https_production_build_loaded"] = await page_a.locator("#root").evaluate("(root) => root.childElementCount > 0") and await page_b.locator("#root").evaluate("(root) => root.childElementCount > 0")
             test_record["checks"]["real_browser_secure_context"] = await page_a.evaluate("isSecureContext && location.protocol === 'https:'")
             check(test_record, "real_browser_https_production_build_loaded", test_record["checks"]["real_browser_https_production_build_loaded"])
@@ -416,6 +463,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                 pages.append(cover)
                 await cover.goto(origin + "/", wait_until="domcontentloaded")
                 await cover.bring_to_front()
+                await page_b.wait_for_function("document.visibilityState === 'hidden'", polling=100, timeout=10000)
                 check(test_record, "headed_recipient_page_is_genuinely_hidden", await page_b.evaluate("document.visibilityState === 'hidden'"))
                 hidden_message = "browser-hidden-" + secrets.token_hex(8)
                 await send_text(page_a, hidden_message)
@@ -439,6 +487,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                 check(test_record, "hidden_recipient_message_stays_delivered_not_read",
                       hidden_status == "delivered" and await page_b.evaluate("document.visibilityState === 'hidden'"))
                 await page_b.bring_to_front()
+                await page_b.wait_for_function("document.visibilityState === 'visible'", polling=100, timeout=10000)
                 await page_b.wait_for_function(
                     "id => document.querySelector(`[data-message-id='${id}']`)?.dataset.readEligible === 'false'",
                     arg=str(hidden_row["message_id"]), timeout=20000)
@@ -616,6 +665,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             await send_text(page_a, group_message)
             await wait_message(page_a, group_message)
             await page_b.goto(origin + "/chats/" + quote(group_id, safe=""), wait_until="domcontentloaded")
+            await page_b.bring_to_front()
             await wait_message(page_b, group_message, timeout=45000)
             check(test_record, "group_recipient_dom_and_indexeddb_message_persisted", await indexeddb_persisted_message(page_b, group_id, group_message))
             async with components.sql() as conn:
@@ -708,7 +758,8 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             surviving_message = "browser-surviving-device-" + secrets.token_hex(8)
             await send_text(page_c, surviving_message)
             await wait_message(page_c, surviving_message)
-            await page_b.goto("/chats/" + quote(direct_id, safe=""), wait_until="domcontentloaded")
+            await page_b.goto(origin + "/chats/" + quote(direct_id, safe=""), wait_until="domcontentloaded")
+            await page_b.bring_to_front()
             await wait_message(page_b, surviving_message)
             async with components.sql() as conn:
                 surviving_rows = await conn.fetch(
@@ -738,6 +789,9 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
         if browser is not None:
             with contextlib.suppress(Exception):
                 await browser.close()
+        if native_receiver is not None:
+            with contextlib.suppress(Exception):
+                await native_receiver.close()
         await components.close()
 
 

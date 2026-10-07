@@ -46,6 +46,10 @@ Caddy生命週期，跑實際UI、WSS、IndexedDB、reload、保存游標重連�
 Chromium。`--browser chromium --browser-executable PATH` 可用實際binary，
 但報告標明custom executable。`--headed` 原生hidden觀察需真display；
 CI使用Xvfb與真Chrome／Edge，headless明確不執行hidden，不能代表physical Android。
+headed收件者使用fresh native profile／真指定browser binary，公開
+`connect_over_cdp(no_defaults=True)` 不啟用SDK強制focus／visible；原Components
+持有並清理自己的browser child。實际tab foreground／background決定visibility，
+不合成事件；只在真UI操作時foreground，不為hidden等待偷換可見條件。
 報告僅新0600 JSON，不覆寫existing／symlink；exit0觀察通過、1失敗、2缺先決條件。
 不產生trace／HAR／video／auth screenshots，不輸出credential／ID／原文。
 owned Caddy CA由native client驗證；browser暫忽略私有CA錯誤，**不是browser/public CA信任證據**。
