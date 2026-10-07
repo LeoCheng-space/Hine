@@ -201,7 +201,9 @@ async def _native_recipient(playwright, args, components, private, evidence):
     child = await components.spawn("native-recipient-browser", executable,
         f"--user-data-dir={profile}", "--remote-debugging-port=0",
         "--remote-debugging-address=127.0.0.1", "--no-first-run",
-        "--no-default-browser-check", "--ignore-certificate-errors", "about:blank",
+        # Match pinned SDK test-browser crash reporting policy, not its focus or
+        # sandbox overrides. Hosted Edge's classified fatal is in crashpad.
+        "--disable-breakpad", "--no-default-browser-check", "--ignore-certificate-errors", "about:blank",
         env=dict(os.environ))
     port_file = profile / "DevToolsActivePort"
     async with asyncio.timeout(20):

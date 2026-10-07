@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — Native browser使用pinned SDK的crash reporting policy
+
+- [run37681214482](https://github.com/LeoCheng-space/Hine/actions/runs/37681214482) 的bounded native Edge diagnostic已分類為`CRASHPAD_FATAL`／SIGTRAP(-5)，不是已驗明的sandbox故障；不猜加`--no-sandbox`或替換browser。
+- InstalledPlaywright1.63的實際common switches包含`--disable-breakpad`，成功的SDK主browser沿用此policy。Native recipient同樣停用測試browser crash reporting，保留原sandbox、fresh profile、loopback CDP及`no_defaults`真实visibility；不操作production browser／global kernel或trust。
+- 相同Chrome154完整owned headed59checks／hidden delivered→foreground read及100則DOM/IDB/rAF394.01ms通過，Ruff／privacy canary通過。此policy parity是否解除Edge fatal仍須新hosted Edge gate，不能拿Chrome结果代填。
+
 ## 2026-10-08 — 完整container gate成功，保留Edge fatal分類
 
 - [run37674312851](https://github.com/LeoCheng-space/Hine/actions/runs/37674312851) 七個jobs SUCCESS，僅native Edge startup失敗。真API／BA images、production migration、verifiedTLS、雙WSS原C1／M1／W08-W09／history、PG／Redis restart後原session、停止writers後full tables／sequence atomic clone restore、API綁clone保留JWT並真新寫入與static Web全部通過。
