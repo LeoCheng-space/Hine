@@ -1,17 +1,20 @@
 name: Repository Checks
 
 on:
-  pull_request:
   push:
-    branches:
-      - main
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   repository-structure:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Verify required project files
         run: |
@@ -29,3 +32,10 @@ jobs:
             echo "Potential secret file detected."
             exit 1
           fi
+
+      - name: Scan for leaked secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
