@@ -40,6 +40,35 @@ LIMITS = [
 ]
 
 
+def _native_startup_diagnostic(components, browser: str, child) -> tuple[str, dict]:
+    # Keep logs private, but classify a small set of stable startup signatures
+    # before Components removes its owned temp directory.
+    log_files = tuple(components.directory.glob("native-recipient-browser-*.log"))
+    log_bytes = b""
+    if len(log_files) == 1:
+        with contextlib.suppress(OSError), log_files[0].open("rb") as private_log:
+            log_bytes = private_log.read(65536)
+    if b"No usable sandbox" in log_bytes:
+        category = "SANDBOX_INITIALIZATION_FAILED"
+    elif b"Failed to move to new namespace" in log_bytes:
+        category = "NAMESPACE_SANDBOX_DENIED"
+    elif b"error while loading shared libraries:" in log_bytes:
+        category = "NATIVE_LIBRARY_LOAD_FAILED"
+    elif b"GLIBC_" in log_bytes and b"not found" in log_bytes:
+        category = "NATIVE_RUNTIME_ABI_UNAVAILABLE"
+    elif b"FATAL:" in log_bytes:
+        category = "BROWSER_FATAL_LOGGED"
+    else:
+        category = "EXITED_BEFORE_DEVTOOLS_UNCLASSIFIED"
+    browser_name = "EDGE" if browser == "msedge" else "BROWSER"
+    failure_code = f"REQUESTED_NATIVE_{browser_name}_EXITED_BEFORE_DEVTOOLS"
+    return failure_code, {
+        "category": category,
+        "exit_code": child.returncode,
+        "log_bytes": len(log_bytes),
+    }
+
+
 class PrerequisiteFailure(Exception):
     pass
 
@@ -150,7 +179,7 @@ async def web_build_provenance(bun: str, destination: Path) -> tuple[str, dict[s
     return version, source_hashes, asset_hashes, executable_hash
 
 
-async def _native_recipient(playwright, args, components, private):
+async def _native_recipient(playwright, args, components, private, evidence):
     executable = args.browser_executable or {
         "chrome": "/opt/google/chrome/chrome",
         "msedge": "/opt/microsoft/msedge/msedge",
@@ -169,7 +198,10 @@ async def _native_recipient(playwright, args, components, private):
     async with asyncio.timeout(20):
         while not port_file.is_file():
             if child.returncode is not None:
-                raise PrerequisiteFailure("REQUESTED_NATIVE_BROWSER_EXITED")
+                failure_code, diagnostic = _native_startup_diagnostic(
+                    components, args.browser, child)
+                evidence["diagnostics"]["native_browser_startup"] = diagnostic
+                raise PrerequisiteFailure(failure_code)
             await asyncio.sleep(0.02)
     port = int(port_file.read_text().splitlines()[0])
     # Public no_defaults applies to the real default context, unlike a second
@@ -383,7 +415,8 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             context_a = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
             page_a = await context_a.new_page()
             if args.headed:
-                native_receiver, context_b, page_b = await _native_recipient(playwright, args, components, private)
+                native_receiver, context_b, page_b = await _native_recipient(
+                    playwright, args, components, private, evidence)
                 evidence["configuration"]["recipient_focus_emulation"] = False
                 evidence["environment"]["native_recipient_browser_version"] = native_receiver.version
             else:
@@ -854,6 +887,7 @@ def main() -> int:
         "environment": {"os": platform.system(), "release": platform.release(),
             "architecture": platform.machine(), "python": platform.python_version()},
         "provenance": {}, "scenario": record, "limits": list(LIMITS),
+        "diagnostics": {},
         "transport_note": "Owned HTTP client verifies private Caddy CA; browser HTTPS/WSS uses that owned TLS endpoint with browser private-CA errors ignored.",
     }
     code = 2

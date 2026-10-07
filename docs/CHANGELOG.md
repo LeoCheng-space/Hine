@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — Redis private runtime config與fixed startup diagnostics
+
+- [run37666361557](https://github.com/LeoCheng-space/Hine/actions/runs/37666361557) 的Chrome headed59checks全通過、100則復原273.82ms；Edge在native child/CDP ready之前退出，PG healthy但Redis restart unhealthy。保持兩gate失敗，不以主SDK Edge啟動或初始container flow冒稱整體完成。
+- Redis bootstrap不再重寫sticky `/tmp`內已redis-owned的固定0600檔案；每次在root-controlled `/run`建立fresh private directory/config，交給redis UID及原entrypoint。64hex credential、non-root runtime、`/data` inode／AOF everysec不變。這消除restart-sensitive來源hazard，但是否為本次Redis退出原因仍須真Docker proof。
+- 失敗時只在owned scope內分類Redis health/log的stdout＋stderr，發布固定class counts／最多10個numeric exits；native Edge只分類最多64KiB private log為固定category、child exit及captured byte count。無rawlog／exception／path／password／ID／本文，不猜sandbox或替換browser。
+- Privacy canary formatter、Ruff、shell、infra30及兩份scoped Read-only reviews通過；真Redis restart/full clone restore與Edge root cause以新CI artifact判定，未放寬任何acceptance assertion。
+
 ## 2026-10-08 — 容器復原先恢復data services再啟動consumers
 
 - [run37661758660](https://github.com/LeoCheng-space/Hine/actions/runs/37661758660) 的sanitized report證明真API／BA images建置、production migration、verified privateCA HTTPS及2個original C1/M1／W08-W09／history均通過；整體仍在四service同時restart後的health gate失敗，restore未執行，不宣稱全部容器完成。

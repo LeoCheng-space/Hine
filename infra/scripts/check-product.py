@@ -169,6 +169,49 @@ def cleanup_project(docker, project, env):
 
 
 
+def redis_failure_diagnostics(docker, env, container):
+    """Classify owned Redis health/log output without returning any raw text."""
+    categories = {
+        "permission_denied": ("permission denied", "operation not permitted"),
+        "authentication_failed": ("wrongpass", "noauth", "invalid username-password"),
+        "configuration_error": ("can't open config", "failed to load", "bad directive"),
+        "persistence_error": ("error reading the rdb", "fatal error loading the db",
+                              "error loading the append only file", "can't open the append-only file",
+                              "bad file format reading the append", "read-only file system"),
+        "address_error": ("address already in use", "bind:"),
+        "oom_or_signal": ("oomkilled", "out of memory", "signal"),
+    }
+    texts = []
+    exit_codes = []
+    try:
+        health = json.loads(run([docker, "inspect", "--format", "{{json .State.Health}}",
+                                container], env=env))
+        for entry in health.get("Log", []):
+            if isinstance(entry.get("ExitCode"), int):
+                exit_codes.append(entry["ExitCode"])
+            output = entry.get("Output")
+            if isinstance(output, str):
+                texts.append(output.lower())
+    except (AcceptanceFailure, ValueError, TypeError, AttributeError):
+        pass
+    try:
+        logs = subprocess.run([docker, "logs", "--tail", "40", container],
+                              cwd=ROOT, env=env, capture_output=True, timeout=15, check=False)
+        texts.append((logs.stdout + logs.stderr).decode("utf-8", errors="replace").lower())
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    joined = "\n".join(texts)
+    matched = {name: sum(joined.count(fragment) for fragment in fragments)
+               for name, fragments in categories.items()}
+    matched = {name: count for name, count in matched.items() if count}
+    if not matched:
+        matched["unclassified"] = 1
+    if any(code != 0 for code in exit_codes):
+        matched["healthcheck_failed"] = 1
+    return {"healthcheck_exit_codes": exit_codes[-10:],
+            "failure_classes": matched}
+
+
 def wait_healthy(compose, env, docker, services, timeout=180):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -187,6 +230,7 @@ def wait_healthy(compose, env, docker, services, timeout=180):
             return
         time.sleep(2)
     states = {}
+    redis_container = None
     for service in services:
         try:
             container = run(compose + ["ps", "-q", service], env=env).decode().strip()
@@ -196,10 +240,14 @@ def wait_healthy(compose, env, docker, services, timeout=180):
             state = run([docker, "inspect", "--format", "{{.State.Health.Status}}", container],
                         env=env).decode().strip()
             states[service] = state if state in {"healthy", "unhealthy", "starting"} else "unknown"
+            if service == "redis" and state == "unhealthy":
+                redis_container = container
         except AcceptanceFailure:
             states[service] = "unavailable"
     failure = AcceptanceFailure("PRODUCT_HEALTHCHECK_TIMEOUT")
     failure.service_health = states
+    if redis_container:
+        failure.redis_diagnostics = redis_failure_diagnostics(docker, env, redis_container)
     raise failure
 
 def ready(compose, env, docker, ca_path, port):
@@ -780,6 +828,8 @@ def main():
         report["failure_sites"] = _failure_sites(error)
         if hasattr(error, "service_health"):
             report["service_health"] = error.service_health
+        if hasattr(error, "redis_diagnostics"):
+            report["redis_diagnostics"] = error.redis_diagnostics
     except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         report["failure_code"] = "INVALID_TOOL_OR_PRODUCT_RESULT"
         report["failure_sites"] = _failure_sites(error)
