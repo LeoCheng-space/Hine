@@ -1,0 +1,49 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$HINE_DOMAIN} {
+	encode zstd gzip
+	root * /srv/hine
+
+	# Ordering is explicit: no private/API/WSS error reaches the SPA fallback.
+	route {
+		@private path /internal /internal/* /health /health/*
+		handle @private {
+			respond "Not found" 404
+		}
+
+		@api path /api/v1 /api/v1/*
+		handle @api {
+			reverse_proxy api:8080 {
+				# Never forward a client-supplied assertion of its source IP.
+				header_up X-Hine-Client-IP {remote_host}
+			}
+		}
+
+		@websocket path /ws/v1
+		handle @websocket {
+			# Caddy forwards WebSocket Upgrade automatically; URI remains /ws/v1.
+			reverse_proxy realtime:8081
+		}
+
+		@reserved path /api /api/* /ws /ws/*
+		handle @reserved {
+			respond "Not found" 404
+		}
+
+		@spa path_regexp ui ^/(login|register|contacts|chats|profile|chats/[^/]+|groups/[^/]+/manage)?$
+		handle @spa {
+			rewrite * /index.html
+			file_server
+		}
+
+		handle {
+			# Actual assets only; unknown UI paths return404, not the app shell.
+			file_server
+		}
+	}
+	# No access log: query strings may contain credentials. Service logs must also
+	# preserve the shared privacy contract. Automatic HTTPS handles port80 redirects.
+}

@@ -1,0 +1,11 @@
+# Optional only with an actual private bucket and signing-capable credentials.
+services:
+  api:
+    environment:
+      GCS_BUCKET: ${GCS_BUCKET:?Set the real private bucket}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcs_credentials
+    secrets:
+      - gcs_credentials
+secrets:
+  gcs_credentials:
+    file: ${GCS_CREDENTIALS_FILE:?Set the absolute private credential file}

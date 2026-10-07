@@ -1,0 +1,8 @@
+# Exact historical generic-api-key false positives: source-file SHA256 provenance,
+# not credentials. Keep the original experiment JSON and Git history unchanged.
+# The two auth.py entries were verified against the source bytes.
+9a30c6329607ce0cf27f421245c28046d5139f17:docs/testing/evidence/product-native-faults.json:generic-api-key:82
+828fd334497ee7bba169206625f8f8e534ed664e:docs/testing/evidence/pr6-native-restore.json:generic-api-key:75
+# The api.ts entry was verified against the source bytes.
+9a30c6329607ce0cf27f421245c28046d5139f17:docs/testing/evidence/product-browser.json:generic-api-key:180
+# No whole-path, whole-rule, future-commit, or arbitrary 64-hex allowlist.

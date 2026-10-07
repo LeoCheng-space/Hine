@@ -304,7 +304,7 @@ A20 對話上傳請求變體：
 | <a id="event-w15"></a>W15 `sync.request` | C→S `{cursor,snapshot_boundary?}` | 第一個請求使用已儲存的游標；後續請求使用同一輪的邊界。於重新連線／切回前景／定期核對時觸發。 |
 | <a id="event-w16"></a>W16 `sync.batch` | S→C，具關聯性；SyncBatch | `next_cursor` 先原子套用事件和投影，再儲存游標。最多 100 事件、掃描 1000 個事件流位置；隱藏資料列仍可推進游標；游標過期時觸發 W17 SYNC_RESET_REQUIRED。 |
 | <a id="event-w17"></a>W17 `error` | S→C，回覆請求時帶關聯： `{code,message,retryable,retry_after_ms?}` | [錯誤範圍與復原](#error-recovery)及[六階段 precedence](#validation-precedence)；BB 的 INVALID_ARGUMENT／IDEMPOTENCY_CONFLICT／RATE_LIMITED 由 BA 映射。只有新合法 intent 才可能產品限速，相同合法 C1 重試回 existing_same。retry_after_ms 沿用既有可省略／安全延遲規則。 |
-| <a id="event-w18"></a>W18 `presence.changed` | S→C `{user_id,presence:"online"\|"offline"\|"unknown"}` | 短暫且經授權的在線狀態；後端無法確認 Redis 狀態時為未知。 |
+| <a id="event-w18"></a>W18 `presence.changed` | S→C `{user_id,presence:"online"\|"offline"\|"unknown"}` | 短暫且經授權的使用者完整在線狀態；首次取得聯絡人觀察權即送目前狀態，此後僅狀態改變時送。彙總所有有效裝置連線，一條關閉不使其他有效連線離線。Redis 或權威狀態無法確認時為未知；封套 timestamp 是此次狀態觀測時間，不是持久化轉換紀錄。見[私有在線狀態交接](#internal-read-presence-targets)。 |
 | <a id="event-w19"></a>W19 `receipt.ack` | S→C，與 W08/W09 關聯，頂層 `conversation_id`; `{message_id,status:"delivered"\|"read",changed}` | 回條請求結果；重複請求若為無操作，可能會傳回 `changed=false`。 |
 | <a id="event-w20"></a>W20 `conversation.updated` | S→C，頂層 `conversation_id`; `{changes:{kind:"title",title:Title}\|{kind:"role",member_id,role:"admin"\|"member"},actor_id,membership_version}` | A15/A17 在提交後傳送給目前已獲授權的成員；版本缺口以 A12 修正。 |
 | <a id="event-w21"></a>W21 `device.activity` | 本版範圍外（2026-10-01 PM 決議） | 保留 ID／錨點；不納入交付。 |
@@ -400,6 +400,7 @@ W03／W04 的 `nonce` 必填、非 null、非空 JSON 字串。發送端每次 W
 5. <a id="internal-read-bootstrap"></a>`readBootstrap(subject_id:EntityID,session_id:EntityID,session_generation:int,reason:"first_login"|"cursor_reset",snapshot_id?:EntityID,page_token?:OpaqueCursor)` → SyncBootstrapPage。錯誤：INVALID_ARGUMENT、UNAUTHENTICATED、FORBIDDEN、CURSOR_INVALID、SYNC_RESET_REQUIRED、DEPENDENCY_UNAVAILABLE。EntityID 先依[前置驗證](#entityid-input-validation)。快照狀態／最新位置會在短暫的 REPEATABLE READ 交易中一致讀取；分頁期間不可讓交易跨越網路請求。每頁前都要驗證工作階段與授權；快照過期時應重新開始，而非混用不同快照。
 6. <a id="internal-read-feed"></a>`readFeed(subject_id:EntityID,session_id:EntityID,session_generation:int,cursor:OpaqueCursor,snapshot_boundary?:OpaqueCursor,limit:int)` → SyncBatch。錯誤：INVALID_ARGUMENT、UNAUTHENTICATED、FORBIDDEN、CURSOR_INVALID、SYNC_RESET_REQUIRED、DEPENDENCY_UNAVAILABLE。EntityID 先依[前置驗證](#entityid-input-validation)。固定延續邊界；可見與隱藏位置都要掃描；回傳已授權內容及最精簡的自身撤銷通知；不得讓一個已撤銷的對話阻塞事件流中其他位置。每頁重新驗證工作階段與授權。
 7. <a id="internal-get-device-presence"></a>`getDevicePresence(subject_id:EntityID,device_id:DeviceID)` 回傳 `{online:"online"|"offline"|"unknown",activity:"unknown",valid_until:null}`；BB caller 先確保 subject_id canonical 合法，不傳超長 ID；BA receiver 驗服務身分及結構（結構錯誤 INVALID_ARGUMENT），不重算 BB 的 Unicode 長度。僅用於 A08 線上狀態，activity 不供消費端使用。<a id="internal-record-activity"></a>`recordActivity` 本版範圍外。
+   - BA 先確認 Redis 與 BB 當前失效紀錄，再對仍有效的相符本地連線以操作 11 重查 C2 綁定。無法確認權威狀態時回 `online:"unknown"`，不把未確認的連線或缺少確認當成 online／offline；BB 對各已知裝置彙總，任一 confirmed online 即使用者 online，沒有 online 但任一 unknown 則為 unknown。
 8. <a id="internal-dispatch-push-intent"></a>`dispatchPushIntent(message_id:UUID,recipient_user_id:EntityID,device_id:DeviceID)`：本版範圍外（2026-10-01 PM 決議）；不建立推播意圖或推播工作程序。
 
 <a id="group-event-mapping-and-client-application"></a>
@@ -575,6 +576,14 @@ W21／W22、活動租約、Web Push 與原生推播本版範圍外（2026-10-01 
     - 只能在交易提交成功後呼叫。
 
 
+11. <a id="internal-read-presence-targets"></a>`readPresenceTargets(subject_id:EntityID,session_id:EntityID,session_generation:int,limit:int,cursor?:OpaqueCursor,contact_user_id?:EntityID)` → `{targets:[{user_id:EntityID,subject_id:EntityID}],next_cursor:OpaqueCursor|null,invalidation_position:int}`。
+    - 提供者後端 B，呼叫者後端 A；`POST /internal/v1/readPresenceTargets` 僅使用已允許的內部服務憑證，不轉送用戶端 JWT、不借用公開 REST。`subject_id` 為私有映射，僅供 BA 聚合本地連線，不回公開消費者或記錄在日誌。
+    - BB 先按既有 EntityID canonical／結構規則驗證輸入；每次呼叫在當前讀取交易檢查 C2 工作階段與本人聯絡人授權。`limit` 必填且為 1–100；cursor 可省略、不可為 null，綁定觀察者與此操作／filter。每頁重查當前授權，失效或過期 cursor 回 `CURSOR_INVALID`。`contact_user_id` 可省略、不可為 null；提供時只回該使用者當前仍獲允許的映射，無權／已移除時 targets 為空，next_cursor 為 null，不另揭露帳號是否存在。
+    - `invalidation_position` 是同一權威讀取的失效位置；BA 先通過原有 watermark／新鮮期閘門。錯誤沿用 `INVALID_ARGUMENT`、`UNAUTHENTICATED`（C13 分層）、`CURSOR_INVALID`、`DEPENDENCY_UNAVAILABLE`，不新增公開欄位、REST／WSS ID 或錯誤碼。
+    - BA 單一有界程序以最多 5 秒輪詢間隔續讀每個有效觀察者，一次工作窗最多 5 秒、一頁最多 100 項，持續保留 opaque continuation；只在完整清單結束後 prune，部分頁失敗不代表移除。每條連線的觀察 metadata 上限 4096 targets，超限使用既有依賴／連線資源清理；輸出沿用既有 frame／byte 上限並分批排入，不能無限增加慢速觀察者佇列。
+    - 每個 W18 開始交付前，在排隊、watermark 等待及取得 socket 寫入鎖之後，以 `contact_user_id` 重查 C2 與當前聯絡人映射；補齊若造成額外等待，就重新讀取，不能沿用等待前的 allowed snapshot。HTTP 回覆後及 send 開始前再次核對連線有效性、到期、新鮮度與 target mapping；任何檢查不能確認即不送資料。C13 user_session 僅撤銷相符綁定；service_identity／缺分層／不可解析回覆不撤銷使用者，W04 控制流程仍依原規則。
+    - W18 不寫 userFeed，不構成 RealtimeNotice，也不擴充 publishCommitted 的 source enum。它是經授權的最新完整觀測，不保證保存／重播每個中間轉換，不表示應用前景、送達或已讀。
+
 <a id="committed-notice-validation"></a>
 #### BB→BA 的正式通知驗證責任
 
@@ -720,7 +729,7 @@ A07 只查 `/users/{user_id}`，沒有關鍵字、電子郵件、顯示名稱搜
 <a id="傳輸與呼叫者驗證主方案api-與-realtime-分開部署"></a>
 #### 傳輸與呼叫者驗證（Compose 私有網路）
 
-- 內部操作 1–6、9–10 以私有網路 HTTP 呼叫：`POST /internal/v1/<operation>`；本文為 JSON 輸入／輸出，錯誤使用共同 REST 錯誤封套。操作 7 僅由 api 呼叫查詢線上狀態；recordActivity／操作 8 本版範圍外。
+- 內部操作 1–6、9–11 以私有網路 HTTP 呼叫：`POST /internal/v1/<operation>`；本文為 JSON 輸入／輸出，錯誤使用共同 REST 錯誤封套。操作 7 僅由 api 呼叫查詢線上狀態；recordActivity／操作 8 本版範圍外。
 - <a id="internal-caller-credential"></a>**內部呼叫憑證（2026-10-01 PM 決議）：** Compose 私有網路內每個服務使用由維運注入的內部呼叫 bearer secret，在 `Authorization` 標頭傳送；提供者依 `INTERNAL_ALLOWED_CALLERS` 驗證呼叫者。憑證不得提交 Git 或記錄。使用者存取權杖不是呼叫者憑證，`validateAccess` 收到的存取權杖僅是輸入資料。
 - 公開反向代理不得轉送 `/internal/*`。
 - <a id="internal-auth-layer"></a>**C13：內部 `UNAUTHENTICATED` 分層（2026-10-01 PM 決議）。** 不新增公開錯誤碼或完整告警平台：
@@ -871,11 +880,11 @@ A18 提交後由後端 B 傳給 `publishCommitted` 的群組通知（被移除�
 
 | 名稱 | 類型／必填 | 消費者 | 設定者／來源 | 秘密？ | 本版值／缺少時的行為 |
 |---|---|---|---|---|---|
-| `API_INTERNAL_URL` | Compose 私有 HTTP URL；必填 | realtime 呼叫 api 操作 1–6、9 | 維運 Compose 網路 | 否 | 缺少時 realtime 不就緒 |
+| `API_INTERNAL_URL` | Compose 私有 HTTP URL；必填 | realtime 呼叫 api 操作 1–6、9、11（W18 聯絡人觀察與 C2 重查） | 維運 Compose 網路 | 否 | 缺少時 realtime 不就緒 |
 | `REALTIME_INTERNAL_URL` | Compose 私有 HTTP URL；必填 | api 呼叫 realtime 操作 7（A08 線上狀態）與操作 10 | 維運 Compose 網路 | 否 | 缺少時 api 不就緒；執行期無法連線時 `publishCommitted` 改走同步／失效紀錄恢復路徑，操作 7 失敗時線上狀態為 `unknown` |
 | `INTERNAL_CALLER_TOKEN_SECRET_REF` | Secret 參照；必填 | 內部 HTTP 呼叫 | 維運注入 | 參照敏感；值為機密 | 缺少／無效時核心服務不就緒 |
 | `INTERNAL_ALLOWED_CALLERS` | 服務呼叫者清單；必填 | api／realtime 驗證呼叫者 | 維運注入 | 否 | 缺少時拒絕所有內部請求並不就緒 |
-| `INVALIDATION_POLL_SECONDS` | 正整數；必填 | realtime 輪詢操作 9 | 本版設定 5 | 否 | 缺少／無效時 realtime 不就緒 |
+| `INVALIDATION_POLL_SECONDS` | 正整數；必填 | realtime 輪詢操作 9；操作 11 採此間隔與 5 秒較小值 | 本版設定 5 | 否 | 缺少／無效時 realtime 不就緒 |
 | `INVALIDATION_STALE_SECONDS` | 正整數；必填 | realtime 節點新鮮期 | 本版設定 15 | 否 | 缺少／無效時 realtime 不就緒；不是資料抵達期限 |
 | `NOTICE_CATCHUP_HOLD_MS` | 正整數；必填 | realtime 遞送閘門 | 本版設定 1000 | 否 | 缺少／無效時 realtime 不就緒 |
 | `INVALIDATION_RETENTION_SECONDS` | 正整數；未定 | BB 保留 SessionInvalidation | 未決候選 | 否 | 不得短於存取權杖最長有效期；值仍待決 |

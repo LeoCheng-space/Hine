@@ -1,5 +1,72 @@
 # HINE 文件變更紀錄
 
+## 2026-10-07 — PR #6 同步 main 並解決 CI／infra 衝突
+
+- 將 `origin/main`／`0736110178a186816b94731caa80149879c44931` 整合進 PR #6 來源，保留已發布 `828fd33` 的全部修正；這是 source branch 同步，不是 merge PR 到 main，不 rebase／force-push／刪分支。
+- CI 同時保留 main 的每分支 push／pull_request、`contents: read`、完整 checkout 與 Gitleaks v3，以及原四個 jobs 的真 PG／Redis、disposable restore、API／Web／QA／infra 測試。Checkout 統一 v6；秘密掃描仍按 push／PR commit 範圍執行，沒有關掉 scanner、comments／artifact 的既有 false 設定不變。
+- `infra/README.md` 保留現有兩台 VM／Nginx／Let's Encrypt／PostgreSQL16 與 GCP 記錄連結，分清單 VM Compose PostgreSQL17／Redis7 目標；保留真 API profiles、secret／trusted proxy／migration／GCS／備份安全。修補 code fence，`infra/gcp/README.md` 的 main 更新原樣保留，不操作或升級現有 VM／資料庫。
+- Gitleaks v8.24.3 實際 history scan 命中三個不可變歷史 evidence source SHA256；已對照真正 `auth.py`／`api.ts` bytes 驗明，不是憑證。`.gitleaksignore` 只列 commit＋path＋rule＋line 精確誤報指紋，不修改歷史 JSON、不略過整個 path／rule／未來 commit。同 evidence path 的新 synthetic PAT detector canary 仍被攔截；全46 commits redacted scan 通過。
+- 解衝突 Git index 的隔離 checkout 重新109 API＋100 BA＋36 QA＋25 infra＋63 Web＝333項及20個真HTTP/WSS/PG restart smoke通過；actionlint／Ruff／typecheck／release build／shell／default-realtime-product Compose通過，兩份獨立CI／infra Review無重要缺陷。新 merge commit／遠端 CI 以發布及 Notion 記錄為準；既有環境進度與正式產品驗收仍分開。
+
+## 2026-10-06 — PR #6 八項 Review 修正與實際 UI 收斂
+
+- 由已發佈 `feature/hine-first-integration`／`315afd8a1242332c4091d20c8e45907f88e3da2c` 的原 PR #6 隔離 worktree `pr-6` 修正，不改原工作區／使用者 `.omp/`。本輪尚未 commit／push／resolve 遠端 Review／merge main／刪分支；既有 head 的 Actions 全綠不冒稱本輪新 CI。
+- 新增有界 API retention：每60秒各最多1,000筆 expired SyncCursor／invalidation，reuse既有索引、維持live TTL、frontier序列化 contiguous prefix／floor／空log head。MAC／owner／kind驗過但已prune的SyncCursor仍回 `SYNC_RESET_REQUIRED`，真Web會bootstrap；非法MAC／scope／REST不混同。無新增migration或其他table清理。
+- provider確認不存在的closed attachment亦終止 `cleaned_at`，之後不重掃；cloud錯誤仍可重試，ready／fresh／24h reconciliation horizon及固定generation刪除不變。PUT503／不明結果先核原A21；確認不存在才用原grant／attempt／bytes／SHA／key／create-only headers再PUT，不偽造412成功或更新過期授權。
+- A14 private notices遇重複recipient或既有700KB預算即拆批，保留全部stable events／durable Cartesian feed／順序／冪等。聊天清單消費既有事件，以single-flight＋trailing A11刷新，server未讀／20筆分頁及舊owner/token/lifetime拒絕維持。DeviceStore完整Python3.12／Unicode15 casefold，未知等價拼法保留server DeviceID與原draft/C1 partition；無locale／NFKC／單字元特例。
+- A12在queued nativeIDB commit比較獨立metadata floor，與self-join boundary分離，涵蓋detail eviction、summary-only title／roles、uncached staged snapshot replay。舊成功read不降版／假unknown／重連，equal／direct-null仍更新。正式bundle A14初開UI另實際重現兩種self-join交错，修正為identity／epoch／ticket限定的fresh authorized route handoff，不重試failed work、不安裝舊read、不讓close／withdraw／換binding啟動舊房間。
+- 實際先red再green；109 API＋100 BA＋36 QA＋25 infra＋63 Web＝**333項通過**。10個真API/WSS/IDB metadata案例、4個fresh opening／close／withdraw案例、queued原C1／all-touched W16／PG prune後Web自動bootstrap通過；正式A14兩人表單直接顯示composer及實際group dialog／Escape／767 layout驗明。13份source SHA256及界線見[本輪證據](testing/evidence/pr6-review-remediation.json)。
+- 新[owned PF08](testing/evidence/pr6-native-restore.json)真pg_dump／單交易clone restore通過；20個peer原C1持久W06到production DOM+rAF全部成功，sample p95 37.7ms、max42.3ms，僅loopback/privateCA小樣本。公開www首頁TLS200但apex／www API和WSS升級均nginx404；沒有SSH／ADC／bucket／signing／Edge／adb／Docker／gcloud可用目標，正式VM/GCS/physical browser/50user呈現SLO/RTO-RPO仍保留具體門檻，不冒充完成。
+
+## 2026-10-06 — 修復 PR #5 的 Compose 交付遺漏
+
+- GitHub Actions run `37426162599` 的 `compose-data-services` 已失敗：根目錄 `docker-compose.yml` 在 `9a30c63` 仍是父分支版本，未包含真正 API provider；合併 development overlay 後 `api` 只有 ports，因此無 image/build context。這是提交範圍遺漏，不是以假 image 或額外 profile 可解決的服務實作問題。
+- 補納完整根檔：真 `api.build`／product profile、JWT／database_url secret、private backend／edge、readiness、trusted-proxy 預設 none。預設仍只啟動 PostgreSQL／Redis；沒有強制啟動 API 或改動 production migration／資料卷安全規則。
+- 驗證從實際 Git 暫存區檔案重建的隔離目錄，而非只測工作目錄：初始化後 default config、CI realtime development config、product config、product＋realtime development config 均通過。解析 model 驗明 default 為 PostgreSQL／Redis、product 才加入含真 build context 的 API。infra25、Ruff、actionlint 通過；完整遠端 CI 以修正提交的後續 run 為準。
+
+## 2026-10-06 — 全角色真實產品補完與本機驗收
+
+- 依使用者已直接合併 PR #4 與跨角色補完指示，由 `fc9eb08` 建立 `feature/product-integration`；不再以 BB／FA／FB／BA 的責任分工阻擋缺項。後續依使用者要求 commit／push，實際 SHA／遠端發布以 Git 紀錄及 Notion 發布紀錄為準；不建立新 PR、不修改 main 強制保護、不冒充組員批准或遠端 Actions。
+- `backend/api/` 交付真正 aiohttp／PostgreSQL17 migration、JWT／scrypt／session／Cookie、可信服務身分、C2／C13、聯絡人、50人群組／最後admin／新加入界線、C1／quota／訊息回條、原子user feed／frozen snapshot／opaque cursor與W18私有op11。原內容／Unicode／null欄位保持，不以記憶體authority取代BB。
+- 附件用真正 Google Cloud Storage3.16 SDK、V4 create-only PUT／固定原授權期限、核驗同generation／metageneration bytes／MIME／SHA256、固定版本A22與safe filename，以及短DB交易後cloud I/O／terminal abandoned exact-generation清理。沒有假GCS／本機storage fallback；真bucket／signing／ADC與CORS仍缺存取，未冒稱實際上下載。
+- `frontend/app/` 交付單React19.3／TS7／Bun1.4.2 Web：唯一Session／WSS／Web Lock、登入／路由／資料頁、IDB v1/v2→v3保留資料升級、投影／游標／原C1／回條原子保存、granular草稿／錨點、IME、唯一768斷點、V3可見性、附件復原與原生群組資訊dialog。Production bundle只定義公開NODE_ENV，關閉任意環境注入。
+- 實際失敗再修正：較舊A19頁被newest-only cache丟棄；同帳戶刷新卡住舊read；queued W05跨移除／重加入；W16等待B授權時重裝A舊正文；不可讀群組阻擋其他回條；完整目前歷史不存在的舊target無限重掃；initial A19 single-flight未等待；同工作階段重連卡住跳最新控制。現在保護requested history window與原意圖、所有touched conversation tickets、terminal blocked但不假read、Promise identity cleanup；原C1不更換、不盲目自動重送。
+- 補BA W18：private `readPresenceTargets` 查當前授權聯絡人，彙總所有有效裝置、Redis未知、不混活動／已讀；最後socket-lock後重查、過時／撤銷不送、metadata與frame／byte有界、單幀無法裝入即資源清理。23個W18回歸納入BA100項。
+- 移除外部 `API_PROVIDER_COMPOSE` cutover；root Compose包含真API／BA、JWT與database_url secret、可信proxy預設none／正式明確CIDR、真GCS credential overlay。正式API容器只校驗migration，新增零參數 `stack.sh migrate` 明確遷移；dotenv重複／空override／multiline／colon continuation 在任何secret mutation前fail closed。CI提供真正PG17＋Redis與兩套Python依賴、Web55行為／typecheck／build。
+- 最後96 API＋100 BA＋36 QA＋25 infra＋55 Web＝**312項通過**；Ruff／actionlint／shell／Compose及Caddy配置已驗。[完整逐REQ證據](testing/acceptance-matrix.md#current-product-evidence)區分實作與物理環境。
+- [Chrome證據](testing/evidence/product-browser.json)保存35個實際UI檢查、7個真正API／PG／WSS／IDB場景、修正前失敗與8份最後source SHA256。實跑註冊登入／換帳戶隔離、兩頁bootstrap、IDB quota abort、深241訊息12頁／有界200仍可看舊頁、原生IME、群組role／最後admin拒絕、dialog焦點／767、保存後W08／遮罩與連續可見後W09；hidden實機／Edge／Android未冒稱完成。
+- [native PF01–PF08](testing/evidence/product-native-faults.json)全部PASS：真process／PG／Redis／提交回覆／SQL rollback；停止寫入者後真正pg_dump／單交易pg_restore到自建clone，還原後表記錄／JWT／撤銷／原M1-C1／feed／read核對。[正式模式gate](testing/evidence/product-production-migration.json)驗無implicit DDL、明確3個checksum後ready200，不代表Docker或VM已啟動。
+- [一對一50WSS／600秒](testing/evidence/product-direct-load.json)：6,000／6,000成功，W07協定p95 78.974ms；[獨立50人群組／600秒](testing/evidence/product-group-load.json)：6,000 intent、294,000／294,000收件與全50歷史驗明，fanout協定p95 73.387ms。是loopback／私有CA／單BA程序CPU-RSS，不是瀏覽器呈現p95、正式VM容量或HA／RTO／RPO／SLO。
+- 現有Notion只有既有VM／網域描述，沒有本輪可用VM登入／GCP project／bucket／signing或ADC credentials；SSH無host/alias、本機無Docker daemon。完成可達程式與native產品驗收，正式VM／公開TLS／真GCS／Edge-Android實機仍須真存取。推播／活動租約／PWA／native app依既有決議範圍外；Title 1–80仍候選。
+
+## 2026-10-05 — BA 專用失效分析與本地故障演練
+
+- 新增[BA 失效分析](testing/backend-a-failure-analysis.md)：30種模式，原因／影響／偵測／降級／復原、角色、主觀工程嚴重度、42筆既有測試trace及7個正式產品／部署gate。O未知、D未量化、不捏造RPN；歷史119項不當作失效模式數。
+- 新增[可重跑工具](../tests/faults/README.md)：只操作自建BA／Redis子程序、loopback BB forwarding socket與測試專用記憶體authority；標準poll5／stale15／hold1000。實際DR-01～DR-06全PASS、exit0；[公開JSON](testing/evidence/backend-a-local-faults.json)保存版本、觀察、monotonic計時及14份吻合的source SHA256。
+- Review與實際診斷修正演練工具的ACK-loss誤踩第二次authority timeout；補owned BA listener證明、逐次shield cancellation及atomic no-clobber evidence。缺前提／既有輸出安全拒絕、不接觸無關ready服務，雙cancellation後owned children存活0；runner Ruff及scoped re-review通過。
+- 不修改BA產品runtime／公開介面；不以fixture記憶體證明PostgreSQL／JWT持久性，不以單次恢復時間證明15秒socket-write界線、p95／RTO／RPO／SLO。真BB／Web／VM／磁碟／備份還原／50WSS及W18仍按具名gate驗收；單VM不承諾HA。依使用者要求提交並推送至`feature/realtime-receipts-sync`，發佈以實際Git紀錄為準；不建立PR、不合併main。
+
+## 2026-10-04 — 子分支 BA 回條與斷線同步
+
+- 依使用者要求，由已發佈 `feature/hine-first-integration`／`5b71178` 建立 `feature/realtime-receipts-sync`，獨立交付回條與同步；原分支不改寫。子分支發佈不等於合併 main、成員批准或正式產品驗收。
+- 新增 `receipts.py`：W08／W09 經 BB 持久化後回 W19，保留單調 read、未變更結果、正式 M1／公開操作者／觀察者／時間與穩定事件；一對一 W10 走既有 Redis 通知，群組只回個別 W19、不發彙總。Redis 故障不撤回已確認回條，畸形寫入結果不冒充成功。
+- 新增 `synchronization.py`：W13／W14 多頁快照、W15／W16 固定邊界／事件流；保留不透明游標、完整投影、sender-only C1 與最小自身 W12。公開回應不假造內部 watermark，讀取後完整補齊工作階段失效；排隊寫入前再次核對當前資源授權、到期／新鮮度及撤權版本。
+- `SYNC_PAGE_LIMIT` 成為必要設定，合法範圍1–100，標準100；既有測試呼叫者及啟動說明同步更新，Compose 原本已有100。BB 仍負責1000位置掃描上限、游標／快照與正式權威，FA 仍負責瀏覽器投影／游標原子保存。
+- Review 發現過時的排隊同步回應會默默被丟棄；已實際重現，再修正 dequeue／socket-lock 末端兩處為關聯 DEPENDENCY_UNAVAILABLE，不洩露原正文／游標、不造成鎖重入，恢復後可重試同一游標。
+- 已執行77項真實 HTTP／WS／Redis BA 邊界測試、19項 QA、23項維運，共119項通過；Ruff／actionlint／Compose配置通過。兩個新功能先有消費失敗測試；回條及同步 scoped Review 通過。實際 QA CLI reconnect smoke 完成3／3訊息、斷線補回、QA SQLite 原子投影／游標與舊游標去重。
+- 隔離 BB authority／QA SQLite 不是產品 PostgreSQL／JWT 或瀏覽器證據；真實 BB／FA／FB 串接、Docker／VM部署、GitHub Actions與50WSS仍未驗收。本輪不新增公開 API／欄位、群組已讀彙總、推播或原生 App。
+
+## 2026-10-04 — 首輪 Backend A、共用環境、QA 與 CI 交付
+
+- 依使用者決議暫緩 main Branch Protection／Rulesets；保留一般功能分支／PR／Review／適用 CI 協作流程，不設定 GitHub 強制保護。
+- 新增可執行 `backend/realtime/`：Python 3.12、aiohttp 3.14.3、redis 8.1.0，首輪 W01–W07／W17、可信 BB 身分／持久化交接、提交後 Redis 扇出、心跳、失效輪詢／新鮮度／到期、健康檢查與有界輸出。BB 保留 JWT、canonical 計數、C1／產品 quota 與 PostgreSQL 權威。
+- 群組資料遞送沿用既有安全義務：A18 在等待／排隊前套用撤權，包含只送給其餘成員的分段通知；訊框保留內部 membership version／M1，寫入前再次檢查。W07 以既有 message-resource receive 授權核對當前可讀／加入界線，不因重新加入或通知遺失而交付舊內容；不新增公開欄位／API 或群組 CRUD。
+- 新增 PostgreSQL 17／Redis 7 Compose、私有 Secret 初始化、loopback 開發 override、真實 BB／Web provider 的 Caddy 部署交接與備份／還原／preflight。修正 cap-drop Runtime 與 Secret owner 身分；禁止任何 volume 刪除旗標繞過；缺失 Web 發布不再阻擋既有服務停止／DB 復原。
+- 新增一套 QA HTTP／WebSocket CLI；ACK、收訊、歷史／C1／排序、保存／游標、公開錯誤隱私、實際派送節奏與已驗證 WS／WSS 連線分開核對。未達 50 使用者／600 秒的真實負載節奏，不宣稱基線；工具供 Jackie 確認，瀏覽器保存／呈現仍另驗。
+- CI 新增適用 Python／Redis 邊界／QA／維運檢查，以及具 Docker runner 的真實資料服務、映像建置與一次性還原場景。明確設定測試 Redis 卻不可用時會失敗，不以 skip 假造綠燈。
+- 已執行：31 項 BA（真實 HTTP／WS／Redis＋隔離 BB 測試 authority）、19 項 QA、23 項維運測試，共 73 項通過；Ruff、actionlint、shell syntax、Compose 配置與原生 Caddy 配置通過。兩個群組漏送授權情境實際重現修正前洩漏／修正後阻擋；實際 CLI、小負載及 Caddy→BA upgrade／fail-closed smoke 已執行。
+- 證據邊界：上述 BB authority、歷史與前端路由樣本僅為隔離 smoke，不是 BB PostgreSQL／JWT、真實產品 E2E、瀏覽器或 50 WSS 容量證據。Docker daemon／VM 存取、BB／Web 真實交付與成員確認仍缺；未執行容器建置／DB 還原／雲端部署或 GitHub Actions，不宣稱成功。功能分支發佈不等於合併 main、成員批准或遠端驗收通過。
+
 ## 2026-10-02 — PR #3 最新通知／ID 覆蓋／產品 quota 修正
 
 - Finding 1：BB 在生成／送出 RealtimeNotice 前驗所有 canonical EntityID；authenticated BB 的結構合法 notice 視為 BB 已完成長度責任。BA 驗 caller／JSON／required／null／型別／enum／UUID／source，不重算 Unicode 長度，結構錯誤仍 INVALID_ARGUMENT。同步 BB→BA 內部 ID 交接，公開 REST／W05 的 BB 前置驗證不變。

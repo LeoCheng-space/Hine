@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_NATIVE_PRODUCT_CHROME",
+  "browser": "Chrome/154.0.8037.97",
+  "formal_vm": false,
+  "public_certificate": false,
+  "limits": [
+    "LOCAL_PRIVATE_CA_BROWSER_EXCEPTION_CURL_SEPARATELY_VERIFIED_CHAIN",
+    "NO_PHYSICAL_EDGE_OR_ANDROID_CHROME",
+    "NO_REAL_GCS_BYTES_WITHOUT_CREDENTIALS",
+    "NOT_BROWSER_PRESENTATION_LATENCY_LOAD_PROOF"
+  ],
+  "checks": {
+    "real_ui_register_login_two_accounts": true,
+    "known_public_id_contact_confirm_direct_chat": true,
+    "sent_text_rendered_receiver": true,
+    "indexeddb_actual_message_and_cursor": true,
+    "reload_recovers_message": true,
+    "viewport_767_768_preserves_draft": true,
+    "visible_receiver_read_and_sender_read_label": true,
+    "exclusive_web_lock_second_tab_blocked": true,
+    "blocked_tab_no_auth_requests": true,
+    "blocked_tab_no_wss_requests": true,
+    "logout_keeps_other_tab_blocked": true,
+    "lock_release_cookie_revalidation": true,
+    "real_ui_group_creation_and_30_persisted_messages": true,
+    "fresh_native_bootstrap_two_pages": true,
+    "inactive_conversation_native_idb_and_delivered_no_read": true,
+    "native_dialog_blocks_read": true,
+    "continuous_visible_read_once": true,
+    "own_message_has_no_read_request": true,
+    "chromium_native_ime_enter_does_not_send": true,
+    "control_enter_after_ime_sends": true,
+    "idb_v2_granular_draft_saved_and_reloaded": true,
+    "missing_weblocks_fault_zero_auth_zero_wss": true,
+    "real_idb_quota_failure_stops_all_sockets_without_memory_fallback": true,
+    "same_profile_account_switch_never_displays_a_private_projection": true,
+    "unauthorized_deep_link_no_old_account_body_no_logout": true,
+    "real_ui_role_change_last_admin_http409_and_restore": true,
+    "real_ui_group_title_change_and_restore": true,
+    "real_profile_a06_saved_and_reloaded": true,
+    "prescribed_group_dialog_stays_on_chat_and_retains_room": true,
+    "group_dialog_escape_returns_focus": true,
+    "group_info_dependency_failure_preserves_active_room": true,
+    "original_241_message_history_regression_fixed": true,
+    "actual_latest_head_restores_navigation": true,
+    "group_dialog_767_fits_viewport": true,
+    "latest_reconnect_busy_state_released": true
+  },
+  "final_chat_revision_checks": {
+    "status": "PASS",
+    "real_api_postgresql_websocket_indexeddb": true
+  },
+  "read_test_scope": {
+    "modal": "actual native dialog fixture; not a GCS image-preview physical test",
+    "ime": "native Chromium IME protocol; not physical Android keyboard",
+    "visibility": "inactive-route and real modal verified; this headless environment keeps both actual pages visibilityState=visible"
+  },
+  "known_failure_before": {
+    "deep_history": {
+      "requested_pages": 12,
+      "retained_message_bubbles": 201,
+      "history_more_control": false,
+      "oldest_authorized_message_present": false,
+      "last_loaded_page_present": false
+    },
+    "native_controller_reconnect": {
+      "passed": false,
+      "diagnostic": "STALE_CONVERSATION"
+    },
+    "pending_read": {
+      "passed": false,
+      "stage": "pending_group_read_older_20_refresh",
+      "diagnostic": "Unchanged membership stranded the older-than-20 pending read."
+    },
+    "queued_send": {
+      "passed": false,
+      "stage": "queued_presend_then_actual_remove_rejoin",
+      "diagnostic": "The pre-send transaction crossed a conversation boundary and still emitted W05."
+    },
+    "mixed_batch": {
+      "passed": false,
+      "stage": "mixed_batch_old_A_body_after_B_release",
+      "diagnostic": "Prepared W16 reinstalled A old body after A changed generation."
+    },
+    "group_information_format": {
+      "navigated_to_management": true,
+      "actual_dialog_open": false,
+      "management_surface": true
+    },
+    "latest_reconnect": {
+      "room_restored": true,
+      "history_button_stuck": true,
+      "actual_same_session_reconnect": true
+    },
+    "recovery_inaccessible": {
+      "passed": false,
+      "stage": "recovery_inaccessibleFirst_recover_failed",
+      "diagnostic": "Unavailable first-group recovery starved the authorized later-group read.",
+      "actual_postgresql_cursor_expired": true
+    },
+    "recovery_absent": {
+      "passed": false,
+      "stage": "recovery_prejoinAbsent_recover_failed",
+      "diagnostic": "Complete current-authority recovery did not persist a terminal blocked state.",
+      "actual_postgresql_cursor_expired": true
+    }
+  },
+  "storage_fault": {
+    "passed": true,
+    "unsupported_surface": true,
+    "native_sockets_created": 5,
+    "native_sockets_closed": 5,
+    "actual_quota_injection": true,
+    "typing_interrupted": false
+  },
+  "actual_history_after": {
+    "requested_pages": 12,
+    "retained_message_bubbles": 200,
+    "history_more": false,
+    "oldest_authorized_message_present": true,
+    "last_older_page_present": true,
+    "jump_latest_reachable": true
+  },
+  "native_after": {
+    "queued_send": {
+      "passed": true,
+      "stage": "queued_presend_then_actual_remove_rejoin",
+      "observed_wall_ms": 1986
+    },
+    "mixed_batch": {
+      "passed": true,
+      "stage": "mixed_batch_old_A_body_after_B_release",
+      "observed_wall_ms": 2503
+    },
+    "pending_read": {
+      "passed": true,
+      "stage": "pending_group_read_older_20_refresh",
+      "observed_wall_ms": 8524
+    },
+    "long_history": {
+      "passed": true,
+      "stage": "actual_history_pages_past_200",
+      "observed_wall_ms": 68233
+    },
+    "original_controller_idb": {
+      "passed": true,
+      "stage": "old_self_join_A12_held_before_refresh",
+      "observed_wall_ms": 7997
+    },
+    "inaccessible_recovery": {
+      "passed": true,
+      "stage": "recovery_inaccessibleFirst_second_reconcile_no_rescan",
+      "actual_postgresql_cursor_expired": true
+    },
+    "absent_recovery": {
+      "passed": true,
+      "stage": "recovery_prejoinAbsent_second_reconcile_no_rescan",
+      "actual_postgresql_cursor_expired": true
+    }
+  },
+  "status": "PASS",
+  "test_counts": {
+    "api": 96,
+    "realtime": 100,
+    "qa": 36,
+    "infra": 25,
+    "web": 55,
+    "total": 312
+  },
+  "provenance": {
+    "analysis_baseline": "fc9eb08ca484ef9495d98afb830e1f10ee5973d7",
+    "observed_utc": "2026-10-06T01:51:29.753Z",
+    "source_sha256": {
+      "frontend/app/src/chat.ts": "1de64e48fdd454a498b83ab0323f30f3120b602fffcb4714dd43f643d93f7647",
+      "frontend/app/src/repository.ts": "6273b8ad9ce4a21897efb4348c098cec40a6b6d2ac7af0f285d88d1466048d09",
+      "frontend/app/src/ChatView.tsx": "9eb18d08cca39136ef08df8447ae7110daaef9a70dfa142775d1a2547475574d",
+      "frontend/app/src/GroupsPage.tsx": "eb70a46063d7eb4cc80e845952451b437d258659a1fb5163501cb0bc4dc0c34d",
+      "frontend/app/src/session.ts": "d5aa362bfb8f79c565bb9682a759d9ad978093edefdad524fbaa422657ec8dac",
+      "frontend/app/src/api.ts": "58c17b3bd6228dbec43721a4d98317606143045e9f5a00b9fa2065d4b7513bfa",
+      "frontend/app/tests/chat-browser-transitions.ts": "3541dec96176b8207e9259b2ddc452d0da7c9af8a1ee0b8ec6d3c1e0bcdfe199",
+      "frontend/app/build.ts": "35b50bd7a6a894353d298273338e8e63f9fc5f4ebede77c7b026f303c79a5bf5"
+    }
+  }
+}

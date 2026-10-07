@@ -57,6 +57,8 @@
 **驗收條件：** 在線狀態描述彙總連線情形，絕不代表應用程式在前景或訊息已送達；本版設定未量測。
 - **交接：** [BB-02](backend-b.md#bb-02) 在線狀態查詢；[FA-01](frontend-a.md#fa-01) 經唯一 WSS 接收 W18、[FB-04](frontend-b.md#fb-04) 顯示。
 
+**現行程式交接：** W18 聯絡人 presence 已由 BA `presence.py` 實作，透過 BB 私有 `readPresenceTargets` operation 11 取得當下授權聯絡人、依有效裝置 session 聚合並發佈 W18；不是 `getDevicePresence` 冒充、也不是 public API。23 項 W18 regression tests 覆蓋查詢／授權、初始狀態、故障與撤權時序（父任務已驗證）。此程式／測試狀態不代表雲端 VM、實體瀏覽器或正式容量驗收；其餘驗收門檻仍分別遵循驗收矩陣。
+
 <a id="ba-03"></a>
 <a id="ba-03--message-ingress-and-persisted-ack"></a>
 ### BA-03 — 訊息入口與持久化 ACK
@@ -78,6 +80,7 @@
 - **失敗流程：** 拒絕偽造／不相關回條；重複回報不執行操作；`read` 不得倒退。
 - **驗收條件：** W19 請求結果有別於 W10 投影；BB 為正式狀態的權威來源。
 - **交接：** [BB-05](backend-b.md#bb-05) 權威回條；[FA-04](frontend-a.md#fa-04) 回條投影。
+- **本輪可執行交接：** [BA 回條模組](../../backend/realtime/src/hine_realtime/receipts.py) 使用 BB 正式狀態及觀察者建立 W19／一對一 W10；即使 W08 在 W09 後抵達，仍採 BB 的 read，不倒退。完整寫入結果驗證與 Redis 故障隔離不代替 BB／瀏覽器真正驗收。
 
 <a id="ba-05"></a>
 <a id="ba-05--cross-node-fanout-and-group-event-routing"></a>
@@ -93,6 +96,7 @@
   - 遞送前若 `invalidation_position` 大於已套用位置，先補齊失效紀錄；無法補齊就放棄即時遞送，由同步補回。
   - 每個訊框開始交付時，再檢查連線狀態與節點新鮮狀態；套用工作階段撤銷時，丟棄連線佇列中尚未開始交付的訊框。群組撤權不清空整條連線佇列。
   - 單一 Redis Pub/Sub 由 BB 提交後經內部 HTTP／JSON 呼叫 `publishCommitted`，以 `notice_id` 去重；PostgreSQL 為準，Pub/Sub 遺失由 W15／W16 與失效紀錄輪詢補齊。不得提交前發事件。不採多實例／多節點廣播拓樸。
+  - **首輪遞送實作交接：** W07 以既有 `authorize(action:"receive",resource_type:"message",resource_id:M1)` 檢查 BB 當前可讀／加入界線，不能只以目前對話成員資格放行舊訊息。A18 在任何排隊／補齊等待前套用移除，包含只寄給其餘成員的分段通知；內部待送項目保留 membership version／M1，授權與 socket 鎖等待後再查撤權排除。最小自身 W12、較新合法版本及其他對話不因此阻塞；詳見[可執行 Backend A 與隔離驗證邊界](../../backend/realtime/README.md)。
   - 群組舊授權內容採 E1 有界停止交付：套用撤權即停止開始交付，最遲撤權提交後 15 秒不得再開始；這不是抵達期限，且只驗收單一 realtime 實例。不得以 60 秒移除紀錄保留窗冒充交付上限（[AC-N26](../testing/acceptance-matrix.md#ac-n26)）。
   - 見[驗收 AC-N01、AC-N02、AC-N09、AC-N12～AC-N18](../testing/acceptance-matrix.md#ac-n01)。
 - **交接：** [BB-03](backend-b.md#bb-03) 已提交的成員／事件流資料列；[FA-05](frontend-a.md#fa-05) 即時遞送與漏送復原（W15／W16）；[DO-01](devops.md#do-01) 路由。
@@ -107,6 +111,7 @@
 - **驗收條件：** 隱藏位置可安全前進；未授權內容會被過濾；單一撤權對話不得阻塞其餘事件流。新成員只可讀本次加入之後訊息；加入界線依 A14／A16 加入交易記錄的當時最新 `order_key`（與 C11 排序一致），退出後重加入重新記錄。W14／W16 依同一界線過濾。
 - **撤權與加入政策（2026-10-01 PM 決議）：** A19／W14／W16 每頁授權；撤權後新查詢不得取回該群組內容，W16 仍可保留最小自身 W12。套用 E1 撤權後不開始交付相符舊授權內容，不代用戶端推進游標，沿用授權過濾／重新讀取與錯誤恢復路徑，其他對話繼續同步（[AC-N26](../testing/acceptance-matrix.md#ac-n26)）。
 - **交接：** [BB-06](backend-b.md#bb-06) 讀取／授權過濾資料列；[FA-05](frontend-a.md#fa-05) 游標提交／投影；[QA-03](qa.md#qa-03) 復原。
+- **本輪可執行交接：** [BA 同步模組](../../backend/realtime/src/hine_realtime/synchronization.py) 以原有 readBootstrap／readFeed 回傳公開頁面／批次，不猜不存在的內部 watermark、不自行保存／推進用戶端游標。每次讀取後完整補齊失效紀錄，寫入前核對當前可讀及請求起始撤權版本；失效／排隊過時回關聯 W17，不交付舊正文或游標。`SYNC_PAGE_LIMIT` 必填、上限100；最小自身 W12 與下一次同游標的其他對話同步仍可繼續。
 
 <a id="ba-07"></a>
 <a id="ba-07--device-activity-leases"></a>

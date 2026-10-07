@@ -1,0 +1,54 @@
+# Combine with docker-compose.yml; api is built from the bundled product source.
+# Only the Caddy edge publishes ports; secrets and the Web release are provisioned.
+services:
+  api:
+    environment:
+      HINE_ENV: production
+      PUBLIC_ORIGIN: https://${HINE_DOMAIN:?Set HINE_DOMAIN to the approved DNS name}
+      TRUSTED_PROXY_NETWORKS: ${TRUSTED_PROXY_NETWORKS:?Set TRUSTED_PROXY_NETWORKS to the actual isolated proxy CIDRs}
+  realtime:
+    environment:
+      HINE_ENV: production
+      PUBLIC_ORIGIN: https://${HINE_DOMAIN:?Set HINE_DOMAIN to the approved DNS name}
+      API_INTERNAL_URL: http://api:8080
+
+  caddy:
+    profiles: [production]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      HINE_DOMAIN: ${HINE_DOMAIN:?Set HINE_DOMAIN to the approved DNS name}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL to the responsible operator}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - type: bind
+        source: ./infra/docker/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WEB_ROOT:?Set WEB_ROOT to a real frontend build directory}
+        target: /srv/hine
+        read_only: true
+        bind:
+          create_host_path: false
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - backend
+      - edge
+    depends_on:
+      api:
+        condition: service_started
+      realtime:
+        condition: service_started
+
+networks:
+  edge: {}
+
+volumes:
+  caddy_data:
+  caddy_config:

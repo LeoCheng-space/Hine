@@ -1,0 +1,386 @@
+{
+  "schema_version": 1,
+  "scope": "PR6_LOCAL_REAL_PRODUCT_REMEDIATION_NOT_FORMAL_RELEASE",
+  "baseline_commit": "315afd8a1242332c4091d20c8e45907f88e3da2c",
+  "publication": {
+    "new_commit": false,
+    "pushed": false,
+    "remote_review_threads_resolved": false,
+    "merged_main": false
+  },
+  "tests": {
+    "api": 109,
+    "ba": 100,
+    "qa": 36,
+    "infra": 25,
+    "web": 63,
+    "total": 333
+  },
+  "native_metadata_cases": [
+    {
+      "case": "uncached-snapshot-replay",
+      "pass": true,
+      "result": {
+        "membershipVersion": 3,
+        "ownerAuthentications": 1
+      }
+    },
+    {
+      "case": "role",
+      "pass": true,
+      "result": {
+        "membershipVersion": 3,
+        "ownerAuthentications": 1,
+        "queued": false
+      }
+    },
+    {
+      "case": "title",
+      "pass": true,
+      "result": {
+        "membershipVersion": 3,
+        "ownerAuthentications": 1,
+        "queued": false
+      }
+    },
+    {
+      "case": "members",
+      "pass": true,
+      "result": {
+        "membershipVersion": 3,
+        "ownerAuthentications": 1,
+        "queued": false
+      }
+    },
+    {
+      "case": "queued-IDB",
+      "pass": true,
+      "result": {
+        "membershipVersion": 3,
+        "ownerAuthentications": 1,
+        "queued": true
+      }
+    },
+    {
+      "case": "revocation-rejoin",
+      "pass": true,
+      "result": {
+        "membershipVersion": 5,
+        "ownerAuthentications": 2
+      }
+    },
+    {
+      "case": "direct-null",
+      "pass": true,
+      "result": {
+        "membershipVersion": null,
+        "unreadCount": 4
+      }
+    },
+    {
+      "case": "cache-eviction",
+      "pass": true,
+      "result": {
+        "preparedGroups": 201,
+        "summaryTitle": "detail survives native cache eviction",
+        "ownerAuthentications": 1
+      }
+    },
+    {
+      "case": "summary-after-eviction",
+      "pass": true,
+      "result": {
+        "preparedGroups": 201,
+        "summaryTitle": "native summary newer than evicted detail",
+        "ownerAuthentications": 1
+      }
+    },
+    {
+      "case": "roles-after-eviction",
+      "pass": true,
+      "result": {
+        "preparedGroups": 201,
+        "summaryTitle": "native roles newer than evicted detail",
+        "ownerAuthentications": 1
+      }
+    }
+  ],
+  "native_shell_cases": [
+    {
+      "case": "list-burst",
+      "pass": true,
+      "result": {
+        "listRequestsDuringBurst": 2,
+        "maxConcurrent": 1
+      }
+    },
+    {
+      "case": "list-pagination",
+      "pass": true,
+      "result": {
+        "firstPage": 20,
+        "nextPage": 3,
+        "uniqueRendered": 23
+      }
+    },
+    {
+      "case": "list-owner-race",
+      "pass": true,
+      "result": {
+        "ownerChanged": true,
+        "oldResponseRejected": true
+      }
+    },
+    {
+      "case": "detail-role",
+      "pass": true,
+      "result": {
+        "membershipVersion": 3,
+        "ownerAuthentications": 1,
+        "queued": false
+      }
+    },
+    {
+      "case": "detail-title",
+      "pass": true,
+      "result": {
+        "membershipVersion": 3,
+        "ownerAuthentications": 1,
+        "queued": false
+      }
+    },
+    {
+      "case": "detail-members",
+      "pass": true,
+      "result": {
+        "membershipVersion": 3,
+        "ownerAuthentications": 1,
+        "queued": false
+      }
+    },
+    {
+      "case": "detail-queued-IDB",
+      "pass": true,
+      "result": {
+        "membershipVersion": 3,
+        "ownerAuthentications": 1,
+        "queued": true
+      }
+    },
+    {
+      "case": "detail-revocation-rejoin",
+      "pass": true,
+      "result": {
+        "membershipVersion": 5,
+        "ownerAuthentications": 2
+      }
+    },
+    {
+      "case": "detail-direct-null",
+      "pass": true,
+      "result": {
+        "membershipVersion": null,
+        "unreadCount": 1
+      }
+    },
+    {
+      "case": "detail-eviction",
+      "pass": true,
+      "result": {
+        "preparedGroups": 201,
+        "summaryTitle": "detail survives native cache eviction",
+        "ownerAuthentications": 1
+      }
+    },
+    {
+      "case": "Web-auto-reset-after-prune",
+      "pass": true
+    },
+    {
+      "case": "original-queued-send-boundary",
+      "pass": true
+    },
+    {
+      "case": "original-all-touched-W16",
+      "pass": true
+    }
+  ],
+  "unicode": {
+    "authority": "Python3.12 Unicode15.0.0",
+    "scalars": 1112064,
+    "consumer_exact_parity": true,
+    "generated_artifact_check": true,
+    "native_original_device_id": true,
+    "native_draft_and_original_c1_partition": true,
+    "physical_page_reload": true
+  },
+  "upload": {
+    "scope": "native File/hash; isolated API/GCS faults, not real cloud",
+    "refused_put_then_original_retry": true,
+    "lost_put_and_a21_reconciled_without_resend": true
+  },
+  "rendering_sample": {
+    "scope": "20 actual peer W05/W06 to owner production DOM+rAF; owned loopback/privateCA, NOT50user/formalVM SLO",
+    "sampleCount": 20,
+    "p50_ms": 32,
+    "p95_ms": 37.69999998807907,
+    "max_ms": 42.30000001192093,
+    "allPersistedAndPresented": true
+  },
+  "restore_evidence": "pr6-native-restore.json",
+  "formal_blockers": {
+    "vm": {
+      "ssh_capability_hosts": 0,
+      "openssh_config": false,
+      "public_www_home_status": 200,
+      "public_www_api_status": 404,
+      "public_www_wss_upgrade_status": 404,
+      "public_apex_api_status": 404,
+      "public_apex_wss_upgrade_status": 404
+    },
+    "gcs": {
+      "adc_available": false,
+      "project": false,
+      "bucket": false,
+      "signing_identity": false
+    },
+    "devices": {
+      "observed": "headless Chrome154",
+      "edge_available": false,
+      "android_adb_available": false,
+      "physical_hidden_or_soft_keyboard_verified": false
+    },
+    "performance": {
+      "formal_vm_slo": false,
+      "formal_rto_rpo": false
+    }
+  },
+  "limits": [
+    "No physical GCS uploads/downloads or avatar claims",
+    "No formal VM or Docker deployment",
+    "No physical Edge/Android/hidden/soft keyboard claims",
+    "20-message DOM+rAF sample is not50user/formalVM SLO",
+    "Prior product evidence remains historical and unchanged"
+  ],
+  "completed_utc": "2026-10-06T14:20:43.593Z",
+  "native_opening_cases": [
+    {
+      "case": "openingFirst",
+      "pass": true,
+      "result": {
+        "selfJoinVersion": 1,
+        "activated": true,
+        "ownerAuthentications": 1
+      }
+    },
+    {
+      "case": "joinFirst",
+      "pass": true,
+      "result": {
+        "selfJoinVersion": 1,
+        "activated": true,
+        "ownerAuthentications": 1
+      }
+    },
+    {
+      "case": "routeClosed",
+      "pass": true,
+      "result": {
+        "selfJoinVersion": 1,
+        "activated": false,
+        "ownerAuthentications": 1
+      }
+    },
+    {
+      "case": "withdrawn",
+      "pass": true,
+      "result": {
+        "selfJoinVersion": 0,
+        "activated": false,
+        "ownerAuthentications": 1
+      }
+    }
+  ],
+  "native_final_privacy_cases": [
+    {
+      "case": "queued-original-C1",
+      "pass": true
+    },
+    {
+      "case": "all-touched-W16",
+      "pass": true
+    },
+    {
+      "case": "pruned-authentic-cursor-auto-bootstrap",
+      "pass": true
+    }
+  ],
+  "production_surface": {
+    "actual_two_member_A14_directly_opened_composer": true,
+    "manual_navigation_required": false,
+    "group_dialog_escape_focus": true,
+    "actual_narrow_viewport_767": true,
+    "previous_failure": "Valid detail1/selfJoin1/two members/no denial but initial route activation cancelled",
+    "native_opening_orderings": [
+      "openingFirst",
+      "joinFirst",
+      "routeClosed",
+      "withdrawn"
+    ]
+  },
+  "review": {
+    "backend_critical_or_important_remaining": 0,
+    "client_critical_or_important_remaining": 0,
+    "not_teammate_approval": true,
+    "retracted_finding": "Sync response cannot supersede pending live self-join because ReceiveQueue serialization awaits join work"
+  },
+  "failure_before": [
+    {
+      "item": "expired sync cursors",
+      "observed": "expired row retained after61 real seconds; authenticated cursor recovery retained after pruning fix"
+    },
+    {
+      "item": "invalidation retention",
+      "observed": "after0 returned200 and oldprefix rather than floorreset; [1,2,3] not[2,3]"
+    },
+    {
+      "item": "absent attachment cleanup",
+      "observed": "cleaned_at remainednull after successful confirmed absence"
+    },
+    {
+      "item": "original PUT retry",
+      "observed": "PUT503 then A21NotReady retry skippedPUT and stayedNotReady"
+    },
+    {
+      "item": "A14 unique recipients",
+      "observed": "9 real durable deliveries; actualthreeWSS consumedno liveW11"
+    },
+    {
+      "item": "chat list refresh",
+      "observed": "realreconciledremotejoin neverrendered while /chats fixed"
+    },
+    {
+      "item": "canonical email device",
+      "observed": "unknown equivalent spellings returnednull DeviceID; firstexhaustive mismatch U+00B5"
+    },
+    {
+      "item": "stale A12",
+      "observed": "actualHTTPv2 overwrotev3; repeatedwith201groupcacheeviction, postevictiontitle/roles, stageduncachedsnapshot"
+    }
+  ],
+  "source_sha256": {
+    "backend/api/src/hine_api/maintenance.py": "550039d5533c890ec9dbb249c058a963e5ecb2e9c1ee1e4b32aa917860d17025",
+    "backend/api/src/hine_api/server.py": "bc9394cfa755fb366d29171b9b25f739c4092d7bddceb7946b85e1bace7573da",
+    "backend/api/src/hine_api/synchronization.py": "7355e289d535adaa9d8bdcd9a8f25bcbab05ec9e98be9d4b694300e9271a3c56",
+    "backend/api/src/hine_api/attachments.py": "7a7d0b5bc17e5ec0fd4e540bd79d388dbc5de1839d916bd1ad76933067f14620",
+    "backend/api/src/hine_api/domain.py": "300fec4e3012606ab912ddcbcacaf930487fda10c1c7819ed2d493efde995c50",
+    "frontend/app/src/App.tsx": "75c6fe8b91b15dc949325aaceaf7a1c2813ceb822412c8ce861f46a274bde9e0",
+    "frontend/app/src/ContactsPage.tsx": "cf24633ef609cff708a2d5c22d92cbbe29636c5ebd34321c1a33bf010bfa6e11",
+    "frontend/app/src/session.ts": "51b5ddb4caaf325cab366338c129447909ed6e3c8d35983ebd200bf122badc86",
+    "frontend/app/src/email-casefold.ts": "8f525e3d70372dd9635a80049d80cfc088555f6295c4c7d96ef842fd4bb9962f",
+    "frontend/app/src/email-casefold-data.ts": "0a1943e3d35daa2a2778dca92f46dc0f6baca4898af8fe71f61ef746aec21b3d",
+    "frontend/app/src/chat.ts": "b880538f8b609a6e63f3639a612b52ea1c9f5e528f8d1db091bf8fb19b45fdc6",
+    "frontend/app/src/attachment-transfer.ts": "cdd40ee20a55b6430de5e39887c41672f8c068d65e5cc8b230d76a760e6cedd9",
+    "frontend/app/generate-email-casefold.py": "40f60150c4e2f2cdfe216aaf6eac8d65da0a170d0660aa337521ce08226b8127"
+  }
+}

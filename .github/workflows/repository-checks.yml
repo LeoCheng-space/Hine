@@ -40,3 +40,134 @@ jobs:
           GITLEAKS_CONFIG: ".gitleaks.toml"
           GITLEAKS_ENABLE_COMMENTS: "false"
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  python-behavior:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PYTHONPATH: backend/realtime/src
+      HINE_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install implemented module dependencies
+        run: |
+          python -m pip install -r backend/realtime/requirements.txt -r tests/load/requirements.txt
+          python -m pip install ruff==0.16.10
+      - name: Lint implemented Python
+        run: ruff check backend/realtime/src tests/integration tests/load tests/e2e infra/scripts infra/tests
+      - name: Exercise realtime boundaries with actual Redis
+        run: python -m unittest discover -s tests/integration -p 'test_realtime*.py' -v
+      - name: Exercise protocol evidence boundaries
+        run: python -m unittest discover -s tests/e2e -p 'test_protocol_tool.py' -v
+      - name: Exercise infrastructure safety boundaries
+        run: python -m unittest discover -s infra/tests -p 'test_*.py' -v
+      - name: Launch protocol CLI
+        run: python tests/load/protocol.py --help
+
+  compose-data-services:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Validate operations scripts
+        run: sh -n infra/scripts/*.sh infra/docker/redis-start.sh
+      - name: Initialize owner-only development credentials
+        run: sh infra/scripts/init-dev.sh
+      - name: Validate Compose and build realtime image
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.yml -f infra/docker/compose.dev.yml --profile realtime config --quiet
+          docker compose --profile realtime build realtime
+      - name: Start real PostgreSQL and Redis
+        run: docker compose up -d --wait --wait-timeout 120
+      - name: Exercise authenticated data services and disposable restore
+        run: |
+          docker compose exec -T redis sh -ec 'export REDISCLI_AUTH="$(cat /run/secrets/redis_password)"; test "$(redis-cli --no-auth-warning ping)" = PONG'
+          docker compose exec -T postgres sh -ec 'export PGPASSWORD="$(cat /run/secrets/postgres_password)"; psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -v ON_ERROR_STOP=1 -c "CREATE TABLE ci_restore_probe(value integer NOT NULL); INSERT INTO ci_restore_probe VALUES (7);"'
+          mkdir -m 700 .backups
+          sh infra/scripts/backup-postgres.sh .backups/ci.dump
+          docker compose exec -T postgres sh -ec 'export PGPASSWORD="$(cat /run/secrets/postgres_password)"; psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -v ON_ERROR_STOP=1 -c "UPDATE ci_restore_probe SET value=9;"'
+          sh infra/scripts/restore-postgres.sh --confirm-destructive .backups/ci.dump
+          restored=$(docker compose exec -T postgres sh -ec 'export PGPASSWORD="$(cat /run/secrets/postgres_password)"; psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -At -v ON_ERROR_STOP=1 -c "SELECT value FROM ci_restore_probe;"')
+          test "$restored" = 7
+      - name: Stop disposable services without removing volumes
+        if: always()
+        run: docker compose down
+
+  product-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: hine_product
+          POSTGRES_DB: hine_product
+          # Disposable test data only, bound exclusively to runner loopback.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:6543:5432"
+        options: >-
+          --health-cmd "pg_isready -U hine_product -d hine_product"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "127.0.0.1:6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PYTHONPATH: backend/api/src:backend/realtime/src:tests/product
+      HINE_TEST_DATABASE_URL: postgresql://hine_product@127.0.0.1:6543/hine_product
+      HINE_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up frontend build runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: Install product authority dependencies
+        run: |
+          python -m pip install -r backend/api/requirements.txt -r backend/realtime/requirements.txt
+          python -m pip install ruff==0.16.10
+      - name: Lint product Python
+        run: ruff check backend/api/src tests/product
+      - name: Exercise actual PostgreSQL authority contracts
+        run: python -m unittest discover -s tests/product -p 'test_*.py' -v
+      - name: Build and typecheck the single real Web application
+        working-directory: frontend/app
+        env:
+          PUBLIC_ORIGIN: https://hine.run.place
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun run test
+          bun run build
+      - name: Preserve only non-secret Web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: hine-web
+          path: frontend/app/dist/

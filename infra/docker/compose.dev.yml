@@ -1,0 +1,14 @@
+# Explicit opt-in only. Never include this override in production.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+  realtime:
+    ports:
+      - "127.0.0.1:8081:8081"
+  api:
+    ports:
+      - "127.0.0.1:8080:8080"

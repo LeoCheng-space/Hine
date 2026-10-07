@@ -61,6 +61,7 @@
 - **失敗流程：** 拒絕未授權操作；只允許 admin／member，不得自訂角色；禁止移除、降級或退出最後一位 admin，需先指定其他管理員（沿用 `CONFLICT`）。A14 `member_ids`（含建立者）超過 50 回 `INVALID_ARGUMENT`；A16 群組已滿回 `CONFLICT`。在歷史／下載及後續事件流套用移除後授權；不設封鎖狀態／操作。
 - **驗收條件：** [A14](../contracts/interface-contract.md#api-a14)/[A16](../contracts/interface-contract.md#api-a16) 發出 [W11](../contracts/interface-contract.md#event-w11)，[A15](../contracts/interface-contract.md#api-a15)/[A17](../contracts/interface-contract.md#api-a17) 發出 [W20](../contracts/interface-contract.md#event-w20)，[A18](../contracts/interface-contract.md#api-a18) 發出 [W12](../contracts/interface-contract.md#event-w12)。成員版本與 REST 回應須對應已提交狀態；事件流變更須先於 Pub/Sub 提交。A19／W14／W16／A22（附件所屬訊息）及 C14 未讀計算皆使用同一加入界線。
 - **現行規格（2026-10-01 PM 決議）：** A14–A18 沿用 T3 與提交後 `publishCommitted`，通知失敗不改 REST 結果。群組待送舊內容採 E1；套用撤權即停止開始交付，最遲提交後 15 秒不得再開始交付（不是抵達期限），單一 realtime 實例驗收。撤權後新查詢不得取回內容；每頁授權，W16 保留最小自身 W12。見 [AC-N02](../testing/acceptance-matrix.md#ac-n02)、[AC-N18](../testing/acceptance-matrix.md#ac-n18)、[AC-N26](../testing/acceptance-matrix.md#ac-n26)。
+- **W07 receive 交接：** BA 會以既有 `authorize(action:"receive",resource_type:"message",resource_id:M1)` 核對待送訊息；BB 必須依 M1 的對話、呼叫者目前授權與本次加入界線判斷可讀，不可只檢查目前仍是對話成員。此為現有訊息可讀／撤權規則的具體消費方式，不新增 API 或欄位，也不代表 BB 已實作或完成對接確認。
 - **交接：** [FB-05](frontend-b.md#fb-05) REST 投影；[BA-05](backend-a.md#ba-05)/[FA-05](frontend-a.md#fa-05) 已提交事件；與 PM 討論政策決策。
 
 <a id="bb-04--交易式訊息冪等性與持久化推播意圖"></a>

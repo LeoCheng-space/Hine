@@ -3,6 +3,8 @@
 
 此流程刻意保持簡單，方便仍在學習 Git 的組員使用。
 
+**2026-10-04 PM 決議：** 學校作業階段暫緩 GitHub `main` Branch Protection／Rulesets，不將啟用強制分支保護列為目前交付前置條件。下列功能分支、PR、其他成員 Review 與適用 CI 的協作流程仍保留，由團隊遵守；不宣稱 GitHub 已強制執行。
+
 <a id="daily-workflow"></a>
 ## 日常工作流程
 

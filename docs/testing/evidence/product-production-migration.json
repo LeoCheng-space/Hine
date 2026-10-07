@@ -1,0 +1,13 @@
+{
+  "scope": "OWNED_NATIVE_PRODUCTION_ENVIRONMENT_NOT_DOCKER_VM",
+  "checks": {
+    "legacy_container_command_auto_applied_production_schema": true,
+    "direct_production_command_live_without_migration": true,
+    "direct_production_command_refuses_ready_without_migration": true,
+    "no_implicit_production_tables_created": true,
+    "explicit_migration_succeeds": true,
+    "explicit_migration_records_three_checksums": true,
+    "same_production_entry_ready_after_explicit_migration": true
+  },
+  "passed": true
+}
