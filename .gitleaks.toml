@@ -1,0 +1,19 @@
+title = "Hine secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "hine-database-url-credentials"
+description = "Database connection URL with an embedded password"
+regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis(?:s)?):\/\/[A-Za-z0-9._~%+-]+:([^@\s/'"]+)@[^\s/'"]+'''
+secretGroup = 1
+keywords = ["postgres", "mysql", "mariadb", "mongodb", "redis"]
+
+[[rules]]
+id = "hine-application-secrets"
+description = "JWT signing, OAuth client, or database password assignment"
+regex = '''(?i)\b(?:jwt(?:[_-]?(?:signing|access|refresh))?[_-]?(?:secret|key)|oauth[_-]?(?:client[_-]?)?secret|(?:database|db|postgres|mysql|mongo|redis)[_-]?(?:password|passwd))\b['"]?\s*[:=]\s*['"]?([A-Za-z0-9_./+=-]{12,})'''
+secretGroup = 1
+entropy = 3.2
+keywords = ["jwt", "oauth", "database", "db_password", "db_passwd", "postgres", "mysql", "mongo", "redis"]
