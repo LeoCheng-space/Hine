@@ -1,0 +1,37 @@
+{
+	admin off
+	auto_https disable_redirects
+}
+
+{$HINE_DOMAIN} {
+	tls internal
+	root * /srv/hine
+	route {
+		@private path /internal /internal/* /health /health/*
+		handle @private {
+			respond "Not found" 404
+		}
+		@api path /api/v1 /api/v1/*
+		handle @api {
+			reverse_proxy api:8080 {
+				header_up X-Hine-Client-IP {remote_host}
+			}
+		}
+		@websocket path /ws/v1
+		handle @websocket {
+			reverse_proxy realtime:8081
+		}
+		@reserved path /api /api/* /ws /ws/*
+		handle @reserved {
+			respond "Not found" 404
+		}
+		@spa path_regexp spa ^/(login|register|contacts|chats|profile|chats/[^/]+|groups/[^/]+/manage)?$
+		handle @spa {
+			rewrite * /index.html
+			file_server
+		}
+		handle {
+			file_server
+		}
+	}
+}

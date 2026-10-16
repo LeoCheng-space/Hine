@@ -1,5 +1,70 @@
 # HINE 文件變更紀錄
 
+## 2026-10-08 — 真Chrome／Edge与完整八job CI全數通過
+
+- [run37689818571](https://github.com/LeoCheng-space/Hine/actions/runs/37689818571)／`e77b8aa3a02f2889c899ef0be3d2760724bdd697` **8／8 SUCCESS**。Chrome154.0.8037.97／Microsoft Edge154.0.4258.37各headed59個真UI／WSS／IDB／native hidden-read檢查通過，100則DOM／IDB／rAF復原334.83ms／555.34ms，unexercised均空；未替換Edge或合成visibility。
+- 真API／BA container production image＋migration、verifiedTLS、原session／C1／M1／read restart存續、停止writers後full table／sequence atomic clone restore、API綁clone保留JWT並真新WSS寫入與static Web再通過。完整PF01–PF08共183checks通過，notify loss至WSS撤銷4568.896ms；實際pg_dump71.164ms／atomicrestore61.096ms。
+- 最終Browser與Container兩份Read-only Review均無actionable finding。SDK fixture launch policy的sandbox設定明列報告，不當正式browser安全證據；公開VM／真GCS／physical Android／50user600秒／正式backup-rollback-monitoring仍因target與授權不可用保留Blocked。仍僅feature branch commit/push，不自行PR或merge main。
+
+## 2026-10-08 — Native browser沿用已成功的SDK測試啟動政策
+
+- [run37685811437](https://github.com/LeoCheng-space/Hine/actions/runs/37685811437) 的七個jobs仍SUCCESS，Edge仍`CRASHPAD_FATAL`／SIGTRAP(-5)；單獨`--disable-breakpad`沒有解除故障，不再宣稱它是完整policy parity。
+- Native recipient從已成功的同channel managed browser透過公開CDP取得實際啟動switches，替換owned profile／loopback debugging transport，排除proxy與crash dump路徑。`no_defaults`與真正tab visibility驗收不變，不退換browser或略過失敗。
+- 這是SDK測試啟動政策（包含其測試sandbox設定），不是production sandbox安全證明；報告明記`native_launch_policy`及`native_chromium_sandbox`，只用fresh owned fixture／可信local Web。不改production browser、global kernel或trust。是否修復Edge仍由新hosted實際gate決定。
+- 修正後本機Chrome154 headed59個真UI／WSS／IDB／native hidden-read檢查PASS，100則DOM／IDB／rAF復原344.99ms；Ruff／infra30通過。公開CDP需要headed-only `--enable-automation`明確opt-in（SDK1.63已不預設），不改headless政策。Final browser Read-only Review無actionable finding；hosted Edge仍待新run。
+
+## 2026-10-08 — Native browser使用pinned SDK的crash reporting policy
+
+- [run37681214482](https://github.com/LeoCheng-space/Hine/actions/runs/37681214482) 的bounded native Edge diagnostic已分類為`CRASHPAD_FATAL`／SIGTRAP(-5)，不是已驗明的sandbox故障；不猜加`--no-sandbox`或替換browser。
+- InstalledPlaywright1.63的實際common switches包含`--disable-breakpad`，成功的SDK主browser沿用此policy。Native recipient同樣停用測試browser crash reporting，保留原sandbox、fresh profile、loopback CDP及`no_defaults`真实visibility；不操作production browser／global kernel或trust。
+- 相同Chrome154完整owned headed59checks／hidden delivered→foreground read及100則DOM/IDB/rAF394.01ms通過，Ruff／privacy canary通過。此policy parity是否解除Edge fatal仍須新hosted Edge gate，不能拿Chrome结果代填。
+
+## 2026-10-08 — 完整container gate成功，保留Edge fatal分類
+
+- [run37674312851](https://github.com/LeoCheng-space/Hine/actions/runs/37674312851) 七個jobs SUCCESS，僅native Edge startup失敗。真API／BA images、production migration、verifiedTLS、雙WSS原C1／M1／W08-W09／history、PG／Redis restart後原session、停止writers後full tables／sequence atomic clone restore、API綁clone保留JWT並真新寫入與static Web全部通過。
+- Chrome headed59checks／真正hidden→foreground回條及100則補回通過；Edge private startup log318bytes、SIGTRAP(-5)，目前只能辨明fatal，不能由主SDK launch成功推論native Edge通過。擴充固定Chromium component category（zygote／sandbox／profile singleton／crashpad／unclassified），不發布rawlog／source path／本文，不猜變更sandbox。
+- Matrix更新338項／完整container實測與仍未完成的Edge／正式五門檻。新分類Ruff／privacy canary formatter通過；每個新增／修改批次commit，仍僅feature-only push、無main PR。
+
+## 2026-10-08 — Redis private runtime config與fixed startup diagnostics
+
+- [run37666361557](https://github.com/LeoCheng-space/Hine/actions/runs/37666361557) 的Chrome headed59checks全通過、100則復原273.82ms；Edge在native child/CDP ready之前退出，PG healthy但Redis restart unhealthy。保持兩gate失敗，不以主SDK Edge啟動或初始container flow冒稱整體完成。
+- Redis bootstrap不再重寫sticky `/tmp`內已redis-owned的固定0600檔案；每次在root-controlled `/run`建立fresh private directory/config，交給redis UID及原entrypoint。64hex credential、non-root runtime、`/data` inode／AOF everysec不變。這消除restart-sensitive來源hazard，但是否為本次Redis退出原因仍須真Docker proof。
+- 失敗時只在owned scope內分類Redis health/log的stdout＋stderr，發布固定class counts／最多10個numeric exits；native Edge只分類最多64KiB private log為固定category、child exit及captured byte count。無rawlog／exception／path／password／ID／本文，不猜sandbox或替換browser。
+- Privacy canary formatter、Ruff、shell、infra30及兩份scoped Read-only reviews通過；真Redis restart/full clone restore與Edge root cause以新CI artifact判定，未放寬任何acceptance assertion。
+
+## 2026-10-08 — 容器復原先恢復data services再啟動consumers
+
+- [run37661758660](https://github.com/LeoCheng-space/Hine/actions/runs/37661758660) 的sanitized report證明真API／BA images建置、production migration、verified privateCA HTTPS及2個original C1/M1／W08-W09／history均通過；整體仍在四service同時restart後的health gate失敗，restore未執行，不宣稱全部容器完成。
+- 對owned project沿用正式handoff順序：先停止API／BA，重啟原PG／Redis並等真健康，再啟動原API／BA與完整health/JWT/history/C1/receipt驗證。same containers／keys／volumes不變，不增timeout、不盲重試、不略過失敗；若仍timeout，只記固定service名稱與health enum，不上傳private logs。
+- 修改後Ruff與infra30通過，實際Docker recovery／完整clone restore仍由新功能分支CI決定；既有VM／PG16不涉及此操作。
+
+## 2026-10-08 — 真native headed hidden／foreground browser驗收
+
+- 不使用Playwright強制visible的recipient context：headed收件者使用同指定Chrome／Edge真binary、fresh0700 native profile、原Components持有／清理child，透過公開 `connect_over_cdp(no_defaults=True)` 接管default context。保留SDK固定版本、privateCA限制；不接用operator profile或browser，不合成visibility事件。
+- 已實驗驗明secondary CDP session無法取消Playwright原session的focus override；真native no-defaults同window兩tab切換才觀察hidden／visible。實際UI互動先foreground，純收件／hidden觀察不foreground；所有role／HTTP／WSS／IDB／原C1／reload／receipt／撤權路徑保持。
+- owned非rootauthenticated Xvfb＋Chrome154.0.8037.97 **headed59checks全通過**：真正hidden時只提交delivered、不提交read，實際foreground後才read；100則已提交訊息DOM／IDB各單筆與rAF404.99ms。無unexercised browser case；這仍非physical Android／IME、正式VM或50users/600秒SLO。
+
+## 2026-10-08 — 修正真 Docker nullable network metadata
+
+- [run37656312011](https://github.com/LeoCheng-space/Hine/actions/runs/37656312011) 已保留sanitized reports；container真runtime指出 `isolated_subnets` 在Docker無IPAM的network遇到合法`Config:null`便TypeError，尚未建置映像。修正只把無地址配置視為空迭代，不略過已占用CIDR或放寬service隔離。
+- 新確定性consumer regression以null IPAM及已占用172.29.0.0/24驗明分配172.29.1.0/24、172.29.2.0/24；先重現同一TypeError，修正後完整infra30／Ruff通過。這是topology演算法邊界測試，不是偽造Docker、產品authority或映像成功。
+- 同run的Chrome／Edge均停在genuine hidden斷言：Playwright預設focus override令各tab可見。保持失敗、不跳過或合成visibility事件；後續native no-defaults browser驗收與遠端image啟動按實際結果記錄。
+
+## 2026-10-08 — 保留功能分支 CI 的 sanitized 失敗證據
+
+- [首輪功能分支run37654735137](https://github.com/LeoCheng-space/Hine/actions/runs/37654735137) 實際5個jobs成功、Chrome／Edge／container三個新runtime gates失敗；不以本機56checks或Review當遠端成功。原product／data-services／QA-infra／scanner與完整native8faults均成功。
+- GitHub artifact API實際只列`hine-web`，三類報告在hidden directories被 `actions/upload-artifact@v4` 的預設`include-hidden-files:false`略過。只對既有明確的sanitized JSON glob啟用hidden files；不擴大上傳secret／log／browser profile／trace／HAR。
+- 兩個acceptance CLI失敗報告補充**本runner函式名與行號**，不保留exception message、local path、SQL、credential、ID或本文；用真失敗external command驗明exit1及兩個source-only位置，4個CLI安全回歸／Ruff／actionlint通過。這批恢復可診斷證據，不抑制或跳過仍失敗的runtime assertions；新CI按後續實際run判定。
+
+## 2026-10-07 — 功能分支補齊可重跑 browser／container／fault CI
+
+- 從使用者已合併的main `26f13f19c50d260bf65567a009098e36880410e6` 建立 `feature/acceptance-completion`；每個修改按驗證批次commit，不自行提出main PR／merge／auto-deploy。既有兩VM／Nginx／PG16與使用者原checkout保持原樣；正式存取缺件不拿假provider或角色分工代替。
+- 新 `tests/browser/browser_acceptance.py` 固定Playwright1.63.0，重用原native Components与真production React bundle；實際UI／HTTP／WSS／PG／Redis／IDB／reload／原C1／receipt／群組與session撤權。修正runner自身缺prerequisites、strict locator、SDK keyword-only callback、SQL JSON codec及async membercontrol等待；未變更production App／API／BA邏輯。
+- 本機Chrome154.0.8037.97 headless56個實際檢查全通過：100個offline期間已提交訊息由保存游標重連，raw DOM／native IDB各恰好一筆同M1／原文，加rAF驗回376.05ms；真committed-response loss令原C1仍unconfirmed時實際reload並核回同C1／M1／intent，sender read投影／owner撤權cache／33個frontend inputs與4個compiled assets provenance驗明。另一device登出後真WSS傳訊存續通過。不是50人／正式VM SLO；headed hidden與physical Android不可由headless代填。
+- 新fresh own-project container runner建置兩真image、production explicit migration、secret owner UID/GID／64hex／private CIDR、verifiedCA TLS／WSS／readreceipt／restart／完整archive及restored-product flow。4個no-clobber／private NOT_EXERCISED／實際SIGTERM child reaping回歸先red後green，完整infra29通過；本機缺Docker不冒稱映像已執行，Standalone Compose真解析private5service／sole loopback Caddy通過。
+- API109＋BA100＋QA36＋infra29＋Web63＝337項與完整8個native product faults通過；本次lost notify實際WSS撤銷4675.354ms。CI保留原四jobs／Gitleaks，新增Chrome／Edge headed/Xvfb、完整native故障／atomicrestore與container gates，加Unicode artifact `--check`。遠端Actions按後續真run記錄，不把workflow存在當全綠。
+- Repo／Notion／SSH／ADC／GitHub secrets-variable存取查核仍無正式target／授權；真VMrouting／GCSbytes/IAM/CORS／AndroidIME旋轉／正式50人與VMbackup/rollback/monitoring仍Blocked，原始歷史JSON與source時點不改寫。
+
 ## 2026-10-07 — PR #6 同步 main 並解決 CI／infra 衝突
 
 - 將 `origin/main`／`0736110178a186816b94731caa80149879c44931` 整合進 PR #6 來源，保留已發布 `828fd33` 的全部修正；這是 source branch 同步，不是 merge PR 到 main，不 rebase／force-push／刪分支。
