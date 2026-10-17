@@ -125,7 +125,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
           {contacts.busy && <p role="status" className="small muted">載入聯絡人…</p>}
           {!contacts.busy && !contacts.items.length && <p className="small muted">還沒有聯絡人，可直接以公開 ID 加入。</p>}
           {contacts.cursor && <button type="button" className="text-button" disabled={contacts.busy} onClick={() => { void contacts.load(); }}>載入下一頁</button>}
-          <div className="actions"><button type="button" className="primary" onClick={() => { setError(null); setStep('title'); }}>下一步</button></div>
+          <div className="actions"><button type="button" className="primary" disabled={lookupBusy} onClick={() => { setError(null); setStep('title'); }}>下一步</button></div>
         </div>
       : <form className="create-group-step" onSubmit={submit}>
           <label htmlFor="group-title">群組名稱</label><input id="group-title" value={title} onChange={event => setTitle(event.target.value)} disabled={locked} />
