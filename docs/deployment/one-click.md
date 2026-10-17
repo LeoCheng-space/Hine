@@ -58,6 +58,8 @@ HINE 已啟動：https://localhost:8443
 | `./build.sh logs` | 顯示所有服務最後 200 行記錄 |
 | `./build.sh logs api --follow` | 持續顯示某個服務的記錄（`Ctrl+C` 結束）；服務名稱：`api`、`realtime`、`postgres`、`redis`、`caddy` |
 | `./build.sh --help` | 顯示用法 |
+| `./build.sh clean` | **只預覽**：列出會被清除的資料庫、Docker 容器／資料卷／網路／映像與產生的檔案，不刪除任何東西 |
+| `./build.sh clean --yes` | 實際清除上述項目（**無法復原**；只限本機，見 §2.5） |
 
 剛被 `build.sh` 加入 `docker` 群組、還沒重新登入的終端機裡，`stop`／`status`／`logs` 也會自動以 `docker` 群組重新執行（並維持你原本的主要群組），不需要登出；重新登入後就不再需要切換。
 
@@ -74,7 +76,7 @@ HINE 已啟動：https://localhost:8443
 | 資料庫、Redis、Caddy 憑證 | Docker volume：`hine-dev_postgres_data`、`hine-dev_redis_data`、`hine-dev_caddy_local_data`、`hine-dev_caddy_local_config` |
 | 每次執行的完整記錄 | `.build-logs/`（不進 Git） |
 
-`build.sh` **沒有任何刪除資料的指令**。若真的要清空本機資料重來（**破壞性、無法復原**）：
+只有 `./build.sh clean --yes` 會刪除資料（見 §2.5）；其他指令都不會。若只想把資料庫清空、保留設定與密鑰（**破壞性、無法復原**）：
 
 ```sh
 ./build.sh stop
@@ -84,19 +86,25 @@ docker compose --project-directory . --env-file .env -f docker-compose.yml -f in
 
 `.secrets/` 與 `.env` 要保留：PostgreSQL volume 被刪除後，下次會用同一組密鑰重新初始化。
 
-### 2.5 完全重新安裝（清除所有本機資料與設定）
-
-**破壞性、無法復原**：會刪除本機所有帳號、訊息與開發密鑰。在 repo 根目錄執行：
+### 2.5 完全重新安裝：`./build.sh clean`
 
 ```sh
-./build.sh stop
-docker compose --project-directory . --env-file .env -f docker-compose.yml -f infra/docker/compose.local.yml \
-  --profile product --profile realtime --profile local down -v --remove-orphans
-rm -rf .env .secrets .build-logs frontend/app/dist frontend/app/node_modules
-./build.sh
+./build.sh clean          # 先預覽：列出會刪什麼，不做任何刪除
+./build.sh clean --yes    # 確認後實際清除（無法復原）
+./build.sh                # 重新安裝
 ```
 
-若 `.env` 已經不存在，第二行改成 `docker volume rm hine-dev_postgres_data hine-dev_redis_data hine-dev_caddy_local_data hine-dev_caddy_local_config`（不存在的會顯示錯誤，可忽略）。
+| 會清除 | 保留 |
+|---|---|
+| 這個資料夾的 Docker 專案（`.env` 的 `COMPOSE_PROJECT_NAME`，預設 `hine-dev`）的容器、網路、**所有資料卷**（資料庫、Redis、本機憑證）與它自己建置的映像 | `deploy.env`（正式機設定） |
+| `.env`、`.secrets/`、`.build-logs/`、`frontend/app/dist`、`frontend/app/node_modules` | 共用的基礎映像（`postgres`、`redis`、`caddy`）與 Docker 建置快取：整台電腦的專案共用，`build.sh` 不清；確定要清請自行執行 `docker image rm postgres:17-alpine redis:7-alpine caddy:2-alpine` 與 `docker builder prune` |
+
+安全規則：
+
+- **只限本機**：`./build.sh --production clean` 一律拒絕，正式機資料不能用這個指令刪除。
+- **只清屬於這個資料夾的專案**：Docker 的專案名稱是整台電腦共用的，每份 clone 預設都叫 `hine-dev`。若同名專案的容器是從**另一個資料夾**建立的，`clean` 會拒絕並指出那個資料夾；若這個資料夾沒有 `.env`、也沒有容器可以對照，卻找到同名資料卷，也會拒絕。
+- **剩下的風險**：兩份 clone 都用 `hine-dev`、而且容器已經被移除時，`clean` 無法分辨資料卷屬於哪一份。同一台電腦有多份 clone 時，請在各自的 `.env` 設定不同的 `COMPOSE_PROJECT_NAME`。
+- 清除後也請清除瀏覽器對 `https://localhost:8443` 的網站資料（網址列左側圖示 →「網站設定」→「刪除資料」），否則可能因瀏覽器保存的舊裝置資料而無法登入。
 
 ## 3. 正式機部署（GCP Compute Engine VM）
 
@@ -220,6 +228,8 @@ git pull
 | `連接埠 N 已被其他程式占用（不是 Docker 容器）` | 用 `sudo ss -ltnp 'sport = :N'` 找出程式並停止（正式機常見是 Nginx：`sudo systemctl disable --now nginx`） |
 | `已切換到 docker 群組但仍無法連線 Docker` | Docker 服務沒有在執行：`sudo systemctl status docker`，必要時 `sudo systemctl enable --now docker` |
 | `使用者 X 還不在 docker 群組；請先執行 ./build.sh` | 執行 `stop`／`status`／`logs` 時，帳號還不在 `docker` 群組（子指令不會自行改動群組）。先執行一次 `./build.sh`，它會用 sudo 把帳號加入 `docker` 群組並啟動服務 |
+| `Docker 專案 X 的容器是從另一個資料夾建立的：…` | `clean` 發現同名專案屬於別的資料夾（例如另一份 clone），為了不刪到那邊的資料而停止。到訊息指出的資料夾執行 `./build.sh clean`；若兩份 clone 要各自獨立，在這份 `.env` 設定不同的 `COMPOSE_PROJECT_NAME` |
+| `找到 Docker 專案 X 的資料卷，但這個資料夾沒有 .env…無法確認資料屬於這裡` | 這個資料夾從未建置過（或 `.env` 已被刪除），無法證明那些資料卷屬於這裡，`clean` 不會刪。確認是自己的資料後，照訊息裡的 `docker volume rm …` 手動刪除 |
 | `init-secrets: run initialization as the existing secret owner UID/GID` | `.secrets/` 裡的檔案擁有者（使用者或群組）與目前執行的使用者不同，`build.sh` 拒絕改動既有密鑰。用 `ls -ln .secrets` 對照 `id`；若是用 `sudo` 或其他帳號產生的，改回正確擁有者（`sudo chown -R 你的帳號:你的群組 .secrets .env`）後重跑。若確定不需要舊資料，依 §2.5 完全重新安裝 |
 | `需要 Docker Compose v2.20 以上` | Docker 太舊；Ubuntu／Debian 可移除舊版後重新執行 `./build.sh` 由官方來源安裝 |
 | 第 4 步逾時，`./build.sh logs api` 出現 PostgreSQL 密碼驗證失敗（`password authentication failed`） | 資料庫 volume 是用**另一組密鑰**初始化的：同一台電腦上另一份 checkout 用過同樣的 project 名稱（預設 `hine-dev`），但兩份 `.secrets/` 不同。處理方式擇一：在這份 checkout 的 `.env` 把 `COMPOSE_PROJECT_NAME` 改成不同名稱；或把原本那份 checkout 的 `.secrets/` 複製過來；或確認舊資料不需要後依 §2.4 清除資料 |
@@ -234,7 +244,7 @@ git pull
 ## 5. `build.sh` 不會做的事
 
 - 不建立或修改任何雲端資源（VM、防火牆、DNS、GCS、服務帳號）。
-- 不刪除任何資料、Docker volume 或 Docker 網路。
+- 除了 `./build.sh clean --yes`（只限本機、只清屬於這個資料夾的專案、先預覽才刪除），不刪除任何資料、Docker volume 或 Docker 網路；正式機沒有清除指令。
 - 不信任或安裝任何憑證到系統或瀏覽器。
 - 不輸出任何密鑰內容到畫面或記錄檔。
 - 不自動回滾資料庫。
