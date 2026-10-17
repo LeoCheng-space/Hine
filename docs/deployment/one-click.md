@@ -59,6 +59,8 @@ HINE 已啟動：https://localhost:8443
 | `./build.sh logs api --follow` | 持續顯示某個服務的記錄（`Ctrl+C` 結束）；服務名稱：`api`、`realtime`、`postgres`、`redis`、`caddy` |
 | `./build.sh --help` | 顯示用法 |
 
+剛被 `build.sh` 加入 `docker` 群組、還沒重新登入的終端機裡，`stop`／`status`／`logs` 也會自動以 `docker` 群組重新執行（並維持你原本的主要群組），不需要登出；重新登入後就不再需要切換。
+
 ### 2.3 重跑與更新
 
 改了程式或 `git pull` 之後，再執行一次 `./build.sh` 即可：重新建置前端，Compose 只重建有變動的容器，資料保留。服務正在執行時重跑也沒問題（`build.sh` 認得自己的 Caddy 占用 8443）。
@@ -217,6 +219,7 @@ git pull
 | `連接埠 8443 已被容器 X（專案 Y）占用` | 另一套 stack 占用了 8443。用 `docker stop X` 停掉後再執行 |
 | `連接埠 N 已被其他程式占用（不是 Docker 容器）` | 用 `sudo ss -ltnp 'sport = :N'` 找出程式並停止（正式機常見是 Nginx：`sudo systemctl disable --now nginx`） |
 | `已切換到 docker 群組但仍無法連線 Docker` | Docker 服務沒有在執行：`sudo systemctl status docker`，必要時 `sudo systemctl enable --now docker` |
+| `使用者 X 還不在 docker 群組；請先執行 ./build.sh` | 執行 `stop`／`status`／`logs` 時，帳號還不在 `docker` 群組（子指令不會自行改動群組）。先執行一次 `./build.sh`，它會用 sudo 把帳號加入 `docker` 群組並啟動服務 |
 | `init-secrets: run initialization as the existing secret owner UID/GID` | `.secrets/` 裡的檔案擁有者（使用者或群組）與目前執行的使用者不同，`build.sh` 拒絕改動既有密鑰。用 `ls -ln .secrets` 對照 `id`；若是用 `sudo` 或其他帳號產生的，改回正確擁有者（`sudo chown -R 你的帳號:你的群組 .secrets .env`）後重跑。若確定不需要舊資料，依 §2.5 完全重新安裝 |
 | `需要 Docker Compose v2.20 以上` | Docker 太舊；Ubuntu／Debian 可移除舊版後重新執行 `./build.sh` 由官方來源安裝 |
 | 第 4 步逾時，`./build.sh logs api` 出現 PostgreSQL 密碼驗證失敗（`password authentication failed`） | 資料庫 volume 是用**另一組密鑰**初始化的：同一台電腦上另一份 checkout 用過同樣的 project 名稱（預設 `hine-dev`），但兩份 `.secrets/` 不同。處理方式擇一：在這份 checkout 的 `.env` 把 `COMPOSE_PROJECT_NAME` 改成不同名稱；或把原本那份 checkout 的 `.secrets/` 複製過來；或確認舊資料不需要後依 §2.4 清除資料 |
