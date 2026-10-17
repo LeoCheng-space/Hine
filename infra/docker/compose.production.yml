@@ -47,7 +47,14 @@ services:
         condition: service_started
 
 networks:
-  edge: {}
+  edge:
+    ipam:
+      config:
+        - subnet: ${HINE_EDGE_SUBNET:?Set HINE_EDGE_SUBNET to the pinned production edge CIDR}
+  backend:
+    ipam:
+      config:
+        - subnet: ${HINE_BACKEND_SUBNET:?Set HINE_BACKEND_SUBNET to the pinned production backend CIDR}
 
 volumes:
   caddy_data:

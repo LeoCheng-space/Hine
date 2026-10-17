@@ -15,6 +15,9 @@ Thumbs.db
 .backups/
 *.pem
 *.key
+deploy.env
+.build-logs/
+.build.lock/
 
 # Python
 __pycache__/

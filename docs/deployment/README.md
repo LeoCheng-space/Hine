@@ -4,6 +4,8 @@ This checkout includes the real API, BA realtime service, and bundled root Compo
 
 ## 1. Local product stack
 
+**Recommended one-command path:** `./build.sh` builds and starts the local stack at `https://localhost:8443`; `./build.sh --production` deploys on the VM from `deploy.env`. See the Traditional Chinese operations manual [one-click.md](one-click.md). The steps below remain the underlying procedure that `build.sh` automates.
+
 Prerequisites: Docker Engine/Desktop with a functioning daemon, Compose v2 (`--wait` and JSON `config` support), POSIX shell, OpenSSL, and Python 3 where infrastructure scripts need it. Run at the repository root:
 
 ```sh
@@ -99,7 +101,10 @@ export HINE_SECRET_DIR=/srv/hine/secrets
 export WEB_ROOT=/srv/hine/releases/current/web
 export HINE_DOMAIN=hine.run.place
 export ACME_EMAIL=your-approved-operator-email
-: "${TRUSTED_PROXY_NETWORKS:?Set actual isolated proxy CIDR(s) before running}"
+# Production networks are pinned so the trusted proxy ranges are known before they exist.
+export HINE_EDGE_SUBNET=172.30.1.0/24
+export HINE_BACKEND_SUBNET=172.30.2.0/24
+export TRUSTED_PROXY_NETWORKS="$HINE_EDGE_SUBNET,$HINE_BACKEND_SUBNET"
 sh infra/scripts/preflight.sh --local
 # For an upgrade: back up PostgreSQL and quiesce all writers first.
 sh infra/scripts/stack.sh up -d postgres redis

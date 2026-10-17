@@ -1,0 +1,66 @@
+#!/bin/sh
+# Creates or verifies the seven owner-only credential files in an absolute directory.
+# Existing values are kept; disagreements fail closed instead of rotating credentials.
+set -eu
+umask 077
+fail() { printf 'init-secrets: %s\n' "$*" >&2; exit 1; }
+[ "$#" -eq 3 ] || fail 'usage: sh infra/scripts/init-secrets.sh ABSOLUTE_SECRET_DIR POSTGRES_USER POSTGRES_DB'
+SECRET_DIR=$1
+postgres_user=$2
+postgres_db=$3
+case "$SECRET_DIR" in /*) ;; *) fail 'secret directory must be an absolute path' ;; esac
+command -v openssl >/dev/null 2>&1 || fail 'openssl is required for random credentials'
+[ ! -L "$SECRET_DIR" ] || fail 'secret directory must not be a symlink'
+if [ -e "$SECRET_DIR" ]; then
+    [ -d "$SECRET_DIR" ] || fail 'secret path is not a directory'
+fi
+caller="$(id -u) $(id -g)"
+if [ -d "$SECRET_DIR" ]; then
+    owner=$(stat -c '%u %g' "$SECRET_DIR" 2>/dev/null || stat -f '%u %g' "$SECRET_DIR") || fail 'cannot determine secret directory ownership'
+    [ "$owner" = "$caller" ] || fail 'run initialization as the existing secret owner UID/GID'
+fi
+# Validate every existing target before changing permissions or creating secrets.
+for name in postgres_password redis_password api_internal_token realtime_internal_token redis_url jwt_signing_key database_url; do
+    target="$SECRET_DIR/$name"
+    [ ! -L "$target" ] || fail 'secret file must not be a symlink'
+    if [ -e "$target" ]; then
+        [ -f "$target" ] && [ -s "$target" ] || fail 'existing secret must be a nonempty regular file'
+        owner=$(stat -c '%u %g' "$target" 2>/dev/null || stat -f '%u %g' "$target") || fail 'cannot determine secret file ownership'
+        [ "$owner" = "$caller" ] || fail 'run initialization as the existing secret owner UID/GID'
+    fi
+done
+[ -d "$SECRET_DIR" ] || mkdir -m 700 "$SECRET_DIR"
+chmod 700 "$SECRET_DIR"
+for name in postgres_password redis_password api_internal_token realtime_internal_token jwt_signing_key; do
+    target="$SECRET_DIR/$name"
+    if [ ! -e "$target" ]; then
+        (set -C; openssl rand -hex 32 > "$target") || fail 'could not create random secret without overwriting'
+    fi
+    chmod 600 "$target"
+    # Hex encoding keeps Redis config and URL syntax safe without escaping.
+    value=$(cat "$target")
+    [ "${#value}" -eq 64 ] || fail 'existing secret is not the expected64-character hex format'
+    case "$value" in *[!0-9a-f]*) fail 'existing secret is not lowercase hexadecimal' ;; esac
+done
+expected="redis://:$(cat "$SECRET_DIR/redis_password")@redis:6379/0"
+if [ -e "$SECRET_DIR/redis_url" ]; then
+    [ "$(cat "$SECRET_DIR/redis_url")" = "$expected" ] || fail 'redis_url and redis_password disagree; repair references explicitly, do not rotate a running DB implicitly'
+else
+    (set -C; printf '%s\n' "$expected" > "$SECRET_DIR/redis_url") || fail 'could not create redis_url without overwriting'
+fi
+chmod 600 "$SECRET_DIR/redis_url"
+# File secrets are bind mounts: capless container root cannot bypass host0600.
+owners=$(stat -c '%u %g' "$SECRET_DIR/redis_url" 2>/dev/null || stat -f '%u %g' "$SECRET_DIR/redis_url") || fail 'cannot determine secret ownership'
+for name in postgres_password redis_password api_internal_token realtime_internal_token jwt_signing_key; do
+    other=$(stat -c '%u %g' "$SECRET_DIR/$name" 2>/dev/null || stat -f '%u %g' "$SECRET_DIR/$name") || fail 'cannot determine secret ownership'
+    [ "$other" = "$owners" ] || fail 'BA secret files must share one UID/GID owner'
+done
+expected="postgresql://$postgres_user:$(cat "$SECRET_DIR/postgres_password")@postgres:5432/$postgres_db"
+if [ -e "$SECRET_DIR/database_url" ]; then
+    [ "$(cat "$SECRET_DIR/database_url")" = "$expected" ] || fail 'database_url and PostgreSQL configuration disagree; do not rotate a running database implicitly'
+else
+    (set -C; printf '%s\n' "$expected" > "$SECRET_DIR/database_url") || fail 'could not create database_url without overwriting'
+fi
+chmod 600 "$SECRET_DIR/database_url"
+owner=$(stat -c '%u %g' "$SECRET_DIR/database_url" 2>/dev/null || stat -f '%u %g' "$SECRET_DIR/database_url") || fail 'cannot determine database secret ownership'
+[ "$owner" = "$owners" ] || fail 'API secrets must share the runtime secret owner UID/GID'

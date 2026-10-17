@@ -162,6 +162,8 @@ class OperationsSafetyTests(unittest.TestCase):
             "WEB_ROOT": str(self.root / "missing-frontend-release"),
             "HINE_DOMAIN": "hine.run.place",
             "ACME_EMAIL": "operator@example.org",
+            "HINE_EDGE_SUBNET": "172.30.1.0/24",
+            "HINE_BACKEND_SUBNET": "172.30.2.0/24",
         }
 
     def test_production_recovery_configuration_allows_absent_frontend(self):
@@ -172,6 +174,17 @@ class OperationsSafetyTests(unittest.TestCase):
              str(self.root / "infra/scripts/stack.sh"), str(self.root / "infra/scripts/common.sh")],
             cwd=self.root, env=environment, text=True, capture_output=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_production_configuration_requires_pinned_subnets(self):
+        environment = os.environ.copy()
+        environment.update(self.production_recovery_environment())
+        del environment["HINE_BACKEND_SUBNET"]
+        result = subprocess.run(
+            ["sh", "-ec", '. "$1"; configure_stack production',
+             str(self.root / "infra/scripts/stack.sh"), str(self.root / "infra/scripts/common.sh")],
+            cwd=self.root, env=environment, text=True, capture_output=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("HINE_BACKEND_SUBNET", result.stderr)
 
     def test_launch_preflight_still_refuses_absent_frontend_before_docker(self):
         result = self.run_script("preflight.sh", "--local", overrides=self.production_recovery_environment())

@@ -1,3 +1,5 @@
+# Shared by compose.acceptance.yml (disposable acceptance runs) and compose.local.yml (./build.sh local stack).
+# Routing changes here affect both; production uses infra/docker/Caddyfile.
 {
 	admin off
 	auto_https disable_redirects
