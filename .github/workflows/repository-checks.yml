@@ -84,7 +84,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Validate operations scripts
-        run: sh -n infra/scripts/*.sh infra/docker/redis-start.sh
+        run: sh -n build.sh infra/scripts/*.sh infra/docker/redis-start.sh
       - name: Initialize owner-only development credentials
         run: sh infra/scripts/init-dev.sh
       - name: Validate Compose and build realtime image
