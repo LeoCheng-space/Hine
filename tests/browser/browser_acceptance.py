@@ -907,6 +907,201 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                     "SELECT count(*) FROM memberships WHERE conversation_id=$1 AND user_id=$2 AND active", temp_group_id, ids[0])
             check(test_record, "group_leave_response_after_navigation_does_not_redirect",
                   leave_status == 204 and still_member == 0 and stayed_on_contacts)
+
+            # --- UI refresh behaviour (design §11). Bob (page_b) sends in the direct room and
+            # Alice (page_a) observes; page_c (also Alice) does not exist yet, so no second
+            # Alice window can commit reads on page_a's behalf. ---
+            restore_viewport = page_a.viewport_size or {"width": 390, "height": 844}
+            direct_path = "/chats/" + quote(direct_id, safe="")
+            await spa_go(page_b, direct_path)
+            await page_b.locator(".chat-composer textarea").wait_for(state="visible", timeout=45000)
+            await page_a.bring_to_front()
+            await spa_go(page_a, direct_path)
+            await page_a.locator(".chat-header small[role=status]").filter(has_text="即時連線").wait_for(timeout=45000)
+
+            async def bob_says(text: str) -> None:
+                await page_b.locator(".chat-composer textarea").fill(text)
+                await page_b.locator(".send-button").click()
+
+            async def to_latest() -> None:
+                await page_a.evaluate("() => { const s = document.querySelector('.message-scroller'); s.scrollTop = s.scrollHeight; s.dispatchEvent(new Event('scroll')); }")
+                await page_a.wait_for_function("() => { const s = document.querySelector('.message-scroller'); return s.scrollHeight - s.clientHeight - s.scrollTop <= 48; }")
+
+            dom_invariants = await page_a.evaluate("""() => {
+              const ids = [...document.querySelectorAll('[data-message-id]')].map(node => node.dataset.messageId);
+              const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+              return {count: ids.length, uuid: ids.every(id => uuid.test(id)), unique: new Set(ids).size === ids.length,
+                      occluders: document.querySelectorAll('.message-scroller [data-read-occlusion]').length};
+            }""")
+            check(test_record, "message_dom_invariants", dom_invariants["count"] > 0 and dom_invariants["uuid"]
+                  and dom_invariants["unique"] and dom_invariants["occluders"] == 0)
+
+            menu_button = page_a.get_by_role("button", name="開啟選單", exact=True)
+            await menu_button.click()
+            await page_a.get_by_role("dialog", name="選單").wait_for(state="visible")
+            await page_a.keyboard.press("Escape")
+            await page_a.get_by_role("dialog", name="選單").wait_for(state="detached")
+            check(test_record, "menu_escape_returns_focus", await menu_button.evaluate("button => button === document.activeElement"))
+            open_modals = await page_a.evaluate("() => [...document.querySelectorAll('[aria-modal=\"true\"],dialog[open]')].filter(node => node.getClientRects().length > 0).length")
+            await to_latest()
+            read_text = "menu-closed-read-" + secrets.token_hex(4)
+            await bob_says(read_text)
+            await wait_message(page_a, read_text, timeout=30000)
+            read_status = None
+            async with asyncio.timeout(15):
+                while True:
+                    async with components.sql() as conn:
+                        read_status = await conn.fetchval(
+                            "SELECT r.status FROM receipts r JOIN messages m ON m.message_id=r.message_id WHERE m.payload->>'text'=$1 AND r.user_id=$2",
+                            read_text, ids[0])
+                    if read_status == "read":
+                        break
+                    await asyncio.sleep(0.2)
+            check(test_record, "closed_menu_does_not_block_reads", open_modals == 0 and read_status == "read")
+
+            # The entry motion is WAAPI element.animate() started from an effect, so record the
+            # calls themselves (bound to the inserted message id) instead of sampling a frame.
+            record_entry = """() => {
+              window.__hineEntry = {inserted: [], animated: []};
+              if (!window.__hineAnimateHooked) {
+                window.__hineAnimateHooked = true;
+                const original = Element.prototype.animate;
+                Element.prototype.animate = function (...args) {
+                  if (this instanceof HTMLElement && this.dataset.messageId) window.__hineEntry.animated.push(this.dataset.messageId);
+                  return original.apply(this, args);
+                };
+              }
+              new MutationObserver(records => {
+                for (const node of records.flatMap(record => [...record.addedNodes]))
+                  if (node instanceof HTMLElement) for (const bubble of [node, ...node.querySelectorAll('[data-message-id]')])
+                    if (bubble.matches('[data-message-id]')) window.__hineEntry.inserted.push({id: bubble.dataset.messageId, text: bubble.querySelector('.message-text')?.textContent ?? ''});
+              }).observe(document.querySelector('.message-scroller'), {childList: true, subtree: true});
+            }"""
+            entry_of = """t => {
+              const inserted = window.__hineEntry.inserted.find(entry => entry.text === t);
+              if (!inserted) return null;
+              const node = [...document.querySelectorAll('[data-message-id]')].find(bubble => bubble.dataset.messageId === inserted.id);
+              return {id: inserted.id, animateCalls: window.__hineEntry.animated.filter(id => id === inserted.id).length,
+                      runningAnimations: node ? node.getAnimations({subtree: true}).length : -1};
+            }"""
+            await to_latest()
+            await page_a.evaluate(record_entry)
+            motion_text = "entry-motion-" + secrets.token_hex(4)
+            await bob_says(motion_text)
+            await wait_message(page_a, motion_text, timeout=30000)
+            await page_a.wait_for_function(f"t => ({entry_of})(t)?.animateCalls > 0", arg=motion_text, timeout=10000)
+            motion_entry = await page_a.evaluate(entry_of, motion_text)
+            check(test_record, "entry_animation_positive_control", motion_entry is not None and motion_entry["animateCalls"] == 1)
+            await page_a.emulate_media(reduced_motion="reduce")
+            await to_latest()
+            await page_a.evaluate(record_entry)
+            still_text = "reduced-motion-" + secrets.token_hex(4)
+            await bob_says(still_text)
+            await wait_message(page_a, still_text, timeout=30000)
+            await page_a.wait_for_function(f"t => ({entry_of})(t) !== null", arg=still_text, timeout=10000)
+            await page_a.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+            still_entry = await page_a.evaluate(entry_of, still_text)
+            check(test_record, "reduced_motion_no_entry_animation", still_entry is not None
+                  and still_entry["animateCalls"] == 0 and still_entry["runningAnimations"] == 0)
+            await page_a.emulate_media(reduced_motion="no-preference")
+
+            await page_a.evaluate("() => { const s = document.querySelector('.message-scroller'); s.scrollTop = 0; s.dispatchEvent(new Event('scroll')); }")
+            await page_a.wait_for_timeout(300)
+            for text in ("scrolled-up-1-" + secrets.token_hex(3), "scrolled-up-2-" + secrets.token_hex(3)):
+                await bob_says(text)
+                await page_a.locator("[data-message-id]").filter(has_text=text).wait_for(state="attached", timeout=30000)
+            fab = page_a.get_by_role("button", name="跳至最新", exact=True)
+            await page_a.locator(".jump-latest-fab .fab-count").filter(has_text="2").wait_for(state="visible", timeout=10000)
+            fab_counted = await fab.is_visible()
+            await fab.click()
+            await page_a.wait_for_function("() => { const s = document.querySelector('.message-scroller'); return s.scrollHeight - s.clientHeight - s.scrollTop <= 48; }", timeout=10000)
+            await page_a.locator(".jump-latest-fab").wait_for(state="hidden", timeout=10000)
+            check(test_record, "new_message_count_while_scrolled_up", fab_counted)
+
+            await page_a.evaluate("() => { const s = document.querySelector('.message-scroller'); s.scrollTop = Math.max(0, s.scrollHeight / 3); s.dispatchEvent(new Event('scroll')); }")
+            saved_anchor, previous_anchor = None, False
+            async with asyncio.timeout(10):
+                while saved_anchor is None or saved_anchor != previous_anchor:
+                    previous_anchor = saved_anchor
+                    saved_anchor = await page_a.evaluate("""async conversationId => {
+                      const db = await new Promise((resolve, reject) => { const r = indexedDB.open('hine-chat-v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+                      const rows = await new Promise(resolve => { const q = db.transaction('anchors', 'readonly').objectStore('anchors').getAll(); q.onsuccess = () => resolve(q.result); });
+                      db.close();
+                      const row = rows.find(item => item.conversation === conversationId);
+                      return row && !row.value.atLatest ? row.value : null;
+                    }""", direct_id)
+                    if saved_anchor is None or saved_anchor != previous_anchor:
+                        await asyncio.sleep(0.25)
+            await spa_go(page_a, "/chats/" + quote(group_id, safe=""))
+            await page_a.get_by_role("button", name="群組資訊").wait_for(state="visible", timeout=30000)
+            await page_a.get_by_role("button", name="群組資訊").click()
+            await page_a.get_by_role("dialog", name="群組資訊").wait_for(state="visible")
+            await page_a.keyboard.press("Escape")
+            await page_a.get_by_role("dialog", name="群組資訊").wait_for(state="detached")
+            check(test_record, "group_info_escape_returns_focus",
+                  await page_a.get_by_role("button", name="群組資訊").evaluate("button => button === document.activeElement"))
+            await spa_go(page_a, direct_path)
+            await page_a.locator(".chat-header small[role=status]").filter(has_text="即時連線").wait_for(timeout=30000)
+            await page_a.wait_for_timeout(300)
+            restored = await page_a.evaluate("""messageId => {
+              const s = document.querySelector('.message-scroller'), top = s.getBoundingClientRect().top;
+              const first = [...s.querySelectorAll('[data-message-id]')].find(node => node.getBoundingClientRect().bottom > top);
+              const target = [...s.querySelectorAll('[data-message-id]')].find(node => node.dataset.messageId === messageId);
+              return {first: first?.dataset.messageId ?? null, offset: target ? target.getBoundingClientRect().top - top : null};
+            }""", saved_anchor["messageId"])
+            check(test_record, "anchor_restored_after_room_switch", restored["first"] == saved_anchor["messageId"]
+                  and restored["offset"] is not None and abs(restored["offset"] - saved_anchor["offset"]) <= 1)
+
+            await to_latest()
+            composer = page_a.locator(".chat-composer textarea")
+            await composer.fill("")
+            await composer.focus()
+            ime_counts = """async conversationId => {
+              const db = await new Promise((resolve, reject) => { const r = indexedDB.open('hine-chat-v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+              const partitions = await new Promise(resolve => { const q = db.transaction('partitions', 'readonly').objectStore('partitions').getAll(); q.onsuccess = () => resolve(q.result); });
+              db.close();
+              const intents = partitions.reduce((total, partition) => total + Object.values(partition.intents ?? {}).filter(intent => intent.conversationId === conversationId).length, 0);
+              return {intents, pending: document.querySelectorAll('.pending-message').length, messages: document.querySelectorAll('[data-message-id]').length,
+                      draft: document.querySelector('#chat-draft').value};
+            }"""
+            ime_cdp = await page_a.context.new_cdp_session(page_a)
+            try:
+                ime_before = await page_a.evaluate(ime_counts, direct_id)
+                await ime_cdp.send("Input.imeSetComposition", {"text": "ㄋㄧˇ", "selectionStart": 3, "selectionEnd": 3})
+                await page_a.keyboard.press("Enter")
+                await page_a.wait_for_timeout(1000)
+                ime_during = await page_a.evaluate(ime_counts, direct_id)
+                await ime_cdp.send("Input.insertText", {"text": "你"})
+                await page_a.keyboard.press("Control+Enter")
+                await page_a.wait_for_function("() => document.querySelector('#chat-draft').value === ''", timeout=10000)
+                async with asyncio.timeout(10):
+                    while (ime_after := await page_a.evaluate(ime_counts, direct_id))["intents"] == ime_before["intents"]:
+                        await asyncio.sleep(0.2)
+            finally:
+                await ime_cdp.detach()
+            check(test_record, "ime_composition_enter_does_not_send",
+                  ime_during["intents"] == ime_before["intents"] and ime_during["pending"] == ime_before["pending"]
+                  and ime_during["messages"] == ime_before["messages"] and "ㄋㄧˇ" in ime_during["draft"]
+                  and ime_after["intents"] == ime_before["intents"] + 1)
+
+            geometry = """() => {
+              const area = element => { if (!element) return 0; const r = element.getBoundingClientRect();
+                return Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0)); };
+              const list = document.querySelector('.chat-list'), room = document.querySelector('.chat-room');
+              return {list: area(list), room: area(room), listRects: list ? list.getClientRects().length : 0, roomRects: room ? room.getClientRects().length : 0,
+                      noOverflow: document.scrollingElement.scrollWidth <= innerWidth};
+            }"""
+            await page_a.set_viewport_size({"width": 767, "height": 900})
+            await page_a.wait_for_timeout(400)
+            narrow = await page_a.evaluate(geometry)
+            check(test_record, "layout_767_single_column", narrow["noOverflow"] and (
+                (narrow["room"] > 0 and narrow["listRects"] == 0) or (narrow["list"] > 0 and narrow["roomRects"] == 0)))
+            await page_a.set_viewport_size({"width": 768, "height": 900})
+            await page_a.wait_for_timeout(400)
+            wide = await page_a.evaluate(geometry)
+            check(test_record, "layout_768_two_columns", wide["noOverflow"] and wide["list"] > 0 and wide["room"] > 0)
+            await page_a.set_viewport_size(restore_viewport)
+            await page_a.wait_for_timeout(300)
             context_c = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
             contexts.append(context_c)
             page_c = await context_c.new_page()
