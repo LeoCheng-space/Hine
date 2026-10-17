@@ -40,26 +40,30 @@ export function IntentRow({ intent, connectionReady, onRetry, children }: { inte
   </li>;
 }
 
-/** Floating date for the first visible message. Lives outside the scroller; measures only on scroll, throttled to one frame. */
+const DATE_PILL_IDLE_MS = 1200;
+/** Floating date for the first visible message while the user scrolls. Lives outside the scroller, measures at most once per frame, hides after a short idle and near the top or bottom. */
 export function DatePill({ scroller, messages, now }: { scroller: RefObject<HTMLElement | null>; messages: MessageView[]; now: Date }) {
   const [label, setLabel] = useState<string | null>(null), pill = useRef<HTMLDivElement>(null);
   const latest = useRef({ messages, now });
   latest.current = { messages, now };
   useEffect(() => {
     const element = scroller.current; if (!element) return;
-    let frame = 0;
+    let frame = 0, idle = 0;
     const measure = (): void => {
       frame = 0;
-      const top = element.getBoundingClientRect().top, atLatest = element.scrollHeight - element.clientHeight - element.scrollTop <= 48;
-      const first = atLatest ? undefined : [...element.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => node.getBoundingClientRect().bottom > top);
+      const top = element.getBoundingClientRect().top, edge = element.scrollTop < 48 || element.scrollHeight - element.clientHeight - element.scrollTop <= 48;
+      const first = edge ? undefined : [...element.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => node.getBoundingClientRect().bottom > top);
       const message = first ? latest.current.messages.find(item => item.id === first.dataset.messageId) : undefined;
       const next = message ? dateLabel(new Date(message.created_at), latest.current.now) : null;
       if (pill.current) pill.current.style.top = `${element.offsetTop + 8}px`;
       setLabel(current => (current === next ? current : next));
     };
-    const onScroll = (): void => { if (!frame) frame = requestAnimationFrame(measure); };
-    element.addEventListener('scroll', onScroll, { passive: true }); onScroll();
-    return () => { element.removeEventListener('scroll', onScroll); if (frame) cancelAnimationFrame(frame); };
+    const onScroll = (): void => {
+      if (!frame) frame = requestAnimationFrame(measure);
+      clearTimeout(idle); idle = window.setTimeout(() => setLabel(null), DATE_PILL_IDLE_MS);
+    };
+    element.addEventListener('scroll', onScroll, { passive: true });
+    return () => { element.removeEventListener('scroll', onScroll); if (frame) cancelAnimationFrame(frame); clearTimeout(idle); };
   }, [scroller]);
   return <div ref={pill} className="date-pill" data-read-occlusion aria-hidden="true" hidden={label === null}>{label}</div>;
 }
