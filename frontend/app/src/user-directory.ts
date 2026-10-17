@@ -66,13 +66,16 @@ export class UserDirectory {
     this.changed();
   }
   put(userId: string, summary: DirectorySummary): void { if (!this.deps.accept()) return; this.bump(userId); this.failedAt.delete(userId); this.store(userId, summary); }
+  /** Long-lived views (list, rail, open room) only call `ensure` when their ID sets change, so users already shown are refetched here. */
   markAvatarsStale(userIds: string[]): void {
-    let changed = false;
+    const known: string[] = [];
     for (const id of userIds) {
       const entry = this.entries.get(id); this.bump(id);
-      if (entry && !entry.avatarStale) { this.entries.set(id, { ...entry, avatarStale: true }); changed = true; }
+      if (entry && !entry.avatarStale) { this.entries.set(id, { ...entry, avatarStale: true }); known.push(id); }
     }
-    if (changed) this.changed();
+    if (!known.length) return;
+    this.changed();
+    for (const id of known) void this.ensure(id);
   }
   observeMembership(groupId: string, version: number | null, memberIds: string[]): void {
     if (version === null) return;
@@ -89,11 +92,11 @@ export class UserDirectory {
 }
 
 let current: { owner: string; directory: UserDirectory; unsubscribe: () => void } | null = null;
-/** The directory for the session's current owner; switching owner resets and replaces the previous one. */
+/** The directory for the session's current owner. The session subscription resets a replaced owner's directory outside React render. */
 export function directoryFor(session: SessionController): UserDirectory {
   const context = session.getSnapshot().context, owner = ownerPartition(context.user_id, context.device_id);
   if (current?.owner === owner) return current.directory;
-  current?.unsubscribe(); current?.directory.reset();
+  current?.unsubscribe();
   const accept = (): boolean => { const now = session.getSnapshot().context; return now.state === 'authenticated' && ownerPartition(now.user_id, now.device_id) === owner; };
   const directory = new UserDirectory({ fetchSummary: async (id, signal) => (await session.request<UserSummary>(`/users/${encodeURIComponent(id)}`, { signal })).data, now: () => Date.now(), accept });
   const unsubscribe = session.subscribe(() => { const now = session.getSnapshot().context; if (ownerPartition(now.user_id, now.device_id) !== owner) directory.reset(); });

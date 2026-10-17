@@ -4,7 +4,7 @@ import type { SessionController } from './session';
 export interface AvatarDeps { load(attachmentId: string, signal: AbortSignal): Promise<Blob>; createURL(blob: Blob): string; revokeURL(url: string): void; accept(): boolean }
 /** One component's hold on an avatar. `release` only affects the entry this handle acquired and is idempotent. */
 export interface AvatarHandle { url: Promise<string | null>; release(): void }
-interface Entry { refs: number; url: string | null; promise: Promise<string | null>; settle(value: string | null): void }
+interface Entry { refs: number; url: string | null; promise: Promise<string | null>; settle(value: string | null): void; abort: AbortController }
 
 /** Owner-scoped object-URL cache for avatar bytes: shared downloads, reference counts, idle LRU, bounded concurrency. Failures are not cached. */
 export class AvatarCache {
@@ -25,8 +25,8 @@ export class AvatarCache {
     return { url: owned.promise, release: () => { if (released) return; released = true; this.release(attachmentId, owned); } };
   }
   private start(attachmentId: string): Entry {
-    const epoch = this.epoch, signal = this.abort.signal, { promise, resolve } = Promise.withResolvers<string | null>();
-    const entry: Entry = { refs: 1, url: null, promise, settle: resolve };
+    const epoch = this.epoch, abort = new AbortController(), signal = AbortSignal.any([this.abort.signal, abort.signal]), { promise, resolve } = Promise.withResolvers<string | null>();
+    const entry: Entry = { refs: 1, url: null, promise, settle: resolve, abort };
     this.entries.set(attachmentId, entry);
     this.queue.push(() => {
       if (this.entries.get(attachmentId) !== entry) { entry.settle(null); return; }
@@ -43,7 +43,8 @@ export class AvatarCache {
   private release(attachmentId: string, entry: Entry): void {
     if (this.entries.get(attachmentId) !== entry || entry.refs === 0) return;
     entry.refs--; if (entry.refs > 0) return;
-    if (entry.url === null) { this.entries.delete(attachmentId); return; }
+    // Nobody holds an unfinished download any more: cancel it so it stops occupying a download slot.
+    if (entry.url === null) { this.entries.delete(attachmentId); entry.abort.abort(); entry.settle(null); return; }
     this.idle.push(attachmentId);
     while (this.idle.length > this.idleLimit) {
       const oldest = this.idle.shift()!, evicted = this.entries.get(oldest);

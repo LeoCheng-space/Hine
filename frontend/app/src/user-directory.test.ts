@@ -84,6 +84,15 @@ test('marking avatars stale forces a refetch that clears the stale flag', async 
   calls[1].done.resolve({ display_name: 'Ann', avatar_attachment_id: 'y' }); await again;
   expect(directory.get('u')).toMatchObject({ avatarId: 'y', avatarStale: false });
 });
+test('marking avatars stale refetches users already shown, without waiting for another ensure', async () => {
+  const { directory, calls } = harness();
+  const first = directory.ensure('u');
+  calls[0].done.resolve({ display_name: 'Ann', avatar_attachment_id: 'x' }); await first;
+  directory.markAvatarsStale(['u', 'never-shown']);
+  expect(calls.map(call => call.id)).toEqual(['u', 'u']);
+  calls[1].done.resolve({ display_name: 'Ann', avatar_attachment_id: 'y' }); await directory.ensure('u');
+  expect(directory.get('u')).toMatchObject({ avatarId: 'y', avatarStale: false });
+});
 test('fresh entries are reused and expired entries are revalidated', async () => {
   const { directory, calls, advance } = harness();
   const first = directory.ensure('u');

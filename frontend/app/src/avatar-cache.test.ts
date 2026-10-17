@@ -64,6 +64,15 @@ test('no more than the configured number of downloads run at once', async () => 
   loads[0].done.resolve(blob()); await drainMicrotasks();
   expect(loads.length).toBe(3);
 });
+test('releasing the last hold before the download finishes aborts it and frees its slot', async () => {
+  const { cache, loads } = harness({ concurrency: 1 });
+  const first = cache.acquire('a'); void cache.acquire('b');
+  first.release();
+  expect(loads[0].signal.aborted).toBe(true);
+  loads[0].done.reject(new DOMException('aborted', 'AbortError')); await drainMicrotasks();
+  expect(await first.url).toBeNull();
+  expect(loads.map(load => load.id)).toEqual(['a', 'b']);
+});
 test('reset aborts downloads, revokes every URL and settles pending acquires with null', async () => {
   const { cache, loads, revoked } = harness();
   const held = cache.acquire('a'); loads[0].done.resolve(blob()); await held.url;
