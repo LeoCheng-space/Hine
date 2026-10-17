@@ -58,7 +58,7 @@ REST 成功物件：`{"data": ...}`。成功清單：`{"data":{"items":[...]},"m
 {"error":{"code":"FORBIDDEN","message":"Access denied","request_id":"req-1","retryable":false,"details":{}}}
 ```
 
-REST 錯誤的 `code`、`message`、`request_id`、`retryable`、`details` 必填且非 null，`details` 是物件；W17 的必填欄位是 `code`、`message`、`retryable`，回覆請求時另有封套的 `correlation_id`。限速等待值與恢復動作統一見[錯誤分流](#error-recovery)。錯誤碼與狀態對應：`INVALID_ARGUMENT` 400、`UNAUTHENTICATED` 401、`FORBIDDEN` 403、`NOT_FOUND` 404、`CONFLICT` 409、`IDEMPOTENCY_CONFLICT` 409、`CURSOR_INVALID` 400（REST 游標無效）、`CURSOR_EXPIRED` 410（僅適用於過期的 A08/A11/A19 REST 游標）、`SYNC_RESET_REQUIRED` 410（僅適用於過期的 WSS 使用者事件流游標）、`PAYLOAD_TOO_LARGE` 413、`UNSUPPORTED_MEDIA_TYPE` 415、`UPLOAD_NOT_READY` 409、`RATE_LIMITED` 429、`DEPENDENCY_UNAVAILABLE` 503、`PERSISTENCE_FAILED` 503，以及 `OUTCOME_UNCONFIRMED` 503。`OUTCOME_UNCONFIRMED` 表示寫入可能已提交，但尚無確認結果；已知回滾則為 `PERSISTENCE_FAILED`。已中斷的連線不必收到錯誤訊框。REST 游標錯誤僅限於該 REST 查詢；只有 WSS 使用者事件流游標過期才重設同步。
+REST 錯誤的 `code`、`message`、`request_id`、`retryable`、`details` 必填且非 null，`details` 是物件；W17 的必填欄位是 `code`、`message`、`retryable`，回覆請求時另有封套的 `correlation_id`。限速等待值與恢復動作統一見[錯誤分流](#error-recovery)。錯誤碼與狀態對應：`INVALID_ARGUMENT` 400、`UNAUTHENTICATED` 401、`DEVICE_NOT_RECOGNIZED` 401（僅 A02）、`FORBIDDEN` 403、`NOT_FOUND` 404、`CONFLICT` 409、`IDEMPOTENCY_CONFLICT` 409、`CURSOR_INVALID` 400（REST 游標無效）、`CURSOR_EXPIRED` 410（僅適用於過期的 A08/A11/A19 REST 游標）、`SYNC_RESET_REQUIRED` 410（僅適用於過期的 WSS 使用者事件流游標）、`PAYLOAD_TOO_LARGE` 413、`UNSUPPORTED_MEDIA_TYPE` 415、`UPLOAD_NOT_READY` 409、`RATE_LIMITED` 429、`DEPENDENCY_UNAVAILABLE` 503、`PERSISTENCE_FAILED` 503，以及 `OUTCOME_UNCONFIRMED` 503。`OUTCOME_UNCONFIRMED` 表示寫入可能已提交，但尚無確認結果；已知回滾則為 `PERSISTENCE_FAILED`。已中斷的連線不必收到錯誤訊框。REST 游標錯誤僅限於該 REST 查詢；只有 WSS 使用者事件流游標過期才重設同步。
 
 每個 WSS 訊框都有 `event:string`、`event_id:UUID`、`timestamp:Timestamp`、`payload:object`。請求的回應包含 `correlation_id:UUID`，用來參照該請求的 `event_id`；命令與非請求觸發的事件則省略此欄位。對話事件需要頂層 `conversation_id`；W07 還需要頂層 `sender_id`。絕不信任用戶端提供的寄件者。訊息穩定的伺服器事件 ID 在即時傳遞與事件流重播時相同；請求事件 ID 每次嘗試都不同，而 C1 對同一傳送意圖保持穩定。
 
@@ -70,6 +70,7 @@ W17 是錯誤容器，不是「刷新」命令。FA／FB 先以 `correlation_id`
 | 錯誤／觀察 | 操作範圍 | 恢復動作 |
 |---|---|---|
 | `UNAUTHENTICATED`、已知存取權杖到期／工作階段撤銷 | 使用者驗證與相符的 WSS | 停止以舊身分執行新操作，依唯一驗證流程處理；若已有較新的 AccessSession，就重新連線，不要再次刷新。A03 本身的失敗依該驗證流程處理。內部服務憑證失敗不代表使用者工作階段撤銷；BA 只在可信內部回覆明確標為使用者工作階段層時轉成此列，分層方式見 [C13](#internal-auth-layer) |
+| `DEVICE_NOT_RECOGNIZED`（僅 A02） | 該次登入的本機 DeviceID 綁定 | 密碼已驗證成功，但送出的 `device_id` 不屬於此帳號（例如伺服器資料庫已重建）。FB 刪除此電子郵件對應擁有者的本機綁定，並以 `device_id:null` 自動重試 A02 恰好一次；送出 null 時不會收到此碼。不是工作階段撤銷，不觸發 A03 或登出 |
 | `FORBIDDEN`、`NOT_FOUND` | 該資源／操作 | 顯示無法存取、移除失去權限的畫面，或停止該操作；不刷新、不登出整個帳號，也不影響其他對話 |
 | `INVALID_ARGUMENT`、`CONFLICT`、`IDEMPOTENCY_CONFLICT`、`PAYLOAD_TOO_LARGE`、`UNSUPPORTED_MEDIA_TYPE` | 該次輸入或寫入意圖 | 修正輸入或由使用者處理衝突；不盲目自動重送相同錯誤，不為避開冪等衝突生成新 C1 |
 | `RATE_LIMITED` | 被限速的請求／動作，不是所有工作階段 | 依下方等待值規則等待；重試時沿用原意圖與冪等鍵。不刷新以逃避限制；驗證操作仍受唯一驗證流程的次數限制 |
@@ -209,7 +210,7 @@ BA 仍做既有 connection/frame abuse defense、envelope／required fields／�
 | ID / operationId | 方法與路徑 | 請求 → 回應；狀態碼 | 授權、錯誤與重試／金鑰行為 |
 |---|---|---|---|
 | <a id="api-a01"></a>A01 `registerUser` | POST `/api/v1/auth/register` | `{email,password,display_name}` → UserProfile；201 | 公開。INVALID_ARGUMENT、CONFLICT、RATE_LIMITED；重複電子郵件會回傳 409，若回應不確定，不得改用新電子郵件繞過。無工作階段回應。 |
-| <a id="api-a02"></a>A02 `login` | POST `/api/v1/auth/login` | `{email,password,device_id:DeviceID\|null}` → AccessSession；200 + 更新憑證 Cookie | 公開；僅首次安裝簽發 DeviceID 時可為 null。UNAUTHENTICATED、RATE_LIMITED；結果不確定時透過登入解決，而非建立第二個工作階段儲存區。 |
+| <a id="api-a02"></a>A02 `login` | POST `/api/v1/auth/login` | `{email,password,device_id:DeviceID\|null}` → AccessSession；200 + 更新憑證 Cookie | 公開；僅首次安裝簽發 DeviceID 時可為 null。UNAUTHENTICATED（帳號不存在或密碼錯誤，兩者不可區分）、DEVICE_NOT_RECOGNIZED（密碼正確但 `device_id` 不屬於此帳號；只在密碼驗證通過後回傳，因此不洩漏帳號是否存在，恢復見[錯誤分流](#error-recovery)）、RATE_LIMITED；結果不確定時透過登入解決，而非建立第二個工作階段儲存區。 |
 | <a id="api-a03"></a>A03 `refreshSession` | POST `/api/v1/auth/refresh` | 無 JSON 主體；更新憑證 Cookie → AccessSession；200 + 輪替後的 Cookie | 有效的更新憑證 Cookie。UNAUTHENTICATED、RATE_LIMITED；舊 Cookie 不會無限期重複使用。 |
 | <a id="api-a04"></a>A04 `logout` | POST `/api/v1/auth/logout` | 無主體 → 無主體；204 | 目前的工作階段 Cookie；具冪等性。UNAUTHENTICATED；登出成功後撤銷目前裝置工作階段。 |
 | <a id="api-a05"></a>A05 `getMe` | GET `/api/v1/users/me` | 無主體 → UserProfile；200 | 本人個人檔案。UNAUTHENTICATED；可安全重試。 |

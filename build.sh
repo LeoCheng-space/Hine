@@ -369,7 +369,6 @@ local_clean() {
     compose_local down -v --remove-orphans --rmi local || die "Docker 專案 $project 清除失敗；請確認 Docker 正常後重新執行 ./build.sh clean --yes"
     for path in $CLEAN_FILES; do rm -rf "${ROOT:?}/$path"; done
     printf '\n已清除。重新安裝請執行：./build.sh\n'
-    printf '瀏覽器也請清除 https://localhost:8443 的網站資料（網址列左側圖示 →「網站設定」→「刪除資料」），否則可能因舊的裝置資料無法登入。\n'
 }
 
 # --- Production mode -----------------------------------------------------------------------

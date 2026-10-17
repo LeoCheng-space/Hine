@@ -249,8 +249,6 @@ class BuildScriptTests(unittest.TestCase):
             self.assertFalse((self.root / path).exists(), path)
         self.assertTrue((self.root / "deploy.env").exists())
         self.assertTrue((self.root / "infra/scripts/init-dev.sh").exists())
-        self.assertIn("https://localhost:8443", result.stdout)
-        self.assertIn("網站資料", result.stdout)
         self.assertFalse((self.root / ".build.lock").exists())
         self.assertFalse(any("builder prune" in line or "system prune" in line for line in self.calls()))
         # Only Compose's own `down -v` deletes volumes; nothing is removed by project label alone.

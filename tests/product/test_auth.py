@@ -50,8 +50,25 @@ class AuthTests(ProductCase):
         self.assertEqual((await self.request("GET", "/api/v1/users/me", first))[0], 401)
         self.assertEqual((await self.request("GET", "/api/v1/users/me", other))[0], 200)
         stranger = await self.api.signup()
-        status, _ = await self.request("POST", "/api/v1/auth/login", json={"email": stranger["email"], "password": PASSWORD, "device_id": first["device_id"]})
-        self.assertEqual(status, 401)
+        status, result = await self.request("POST", "/api/v1/auth/login", json={"email": stranger["email"], "password": PASSWORD, "device_id": first["device_id"]})
+        self.assertEqual((status, result["error"]["code"]), (401, "DEVICE_NOT_RECOGNIZED"), result)
+
+    async def test_stale_device_is_reported_only_after_the_password_is_verified(self):
+        profile, _ = await self.account("Stale")
+        unknown = secrets.token_urlsafe(24)
+        cases = (
+            ({"email": profile["email"], "password": PASSWORD, "device_id": unknown}, "DEVICE_NOT_RECOGNIZED"),
+            # Wrong password or unknown account must stay indistinguishable from each other and from a stale device.
+            ({"email": profile["email"], "password": "incorrect password", "device_id": unknown}, "UNAUTHENTICATED"),
+            ({"email": secrets.token_hex(8) + "@product.test", "password": PASSWORD, "device_id": unknown}, "UNAUTHENTICATED"),
+        )
+        for body, code in cases:
+            with self.subTest(code=code, email=body["email"]):
+                status, result = await self.request("POST", "/api/v1/auth/login", json=body)
+                self.assertEqual((status, result["error"]["code"]), (401, code), result)
+                self.assertFalse(result["error"]["retryable"])
+        fresh = await self.api.login(profile["email"])
+        self.assertNotEqual(fresh["device_id"], unknown)
 
     async def test_logout_idempotent_after_cookie_clear_and_never_refreshes_revoked(self):
         _, access = await self.account("Logout")
@@ -218,10 +235,10 @@ class AuthTests(ProductCase):
         self.assertEqual(status, 200, result)
         self.assertEqual(result["data"]["display_name"], display_name)
 
-    async def test_impossible_nul_device_binding_is_unauthenticated_not_database_failure(self):
+    async def test_impossible_nul_device_binding_is_unrecognized_not_database_failure(self):
         profile, _ = await self.account("Opaque")
         status, result = await self.request("POST", "/api/v1/auth/login", json={"email": profile["email"], "password": PASSWORD, "device_id": "opaque\u0000id"})
-        self.assertEqual(status, 401, result)
+        self.assertEqual((status, result["error"]["code"]), (401, "DEVICE_NOT_RECOGNIZED"), result)
 
     async def test_control_character_email_is_rejected_before_credential_work(self):
         status, result = await self.request("POST", "/api/v1/auth/register", json={"email": "nul\u0000@example.test", "password": PASSWORD, "display_name": "Email"})

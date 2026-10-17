@@ -276,8 +276,10 @@ async def login(request):
             await conn.execute("INSERT INTO devices(device_id,subject_id) VALUES($1,$2)", device_id, user["subject_id"])
         else:
             owner = await conn.fetchval("SELECT subject_id FROM devices WHERE device_id=$1", None if "\x00" in device_id else device_id)
+            # Only reachable with the correct password, so this reveals nothing about the account; the client
+            # discards its stale binding and retries once with device_id null (A02).
             if owner != user["subject_id"]:
-                raise Fault("UNAUTHENTICATED")
+                raise Fault("DEVICE_NOT_RECOGNIZED")
         old = await conn.fetch("SELECT session_id FROM sessions WHERE subject_id=$1 AND device_id=$2 AND NOT revoked ORDER BY session_id FOR UPDATE", user["subject_id"], device_id)
         for row in old:
             await conn.execute("UPDATE sessions SET revoked=TRUE WHERE session_id=$1", row["session_id"])
