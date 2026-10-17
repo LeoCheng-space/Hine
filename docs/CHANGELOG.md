@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-17 — 附件錯誤依原因與場景顯示（Refs #7）
+
+- 個人檔案儲存頭像時，原本任何上傳失敗都沿用聊天室的「附件傳輸失敗，尚未傳送訊息。」；附件儲存服務未設定或暫時無法使用（A20 回 `DEPENDENCY_UNAVAILABLE`）時，使用者看不出真正原因。現改為依錯誤原因顯示說明，結尾依場景標示「頭像尚未儲存。」或「尚未傳送訊息。」，重試與原上傳核對流程不變。
+- 「原上傳嘗試已保留。再次儲存會核對相同嘗試。」只在伺服器已建立上傳嘗試時顯示；建立前即被拒絕時不再出現。
+- 僅前端修改，未變更 REST／WebSocket／資料庫。頭像實際上傳成功仍需已設定的私有 GCS bucket 與簽章權限；新增 4 個前端行為測試，前端 67 項與 typecheck 通過，並以本機 Docker 實測個人檔案頁顯示新提示。
+
 ## 2026-10-08 — 真Chrome／Edge与完整八job CI全數通過
 
 - [run37689818571](https://github.com/LeoCheng-space/Hine/actions/runs/37689818571)／`e77b8aa3a02f2889c899ef0be3d2760724bdd697` **8／8 SUCCESS**。Chrome154.0.8037.97／Microsoft Edge154.0.4258.37各headed59個真UI／WSS／IDB／native hidden-read檢查通過，100則DOM／IDB／rAF復原334.83ms／555.34ms，unexercised均空；未替換Edge或合成visibility。

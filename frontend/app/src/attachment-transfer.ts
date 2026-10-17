@@ -2,8 +2,31 @@ import type { SessionController } from './session';
 import type { AttachmentView, DownloadGrant, SessionContext, UploadGrant } from './types';
 import { entity, fields, integer, record, string, timestamp } from './repository';
 
+export type TransferScope='avatar'|'conversation';
+export interface TransferContext {scope?:TransferScope;attemptCreated?:boolean}
+const TRANSFER_CAUSE:Record<string,string>={
+ DEPENDENCY_UNAVAILABLE:'附件儲存服務目前無法使用，請稍後再試；若持續發生，請聯絡管理員確認儲存服務設定。',
+ INVALID_ATTACHMENT:'檔案格式或大小不符：僅支援 JPEG、PNG 或 PDF，大小需大於 0 且不超過 10 MiB。',
+ UNSUPPORTED_MEDIA_TYPE:'不支援此檔案格式，僅支援 JPEG、PNG 或 PDF。',
+ PAYLOAD_TOO_LARGE:'檔案超過大小上限。',
+ FORBIDDEN:'沒有上傳此附件的權限。',
+ RATE_LIMITED:'操作太頻繁，請稍後再試。',
+ UNAUTHENTICATED:'登入已失效，請重新登入。',
+ AUTH_REFRESH_PENDING:'登入狀態更新中，請稍後再試。',
+ OUTCOME_UNCONFIRMED:'無法確認附件是否已上傳完成，請再試一次以核對結果。',
+ TRANSFER_UNCONFIRMED:'無法確認附件是否已上傳完成，請再試一次以核對結果。',
+ ATTACHMENT_MISMATCH:'附件核驗結果與原檔不符。',
+ INVALID_STORAGE_GRANT:'儲存服務回傳的上傳授權無效。',
+};
+function transferMessage(code:string,scope:TransferScope|undefined):string {
+ if(code==='UPLOAD_NOT_READY')return '附件尚未完成核驗，請核對原上傳嘗試。';
+ if(code==='UPLOAD_EXPIRED')return '上傳授權已過期，請重新選取檔案建立新嘗試。';
+ const outcome=scope==='avatar'?'頭像尚未儲存。':scope==='conversation'?'尚未傳送訊息。':'';
+ return (TRANSFER_CAUSE[code]??'附件傳輸失敗。')+outcome;
+}
 export class AttachmentTransferError extends Error {
- constructor(readonly code:string,readonly retryable:boolean,readonly retry:(()=>Promise<AttachmentView>)|null=null){super(code==='UPLOAD_NOT_READY'?'附件尚未完成核驗，請核對原上傳嘗試。':code==='UPLOAD_EXPIRED'?'上傳授權已過期，請重新選取檔案建立新嘗試。':'附件傳輸失敗，尚未傳送訊息。');this.name='AttachmentTransferError';}
+ readonly scope:TransferScope|undefined;readonly attemptCreated:boolean;
+ constructor(readonly code:string,readonly retryable:boolean,readonly retry:(()=>Promise<AttachmentView>)|null=null,context:TransferContext={}){super(transferMessage(code,context.scope));this.name='AttachmentTransferError';this.scope=context.scope;this.attemptCreated=context.attemptCreated===true;}
 }
 export interface UploadOwner {user_id:string;device_id:string}
 export function canResumeUpload(context:SessionContext,owner:UploadOwner):boolean {return context.state==='authenticated'&&context.user_id===owner.user_id&&context.device_id===owner.device_id&&Date.parse(context.expires_at)>Date.now();}
@@ -32,8 +55,8 @@ function readyAttachment(value:unknown,grant:UploadGrant,scope:'avatar'|'convers
  return {id:entity(p.id),scope,uploader_id:userId,kind:MIME_KIND[file.type],filename:file.name,content_type:file.type,size_bytes:file.size,sha256,state:'ready',created_at:timestamp(p.created_at),conversation_id:conversationId};
 }
 export async function uploadAttachment(session:SessionController,file:File,scope:'avatar'|'conversation',conversationId:string|null):Promise<AttachmentView> {
- if(!(file instanceof File)||!MIME_KIND[file.type]||file.size<=0||file.size>10_485_760||[...file.name].length<1||[...file.name].length>255||(scope==='avatar'&&(conversationId!==null||MIME_KIND[file.type]!=='image'))||(scope==='conversation'&&conversationId===null))throw new AttachmentTransferError('INVALID_ATTACHMENT',false);
- const context=session.getSnapshot().context;if(context.state!=='authenticated')throw new AttachmentTransferError('UNAUTHENTICATED',false);
+ if(!(file instanceof File)||!MIME_KIND[file.type]||file.size<=0||file.size>10_485_760||[...file.name].length<1||[...file.name].length>255||(scope==='avatar'&&(conversationId!==null||MIME_KIND[file.type]!=='image'))||(scope==='conversation'&&conversationId===null))throw new AttachmentTransferError('INVALID_ATTACHMENT',false,null,{scope});
+ const context=session.getSnapshot().context;if(context.state!=='authenticated')throw new AttachmentTransferError('UNAUTHENTICATED',false,null,{scope});
  const binding:UploadOwner={user_id:context.user_id,device_id:context.device_id};
  const valid=():boolean=>canResumeUpload(session.getSnapshot().context,binding);
  const digest=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());const sha256=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -52,15 +75,16 @@ export async function uploadAttachment(session:SessionController,file:File,scope
    if(!valid())throw new AttachmentTransferError('UNAUTHENTICATED',false);return readyAttachment(response.data,grant,scope,conversationId,file,sha256,binding.user_id);
   }catch(error){
    const current=session.getSnapshot().context;
-   if(error instanceof Error&&'code' in error&&error.code==='UNAUTHENTICATED'&&current.state!=='logged_out'&&current.user_id===binding.user_id&&current.device_id===binding.device_id)throw new AttachmentTransferError('AUTH_REFRESH_PENDING',true,attempt);
-   if(error instanceof AttachmentTransferError&&error.code!=='UPLOAD_NOT_READY')throw error;
+   const created={scope,attemptCreated:grant!==null};
+   if(error instanceof Error&&'code' in error&&error.code==='UNAUTHENTICATED'&&current.state!=='logged_out'&&current.user_id===binding.user_id&&current.device_id===binding.device_id)throw new AttachmentTransferError('AUTH_REFRESH_PENDING',true,attempt,created);
+   if(error instanceof AttachmentTransferError&&error.code!=='UPLOAD_NOT_READY')throw new AttachmentTransferError(error.code,error.retryable,error.retry,created);
    const fault=error instanceof Error&&'code' in error?String(error.code):'TRANSFER_UNCONFIRMED';
    if(fault==='UPLOAD_NOT_READY'){
-    if(grant&&Date.parse(grant.expires_at)<=Date.now())throw new AttachmentTransferError('UPLOAD_EXPIRED',false);
+    if(grant&&Date.parse(grant.expires_at)<=Date.now())throw new AttachmentTransferError('UPLOAD_EXPIRED',false,null,created);
     if(putUnconfirmed)putAttempted=false;
    }
    const retryable=!['FORBIDDEN','NOT_FOUND','INVALID_ARGUMENT','CONFLICT','UNSUPPORTED_MEDIA_TYPE','PAYLOAD_TOO_LARGE','UNAUTHENTICATED','IDEMPOTENCY_CONFLICT'].includes(fault);
-   throw new AttachmentTransferError(fault,retryable,retryable?attempt:null);
+   throw new AttachmentTransferError(fault,retryable,retryable?attempt:null,created);
   }
  };
  return attempt();
