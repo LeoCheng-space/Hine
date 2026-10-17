@@ -3,7 +3,7 @@ import { AppMenu, type AppMenuItem } from './AppMenu';
 import { Icon } from './icons';
 import { AccountPage } from './AccountPages';
 import { ChatList } from './ChatList';
-import { ContactsPage } from './ContactsPage';
+import { Avatar, ContactsPage } from './ContactsPage';
 import { GroupsPage } from './GroupsPage';
 import { ProfilePage } from './ProfilePage';
 import { Chat } from './ChatView';
@@ -11,6 +11,7 @@ import { describeError, ownerPartition } from './api';
 import { parseRoute, type BrowserRouter } from './router';
 import type { SessionController } from './session';
 import type { ChatController } from './chat';
+import { directoryFor } from './user-directory';
 import type { ConversationDetail } from './types';
 import './Shell.css';
 
@@ -25,6 +26,9 @@ export function App({ session, chat, router }: { session: SessionController; cha
   const narrow = useSyncExternalStore(subscribeNarrow, narrowSnapshot), [menuOpen, setMenuOpen] = useState(false), menuButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { setMenuOpen(false); }, [path, narrow]);
   const context = snapshot.context, key = JSON.stringify([ownerPartition(context.user_id, context.device_id), path]);
+  const directory = directoryFor(session);
+  useSyncExternalStore(directory.subscribe, directory.getVersion);
+  useEffect(() => { if (context.state === 'authenticated') void directory.ensure(context.user_id); }, [directory, context.state, context.user_id]);
   async function authorizedDestination(target: string): Promise<string> {
     const next = parseRoute(target); if (!next || ['root', 'login', 'register'].includes(next.kind)) return '/chats';
     if (next.kind === 'chat' || next.kind === 'group') { try { const detail = (await session.request<ConversationDetail>(`/conversations/${encodeURIComponent(next.conversationId)}`)).data; if (next.kind === 'group' && detail.type !== 'group') return '/chats'; } catch (error) { setShellNotice('無法返回原頁面：' + describeError(error)); return '/chats'; } }
@@ -64,15 +68,20 @@ export function App({ session, chat, router }: { session: SessionController; cha
   const titles: Record<string,string> = { chats: '聊天', chat: '聊天', contacts: '聯絡人', profile: '個人檔案', group: '群組管理' };
   let content;
   if (routeError) content = <section className="page-content"><h1 tabIndex={-1} data-route-heading>無法存取此頁面</h1><p className="notice error" role="alert">{routeError}</p><button onClick={() => router.navigate('/chats', true)}>返回聊天清單</button></section>;
+  // Chat routes keep one ChatList instance across conversation switches; only the room waits for its A12 authorization (design R13).
+  else if (route.kind === 'chats' || route.kind === 'chat') content = <section className={`split-page chats-page ${route.kind === 'chat' ? 'detail-selected' : ''}`}><ChatList session={session} chat={chat} path={path} onNavigate={router.navigate} /><div className="detail-panel chat-detail">{allowedKey === key
+    ? <>{route.kind === 'chat' && <button className="narrow-back text-button" onClick={() => router.navigate('/chats')}>← 返回聊天清單</button>}<Chat session={session} chat={chat} conversationId={route.kind === 'chat' ? route.conversationId : null} onNavigate={router.navigate} /></>
+    : <p role="status" className="chat-loading">正在確認頁面權限…</p>}</div></section>;
   else if (allowedKey !== key) content = <section className="page-content"><p role="status">正在確認頁面權限…</p></section>;
   else if (route.kind === 'contacts') content = <ContactsPage session={session} chat={chat} onNavigate={router.navigate} />;
   else if (route.kind === 'profile') content = <ProfilePage session={session} />;
   else if (route.kind === 'group') content = <GroupsPage session={session} chat={chat} conversationId={route.conversationId} onNavigate={router.navigate} />;
-  else content = <section className={`split-page chats-page ${route.kind === 'chat' ? 'detail-selected' : ''}`}><ChatList session={session} chat={chat} path={path} onNavigate={router.navigate} /><div className="detail-panel chat-detail">{route.kind === 'chat' && <button className="narrow-back text-button" onClick={() => router.navigate('/chats')}>← 返回聊天清單</button>}<Chat session={session} chat={chat} conversationId={route.kind === 'chat' ? route.conversationId : null} onNavigate={router.navigate} /></div></section>;
+  const self = context.user_id ? directory.get(context.user_id) : undefined, selfName = self?.displayName ?? '我';
+  const selfAvatar = <span className="nav-avatar" aria-hidden="true"><Avatar session={session} attachmentId={self && !self.avatarStale ? self.avatarId : null} name={selfName} /></span>;
   const navItems: AppMenuItem[] = [
     { label: '聊天', icon: 'chat', active: route.kind === 'chats' || route.kind === 'chat' || route.kind === 'group', onSelect: () => router.navigate('/chats') },
     { label: '聯絡人', icon: 'contacts', active: route.kind === 'contacts', onSelect: () => router.navigate('/contacts') },
-    { label: '個人檔案', icon: 'profile', active: route.kind === 'profile', onSelect: () => router.navigate('/profile') },
+    { label: '個人檔案', icon: 'profile', avatar: selfAvatar, active: route.kind === 'profile', onSelect: () => router.navigate('/profile') },
   ];
   const brand = <button type="button" className="brand-button" aria-label="HINE 聊天首頁" onClick={() => router.navigate('/chats')}><span className="brand-mark" aria-hidden="true">H</span>{narrow && <strong aria-hidden="true">HINE</strong>}</button>;
   return <div className={`app-shell${narrow ? ' narrow' : ''}`}><a className="skip-link" href="#main-content">跳至主要內容</a>
@@ -83,10 +92,10 @@ export function App({ session, chat, router }: { session: SessionController; cha
         </header>
       : <nav className="app-nav app-rail" aria-label="主要導覽">
           {brand}
-          <div className="nav-links">{navItems.map(item => <button key={item.label} type="button" className={item.active ? 'active' : undefined} aria-current={item.active ? 'page' : undefined} onClick={item.onSelect}><span className="nav-icon"><Icon name={item.icon} /></span><span className="nav-label">{item.label}</span></button>)}</div>
+          <div className="nav-links">{navItems.map(item => <button key={item.label} type="button" className={item.active ? 'active' : undefined} aria-current={item.active ? 'page' : undefined} onClick={item.onSelect}><span className="nav-icon">{item.avatar ?? <Icon name={item.icon} />}</span><span className="nav-label">{item.label}</span></button>)}</div>
           <button type="button" className="logout-button" onClick={() => { void session.logout().catch(error => setShellNotice(describeError(error))); }}><span className="nav-icon"><Icon name="logout" /></span><span className="nav-label">登出</span></button>
         </nav>}
-    {narrow && <AppMenu open={menuOpen} triggerRef={menuButton} onClose={() => setMenuOpen(false)} items={[...navItems, { label: '登出', icon: 'logout', onSelect: () => { void session.logout().catch(error => setShellNotice(describeError(error))); } }]} />}
+    {narrow && <AppMenu open={menuOpen} triggerRef={menuButton} onClose={() => setMenuOpen(false)} header={<div className="app-menu-self">{selfAvatar}<strong>{selfName}</strong></div>} items={[...navItems, { label: '登出', icon: 'logout', onSelect: () => { void session.logout().catch(error => setShellNotice(describeError(error))); } }]} />}
     <div className="workspace">{shellNotice && <div className="notice" role="status">{shellNotice}<button className="text-button" onClick={() => setShellNotice(null)} aria-label="關閉提示">×</button></div>}<main id="main-content">{content}</main></div>
   </div>;
 }

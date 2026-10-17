@@ -89,6 +89,11 @@ form > button.primary { margin-top: 24px; }
 .app-menu li button { display: flex; align-items: center; gap: 16px; width: 100%; padding: 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text); text-align: left; }
 .app-menu li button:hover:not(:disabled) { background: var(--brand-50); }
 .app-menu li button.active { background: var(--brand-50); color: var(--brand-700); }
+.nav-avatar { display: inline-flex; }
+.nav-avatar .avatar { width: 26px; height: 26px; font-size: .75rem; background: var(--brand-500); color: #fff; }
+.app-menu-self { display: flex; align-items: center; gap: 12px; margin: 0 6px 12px; padding: 10px; border-radius: 12px; background: var(--brand-50); }
+.app-menu-self .nav-avatar .avatar { width: 40px; height: 40px; font-size: 1rem; }
+.app-menu-self strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace { min-width: 0; }
 .workspace > .notice { margin: 12px 20px; }
 .workspace > main { min-height: calc(100dvh - var(--app-nav-height)); }
