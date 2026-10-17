@@ -4,7 +4,7 @@ import { Icon } from './icons';
 import { AccountPage } from './AccountPages';
 import { ChatList } from './ChatList';
 import { Avatar, ContactsPage } from './ContactsPage';
-import { GroupsPage } from './GroupsPage';
+import { CreateGroup, GroupCreationIntentStore, GroupsPage } from './GroupsPage';
 import { ProfilePage } from './ProfilePage';
 import { Chat } from './ChatView';
 import { describeError, ownerPartition } from './api';
@@ -19,6 +19,8 @@ import './Shell.css';
 const NARROW_QUERY = '(max-width: 767.98px)';
 function subscribeNarrow(listener: () => void): () => void { const query = matchMedia(NARROW_QUERY); query.addEventListener('change', listener); return () => query.removeEventListener('change', listener); }
 function narrowSnapshot(): boolean { return matchMedia(NARROW_QUERY).matches; }
+/** Owners whose unresolved group-creation intent was already auto-opened in this page load (design §8). */
+const autoOpenedIntents = new Set<string>();
 export function App({ session, chat, router }: { session: SessionController; chat: ChatController; router: BrowserRouter }) {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot), chatSnapshot = useSyncExternalStore(chat.subscribe, chat.getSnapshot), path = useSyncExternalStore(router.subscribe, router.getSnapshot);
   const route = parseRoute(path), requested = useRef<string | null>(route && !['root', 'login', 'register'].includes(route.kind) ? path : null);
@@ -30,6 +32,16 @@ export function App({ session, chat, router }: { session: SessionController; cha
   const directory = directoryFor(session);
   useSyncExternalStore(directory.subscribe, directory.getVersion);
   useEffect(() => { if (context.state === 'authenticated') void directory.ensure(context.user_id); }, [directory, context.state, context.user_id]);
+  const [createOpen, setCreateOpen] = useState(false), createTrigger = useRef<HTMLElement | null>(null);
+  const openCreate = (trigger: HTMLElement | null): void => { createTrigger.current = trigger; setCreateOpen(true); };
+  const createOwner = useRef<string | null>(null);
+  useEffect(() => {
+    const owner = ownerPartition(context.user_id, context.device_id);
+    if (createOwner.current !== owner) { createOwner.current = owner; setCreateOpen(false); }
+    if (context.state !== 'authenticated' || autoOpenedIntents.has(owner)) return;
+    autoOpenedIntents.add(owner);
+    try { if (new GroupCreationIntentStore(owner).read()) openCreate(null); } catch (error) { session.failStorage(error); }
+  }, [context.state, context.user_id, context.device_id, session]);
   async function authorizedDestination(target: string): Promise<string> {
     const next = parseRoute(target); if (!next || ['root', 'login', 'register'].includes(next.kind)) return '/chats';
     if (next.kind === 'chat' || next.kind === 'group') { try { const detail = (await session.request<ConversationDetail>(`/conversations/${encodeURIComponent(next.conversationId)}`)).data; if (next.kind === 'group' && detail.type !== 'group') return '/chats'; } catch (error) { setShellNotice('無法返回原頁面：' + describeError(error)); return '/chats'; } }
@@ -70,7 +82,7 @@ export function App({ session, chat, router }: { session: SessionController; cha
   let content;
   if (routeError) content = <section className="page-content"><h1 tabIndex={-1} data-route-heading>無法存取此頁面</h1><p className="notice error" role="alert">{routeError}</p><button onClick={() => router.navigate('/chats', true)}>返回聊天清單</button></section>;
   // Chat routes keep one ChatList instance across conversation switches; only the room waits for its A12 authorization (design R13).
-  else if (route.kind === 'chats' || route.kind === 'chat') content = <section className={`split-page chats-page ${route.kind === 'chat' ? 'detail-selected' : ''}`}><ChatList session={session} chat={chat} path={path} onNavigate={router.navigate} /><div className="detail-panel chat-detail">{allowedKey === key
+  else if (route.kind === 'chats' || route.kind === 'chat') content = <section className={`split-page chats-page ${route.kind === 'chat' ? 'detail-selected' : ''}`}><ChatList session={session} chat={chat} path={path} onNavigate={router.navigate} onCreateGroup={openCreate} /><div className="detail-panel chat-detail">{allowedKey === key
     ? <>{route.kind === 'chat' && <button className="narrow-back text-button" onClick={() => router.navigate('/chats')}>← 返回聊天清單</button>}<Chat session={session} chat={chat} conversationId={route.kind === 'chat' ? route.conversationId : null} onNavigate={router.navigate} /></>
     : <p role="status" className="chat-loading">正在確認頁面權限…</p>}</div></section>;
   else if (allowedKey !== key) content = <section className="page-content"><p role="status">正在確認頁面權限…</p></section>;
@@ -93,10 +105,11 @@ export function App({ session, chat, router }: { session: SessionController; cha
         </header>
       : <nav className="app-nav app-rail" aria-label="主要導覽">
           {brand}
-          <div className="nav-links">{navItems.map(item => <button key={item.label} type="button" className={item.active ? 'active' : undefined} aria-current={item.active ? 'page' : undefined} onClick={item.onSelect}><span className="nav-icon">{item.avatar ?? <Icon name={item.icon} />}</span><span className="nav-label">{item.label}</span></button>)}</div>
+          <div className="nav-links">{navItems.map(item => <button key={item.label} type="button" className={item.active ? 'active' : undefined} aria-current={item.active ? 'page' : undefined} onClick={item.onSelect}><span className="nav-icon">{item.avatar ?? <Icon name={item.icon} />}</span><span className="nav-label">{item.label}</span></button>)}<button type="button" onClick={event => openCreate(event.currentTarget)}><span className="nav-icon"><Icon name="group" /></span><span className="nav-label">建立群組</span></button></div>
           <button type="button" className="logout-button" onClick={() => { void session.logout().catch(error => setShellNotice(describeError(error))); }}><span className="nav-icon"><Icon name="logout" /></span><span className="nav-label">登出</span></button>
         </nav>}
-    {narrow && <AppMenu open={menuOpen} triggerRef={menuButton} onClose={() => setMenuOpen(false)} header={<div className="app-menu-self">{selfAvatar}<strong>{selfName}</strong></div>} items={[...navItems, { label: '登出', icon: 'logout', onSelect: () => { void session.logout().catch(error => setShellNotice(describeError(error))); } }]} />}
+    {narrow && <AppMenu open={menuOpen} triggerRef={menuButton} onClose={() => setMenuOpen(false)} header={<div className="app-menu-self">{selfAvatar}<strong>{selfName}</strong></div>} items={[...navItems, { label: '建立群組', icon: 'group', onSelect: () => openCreate(menuButton.current) }, { label: '登出', icon: 'logout', onSelect: () => { void session.logout().catch(error => setShellNotice(describeError(error))); } }]} />}
+    {createOpen && <CreateGroup session={session} open onClose={() => setCreateOpen(false)} triggerRef={createTrigger} onCreated={id => { setCreateOpen(false); router.navigate(`/chats/${encodeURIComponent(id)}`); }} />}
     <div className="workspace">{shellNotice && <div className="notice" role="status">{shellNotice}<button className="text-button" onClick={() => setShellNotice(null)} aria-label="關閉提示">×</button></div>}<main id="main-content">{content}</main></div>
   </div>;
 }

@@ -717,11 +717,34 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             # Create a real group through the UI, prove original membership and
             # group message persistence, inspect real modal and responsive shell.
             await goto_chat_list(page_a)
-            await page_a.get_by_role("button", name=re.compile("建立群組")).click()
+            await page_a.locator(".chat-list").get_by_role("button", name="建立群組", exact=True).click()
             group_title = "Browser group " + secrets.token_hex(5)
-            await page_a.get_by_label("群組名稱").fill(group_title)
-            await page_a.get_by_label("初始成員公開 ID（每行一位）").fill(ids[1])
-            await page_a.get_by_role("button", name="建立群組並開啟").click()
+            create_dialog = page_a.get_by_role("dialog", name="建立群組")
+            lookup_suffix = "/api/v1/users/" + quote(ids[1], safe="")
+            lookup_gate = asyncio.Event()
+
+            async def hold_lookup(route):
+                await lookup_gate.wait()
+                await route.continue_()
+
+            await page_a.route("**" + lookup_suffix, hold_lookup)
+            try:
+                await create_dialog.get_by_label("以公開 ID 加入").fill(ids[1])
+                async with page_a.expect_request(lambda request: request.url.endswith(lookup_suffix)):
+                    await create_dialog.get_by_role("button", name="加入", exact=True).click()
+                absent_before_lookup = await create_dialog.locator(".selected-members li").count() == 0
+                async with page_a.expect_response(lambda response: response.url.endswith(lookup_suffix)):
+                    lookup_gate.set()
+            finally:
+                lookup_gate.set()
+                await page_a.unroute("**" + lookup_suffix, hold_lookup)
+            chosen = create_dialog.locator(".selected-members").get_by_text(names[1], exact=True)
+            await chosen.wait_for(state="visible")
+            check(test_record, "group_creation_resolved_member_name_before_adding", absent_before_lookup and await chosen.count() == 1)
+            await create_dialog.get_by_text("已選 1／49", exact=True).wait_for(state="visible")
+            await create_dialog.get_by_role("button", name="下一步", exact=True).click()
+            await create_dialog.get_by_label("群組名稱").fill(group_title)
+            await create_dialog.get_by_role("button", name="建立群組", exact=True).click()
             await page_a.wait_for_url(re.compile(r"/chats/[^/]+$"), timeout=20000)
             await page_a.get_by_role("heading", name=group_title).wait_for(state="visible")
             group_id = page_a.url.rstrip("/").rsplit("/", 1)[-1]

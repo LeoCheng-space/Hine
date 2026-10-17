@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ownerPartition } from './api';
 import { Avatar, usePagedList } from './ContactsPage';
-import { CreateGroup } from './GroupsPage';
+import { Icon } from './icons';
 import { accentIndex, activityBookFor, deniedMemoryFor, formatListTime, previewText, sortConversations } from './chat-presentation';
 import { RepositoryCancelled } from './repository';
 import { directoryFor } from './user-directory';
@@ -11,7 +11,7 @@ import type { ConversationSummary } from './types';
 
 const PEER_REFRESH_LIMIT = 4;
 
-export function ChatList({ session, chat, path, onNavigate }: { session: SessionController; chat: ChatController; path: string; onNavigate: (path: string) => void }) {
+export function ChatList({ session, chat, path, onNavigate, onCreateGroup }: { session: SessionController; chat: ChatController; path: string; onNavigate: (path: string) => void; onCreateGroup: (trigger: HTMLElement) => void }) {
   const list = usePagedList<ConversationSummary>(session, 'conversations', item => item.id), [filter, setFilter] = useState('');
   const snapshot = useSyncExternalStore(chat.subscribe, chat.getSnapshot);
   const context = session.getSnapshot().context, me = context.user_id ?? '', owner = ownerPartition(context.user_id, context.device_id);
@@ -113,7 +113,6 @@ export function ChatList({ session, chat, path, onNavigate }: { session: Session
       <input id="chat-filter" className="chat-search" type="search" placeholder="搜尋" value={filter} onChange={event => setFilter(event.target.value)} />
       {term && <p className="small muted list-hint">只篩選已載入項目</p>}
     </header>
-    <CreateGroup session={session} onCreated={id => onNavigate(`/chats/${encodeURIComponent(id)}`)} />
     {list.error && <p role="alert" className="notice error">{list.error}</p>}
     {list.items.length === 0 && list.busy
       ? <ul className="item-list skeleton-list" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map(index => <li key={index}><span className="list-item skeleton-row"><span className="avatar" /><span className="item-copy"><span className="skeleton-bar" /><span className="skeleton-bar short" /></span></span></li>)}</ul>
@@ -130,5 +129,6 @@ export function ChatList({ session, chat, path, onNavigate }: { session: Session
     {list.busy && <p role="status" className="visually-hidden">載入對話…</p>}
     {!shown.length && !list.busy && <div className="empty-state"><strong>{term ? '沒有符合的已載入對話' : '還沒有對話'}</strong><p>選擇聯絡人開始聊天，或建立您的群組。</p><button type="button" onClick={() => onNavigate('/contacts')}>到聯絡人開始聊天</button></div>}
     <div className="actions">{list.cursor && <button type="button" disabled={list.busy} onClick={() => { void list.load(); }}>載入下一頁</button>}<button type="button" className="text-button" disabled={list.busy} onClick={() => { void list.load(true); }}>重新整理</button></div>
+    <button type="button" className="compose-fab" aria-label="建立群組" onClick={event => onCreateGroup(event.currentTarget)}><Icon name="compose" /></button>
   </aside>;
 }

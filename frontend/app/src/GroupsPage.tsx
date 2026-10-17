@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { ApiError, describeError, isRecord, ownerPartition } from './api';
+import { Avatar, usePagedList } from './ContactsPage';
+import { GROUP_OTHER_MEMBER_LIMIT, addMember, groupPayload, removeMember } from './group-selection';
 import { directoryFor } from './user-directory';
 import type { SessionController } from './session';
 import type { ChatController } from './chat';
-import type { ConversationCreateResult, ConversationDetail, ConversationMutationResult, MemberMutationResult } from './types';
+import type { ContactView, ConversationCreateResult, ConversationDetail, ConversationMutationResult, MemberMutationResult, UserSummary } from './types';
 export interface GroupCreatePayload { title: string; member_ids: string[] }
 export interface GroupCreateIntent { key: string; payload: GroupCreatePayload }
 export class GroupCreationIntentStore {
@@ -25,50 +27,108 @@ export class GroupCreationIntentStore {
   }
   confirm(key: string): void { if (this.read()?.key === key) (this.storage ?? localStorage).removeItem(this.storageKey); }
 }
-export function CreateGroup({ session, onCreated }: { session: SessionController; onCreated: (id: string) => void }) {
-  const context = session.getSnapshot().context, owner = ownerPartition(context.user_id, context.device_id);
+const ADD_RESULT_MESSAGE = { self: '您會自動成為群組成員與管理員。', duplicate: '這位成員已在名單中。', full: `群組最多 50 人，包含您自己；已選 ${GROUP_OTHER_MEMBER_LIMIT} 位。` } as const;
+/** Two-step native dialog: pick members (contacts or a verified public ID), then name the group. Keeps the original creation intent and idempotency key across failures and reloads. */
+export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: { session: SessionController; open: boolean; onClose: () => void; triggerRef: RefObject<HTMLElement | null>; onCreated: (id: string) => void }) {
+  const context = session.getSnapshot().context, owner = ownerPartition(context.user_id, context.device_id), me = context.user_id ?? '';
   const store = useMemo(() => new GroupCreationIntentStore(owner), [owner]);
-  const [open, setOpen] = useState(false), [title, setTitle] = useState(''), [members, setMembers] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null), [pending, setPending] = useState<GroupCreateIntent | null>(null);
-  const active = useRef(false);
+  const dialog = useRef<HTMLDialogElement>(null), active = useRef(false);
+  const [step, setStep] = useState<'members' | 'title'>('members'), [title, setTitle] = useState(''), [selected, setSelected] = useState<string[]>([]), [lookupId, setLookupId] = useState('');
+  const [busy, setBusy] = useState(false), [lookupBusy, setLookupBusy] = useState(false), [error, setError] = useState<string | null>(null), [pending, setPending] = useState<GroupCreateIntent | null>(null);
+  const contacts = usePagedList<ContactView>(session, 'contacts', item => item.user.id);
+  const directory = directoryFor(session);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => {
-    active.current = true;
-    try { const unresolved = store.read(); if (unresolved) { setPending(unresolved); setTitle(unresolved.payload.title); setMembers(unresolved.payload.member_ids.join('\n')); setOpen(true); } }
-    catch (error) { session.failStorage(error); }
-    return () => { active.current = false; };
-  }, [store, session]);
+    if (!open) return;
+    try {
+      const unresolved = store.read();
+      if (unresolved) { setPending(unresolved); setTitle(unresolved.payload.title); setSelected([...unresolved.payload.member_ids]); setStep('title'); }
+    } catch (error) { session.failStorage(error); }
+  }, [open, store, session]);
+  useEffect(() => {
+    if (!open) return;
+    const element = dialog.current; if (!element) return;
+    element.showModal(); (element.querySelector<HTMLElement>('.create-group-step input:not(:disabled), .create-group-step button:not(:disabled)') ?? element.querySelector<HTMLElement>('button:not(:disabled)'))?.focus(); window.dispatchEvent(new Event('hine-overlay-change'));
+    return () => {
+      element.close(); window.dispatchEvent(new Event('hine-overlay-change'));
+      const trigger = triggerRef.current;
+      if (trigger?.isConnected && trigger.getClientRects().length > 0) trigger.focus();
+      else document.querySelector<HTMLElement>('[data-route-heading]')?.focus();
+    };
+  }, [open, triggerRef]);
+  const nameOf = (id: string): string => contacts.items.find(item => item.user.id === id)?.user.display_name ?? directory.get(id)?.displayName ?? id;
+  function toggle(id: string, checked: boolean) {
+    setError(null);
+    if (!checked) { setSelected(current => removeMember(current, id)); return; }
+    const next = addMember(selected, id, me);
+    if (next.result === 'added') setSelected(next.selected); else setError(ADD_RESULT_MESSAGE[next.result]);
+  }
+  async function addById() {
+    const id = lookupId.trim(); if (!id || lookupBusy) return;
+    const lookupDirectory = directoryFor(session); setLookupBusy(true); setError(null);
+    try {
+      const result = await session.request<UserSummary>(`/users/${encodeURIComponent(id)}`);
+      const current = session.getSnapshot().context;
+      if (!active.current || current.state !== 'authenticated' || ownerPartition(current.user_id, current.device_id) !== owner) return;
+      const next = addMember(selected, result.data.id, me);
+      if (next.result !== 'added') { setError(ADD_RESULT_MESSAGE[next.result]); return; }
+      lookupDirectory.put(result.data.id, result.data); setSelected(next.selected); setLookupId('');
+    } catch (error) { if (active.current) setError(describeError(error)); }
+    finally { if (active.current) setLookupBusy(false); }
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy) return; setError(null);
-    if (!title) { setError('請輸入群組名稱。'); event.currentTarget.querySelector('input')?.focus(); return; }
-    const member_ids = members.split('\n').filter(id => id !== '');
-    if (new Set(member_ids).size > 49) { setError('群組最多 50 人，包含您自己。'); event.currentTarget.querySelector('textarea')?.focus(); return; }
+    if (!title) { setError('請輸入群組名稱。'); event.currentTarget.querySelector<HTMLInputElement>('#group-title')?.focus(); return; }
     let intent: GroupCreateIntent;
-    try { intent = store.begin({ title, member_ids }); setPending(intent); } catch (error) { session.failStorage(error); return; }
+    try { intent = store.begin(groupPayload(title, selected)); setPending(intent); } catch (error) { session.failStorage(error); return; }
     setBusy(true);
     try {
       const result = await session.request<ConversationCreateResult>('/conversations/groups', { method: 'POST', json: intent.payload, idempotencyKey: intent.key });
       try { store.confirm(intent.key); } catch (error) { session.failStorage(error); return; }
       const current = session.getSnapshot().context;
       if (!active.current || current.state !== 'authenticated' || ownerPartition(current.user_id, current.device_id) !== owner) return;
-      setPending(null); setOpen(false); setTitle(''); setMembers(''); onCreated(result.data.id);
+      setPending(null); setStep('members'); setTitle(''); setSelected([]); onCreated(result.data.id);
     } catch (error) { if (active.current) setError(describeError(error)); }
     finally { if (active.current) setBusy(false); }
   }
   function resolveIntent() {
     if (!pending || !window.confirm('確認您已核對原建立操作的結果，並要結束此意圖？這不會刪除任何已建立的群組。')) return;
-    try { store.confirm(pending.key); setPending(null); setTitle(''); setMembers(''); setError(null); } catch (error) { session.failStorage(error); }
+    try { store.confirm(pending.key); setPending(null); setStep('members'); setTitle(''); setSelected([]); setError(null); } catch (error) { session.failStorage(error); }
   }
-  return <div className="group-create">
-    <button onClick={() => setOpen(value => !value)} aria-expanded={open}>{open ? '收起建立群組' : '＋ 建立群組'}</button>
-    {open && <form className="compact-form" onSubmit={submit}>
-      {pending && <p className="notice" role="status">原建立意圖已保留。重試會核對相同群組，不會另建一個；請先確認結果再修改內容。</p>}
-      <label htmlFor="group-title">群組名稱</label><input id="group-title" value={title} onChange={event => setTitle(event.target.value)} disabled={busy || !!pending} />
-      <label htmlFor="group-members">初始成員公開 ID（每行一位）</label><textarea id="group-members" value={members} onChange={event => setMembers(event.target.value)} disabled={busy || !!pending} />
-      <p className="small muted">您會自動加入並成為管理員。新成員只能查看加入之後的訊息。</p>
-      {error && <p className="notice error" role="alert">{error}</p>}
-      <button className="primary" disabled={busy}>{busy ? '核對建立結果…' : pending ? '以原意圖重試 / 核對' : '建立群組並開啟'}</button>
-      {pending && <button type="button" disabled={busy} onClick={resolveIntent}>已核對結果，結束原意圖</button>}
-    </form>}
-  </div>;
+  if (!open) return null;
+  const locked = busy || !!pending;
+  return <dialog ref={dialog} className="create-group-dialog" aria-modal="true" aria-labelledby="create-group-title" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
+    <header className="create-group-header"><h2 id="create-group-title">建立群組</h2><button type="button" className="text-button" onClick={onClose} disabled={busy}>關閉</button></header>
+    {pending && <p className="notice" role="status">原建立意圖已保留。重試會核對相同群組，不會另建一個；請先確認結果再修改內容。</p>}
+    {error && <p className="notice error" role="alert">{error}</p>}
+    <ul className="selected-members" aria-label="已選成員">{selected.map(id => <li key={id}><span>{nameOf(id)}</span>{!locked && <button type="button" className="text-button" aria-label={`移除 ${nameOf(id)}`} onClick={() => setSelected(current => removeMember(current, id))}>×</button>}</li>)}</ul>
+    <p className="small muted selected-count">已選 {selected.length}／{GROUP_OTHER_MEMBER_LIMIT}</p>
+    {step === 'members'
+      ? <div className="create-group-step">
+          <form className="input-action" onSubmit={event => { event.preventDefault(); void addById(); }}>
+            <label className="visually-hidden" htmlFor="group-member-id">以公開 ID 加入</label>
+            <input id="group-member-id" placeholder="以公開 ID 加入" value={lookupId} onChange={event => setLookupId(event.target.value)} disabled={locked} />
+            <button type="submit" disabled={locked || lookupBusy || !lookupId.trim()}>{lookupBusy ? '查詢中…' : '加入'}</button>
+          </form>
+          <ul className="contact-picker" aria-label="聯絡人">{contacts.items.map(item => { const checked = selected.includes(item.user.id); return <li key={item.user.id}><label className="contact-option">
+            <input type="checkbox" checked={checked} disabled={locked || (!checked && selected.length >= GROUP_OTHER_MEMBER_LIMIT)} onChange={event => toggle(item.user.id, event.target.checked)} />
+            <span aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /></span><span>{item.user.display_name}</span>
+          </label></li>; })}</ul>
+          {contacts.busy && <p role="status" className="small muted">載入聯絡人…</p>}
+          {!contacts.busy && !contacts.items.length && <p className="small muted">還沒有聯絡人，可直接以公開 ID 加入。</p>}
+          {contacts.cursor && <button type="button" className="text-button" disabled={contacts.busy} onClick={() => { void contacts.load(); }}>載入下一頁</button>}
+          <div className="actions"><button type="button" className="primary" onClick={() => { setError(null); setStep('title'); }}>下一步</button></div>
+        </div>
+      : <form className="create-group-step" onSubmit={submit}>
+          <label htmlFor="group-title">群組名稱</label><input id="group-title" value={title} onChange={event => setTitle(event.target.value)} disabled={locked} />
+          <p className="small muted">您會自動加入並成為管理員。新成員只能查看加入之後的訊息。</p>
+          <div className="actions">
+            {!pending && <button type="button" disabled={busy} onClick={() => setStep('members')}>上一步</button>}
+            <button className="primary" type="submit" disabled={busy}>{busy ? '核對建立結果…' : pending ? '以原意圖重試 / 核對' : '建立群組'}</button>
+            {pending && <button type="button" disabled={busy} onClick={resolveIntent}>已核對結果，結束原意圖</button>}
+          </div>
+        </form>}
+  </dialog>;
 }
 export function GroupInfoDialog({ detail, names, onClose, onManage, returnFocus }: { detail: ConversationDetail; names: Record<string, string>; onClose: () => void; onManage: () => void; returnFocus: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null), closeButton = useRef<HTMLButtonElement>(null);
