@@ -1,23 +1,26 @@
 # HINE UI 改版設計（Telegram 式手感，HINE 品牌）
 
-- 日期：2026-10-17（v2.1：同日依程式碼審查與獨立 Review 修訂）
+- 日期：2026-10-17（v2.2：同日依程式碼審查、獨立 Review 與使用者 6 項決策修訂）
 - 分支：`feature/ui-refresh`
-- 狀態：v1 已由使用者逐段確認；v2.1 依實際程式碼補強 P0／P1。**標為〔修訂〕的段落與第 13 節〔待確認〕需使用者審閱。**
+- 狀態：v1 已由使用者逐段確認；v2.1 依實際程式碼補強 P0／P1；v2.2 落實使用者對 §13 的決策，並依契約查證修正排序鍵（R10）。
 - 範圍：前端視覺與互動流程重構，保留既有後端契約、持久化語意、授權邊界與資料一致性
 
 ## 0. 修訂摘要
 
 | 編號 | 修訂 | 原因（證據） |
 |---|---|---|
-| R1 | 對話清單在**已載入範圍內**依只升不降的 `order_key` 排序，並明示限制 | A11 依隨機 `conversation_id` 排序（`backend/api/src/hine_api/conversations.py:55-59`、`domain.py:18-19`）；清單重新載入一律回到第一頁（`frontend/app/src/ContactsPage.tsx:41-44`），且每次背景同步成功（約每 10 秒）都會觸發（`chat.ts:271`、`api.ts:5`）；本機訊息會暫時清空或過舊（`chat.ts:100,104-111,117`、`repository.ts:34-42`）|
+| R1 | 對話清單在**已載入範圍內**依各對話最新一則訊息的伺服器時間 `created_at`（只升不降）排序，並明示限制〔v2.2 由 `order_key` 改為 `created_at`，見 R10〕 | A11 依隨機 `conversation_id` 排序（`backend/api/src/hine_api/conversations.py:55-59`、`domain.py:18-19`）；清單重新載入一律回到第一頁（`frontend/app/src/ContactsPage.tsx:41-44`），且每次背景同步成功（約每 10 秒）都會觸發（`chat.ts:271`、`api.ts:5`）；本機訊息會暫時清空或過舊（`chat.ts:100,104-111,117`、`repository.ts:34-42`）|
 | R2 | 進場動畫只用於尾端新增訊息；`ReadObserver` 不計入動畫未完成的泡泡；聊天室不做 opacity 過場；固定日期改為捲動區外的浮動膠囊 | 已讀量測只用 `getBoundingClientRect`，不看 opacity（`read-observer.ts:42`）；祖先的 opacity 過場不會出現在泡泡的 `getAnimations()`；遮擋演算法只保留最大區塊，捲動區內的遮擋物會造成漏讀（`read-observer.ts:33-36`）|
 | R3 | 名稱與頭像 ID 改為依帳號分區、可取消、有並行上限、具每位使用者版本號的記憶體快取 | 一對一 `membership_version` 恆為 null（`chat.ts:21`）；改名與換頭像沒有推播（`profiles.py:35-61`）；頭像可見性取決於聯絡人與共同對話（`domain.py:98-104`）；現行取名稱為無上限 N+1（`ChatView.tsx:47`）|
 | R4 | 保留連線狀態文字、`.message-meta` 狀態文字、`.chat-header`、路由標題 | CI 驗收依賴（`tests/browser/browser_acceptance.py:509,604`）|
 | R5 | 搜尋只比對名稱與對話標題 | `docs/ui/web-rwd.md:46` |
-| R6 | 導覽：寬版保留常駐窄圖示欄，窄版為頂部列＋☰ 選單〔待確認〕 | `docs/ui/web-rwd.md:36-39` 的 2026-10-01 PM 決議要求寬版「導覽與內容並列」 |
+| R6 | 導覽：寬版保留常駐窄圖示欄，窄版為頂部列＋☰ 選單〔v2.2 使用者已確認，取代 v1「寬版改為 ☰」〕 | `docs/ui/web-rwd.md:36-39` 的 2026-10-01 PM 決議要求寬版「導覽與內容並列」 |
 | R7 | ☰ 選單與建群組使用原生 `<dialog>`、關閉即卸載；建群組掛在外殼層級；✎ 浮動按鈕在 Phase 4 才加入 | `aria-modal` 未卸載會永久暫停已讀（`read-observer.ts:29`）；未完成意圖須在重新整理後還原（`GroupsPage.tsx:32-37`）；兩個「建立群組」按鈕並存會使 CI 定位衝突（`browser_acceptance.py:705`）|
 | R8 | 移除「頭像位元組 LRU」層 | 現有 `Avatar` 每列自取並在卸載時釋放已足夠，額外快取沒有對應需求 |
 | R9 | 新增 IME、767／768、Esc 焦點返回、訊息 DOM 不變式等 CI 檢查，並以不會假通過的方式量測 | 這些行為目前只在一次性證據中出現（`docs/testing/evidence/product-browser.json`）|
+| R10 | 跨對話排序不得使用 `order_key` | 契約 C11 規定 `order_key`「只在同一對話比較……不當作時間戳記」（`docs/contracts/interface-contract.md:670`）；雖然目前實作取自全域序列 `nextval('message_order')`（`messages.py:99`、`002_domain.sql:17`），但這是未承諾的實作細節。改用契約保證的 `created_at`（伺服器產生的 ISO-8601 UTC，`interface-contract.md:101`；毫秒精度，`support.py:23-24`）|
+| R11 | 清單保留供 `review-shell-native.ts` 定位的掛點：`.list-item`、`data-conversation-id`、標題 `strong`、`.unread`、載入中才出現的 `.chat-list [role="status"]`、`.actions` 內「載入下一頁」 | `frontend/app/tests/review-shell-native.ts:125-135,217-228` |
+| R12 | 群組管理頁以 `key={conversationId}` 隔離實例，並讓卸載後的變更請求不再導覽；以 CI 瀏覽器回歸檢查證明 | `GroupsPage.tsx:98-99` 載入回覆可覆蓋新頁；`:96` `memberIntent` 只以使用者 ID 為鍵，跨群組沿用冪等鍵；`:107` 舊實例在退出群組後仍會 `onNavigate('/chats')` |
 
 ## 1. 目標與決策（v1 已確認）
 
@@ -27,6 +30,7 @@
 | 品牌 | 沿用 HINE 品牌並精緻化：深青綠主色、H 對話泡泡標誌、標語「讓每一次對話，更靠近。」 |
 | 主要裝置 | 桌面優先；手機（<768px）維持好用但不做完整精修 |
 | 範圍方案 | 方案 A：視覺與動畫、對話清單、聊天室、導覽、建群組改為勾選聯絡人；個人檔案／聯絡人／群組管理維持獨立頁面只換外觀 |
+| 導覽（v2.2 取代 v1「寬版 ☰」） | 寬版常駐窄圖示欄、窄版頂部列＋☰ 選單；理由：符合 `web-rwd.md:36-39` PM 決議，且接近 Telegram Desktop 左側欄（2026-10-17 使用者確認） |
 | 不做 | 深色模式、側邊滑出面板、自動載入較早訊息、後端或 API 變更、訊息虛擬化 |
 
 ## 2. 責任邊界
@@ -35,7 +39,7 @@
 
 **不得修改**：REST、WebSocket、PostgreSQL schema／migration、Redis 語意、JWT／Session 權威邏輯、IndexedDB store 與記錄結構、已讀與離線同步語意、未讀數語意、`ChatController` 的公開 API。
 
-不改後端就無法達成的需求，列入第 12 節「設計限制」與第 13 節「待確認」。
+不改後端就無法達成的需求，列入第 12 節「設計限制」，並依第 13 節「決策紀錄」另開 Issue。
 
 ## 3. 必須保留的既有行為
 
@@ -112,19 +116,21 @@
 | 一對一對象 | 依序：`snapshot.messages[id]` 中非自己寄件者 → `snapshot.details[id].members` → 既有 `chat.refreshConversation(id)` | 不直接呼叫 A12 |
 | 名稱、頭像 ID | §6.4 使用者摘要快取 | — |
 | 最後訊息 | 目前 `snapshot.messages[id]` 最後一則 | 不快取內文 |
-| 排序鍵 | §6.2 | 只升不降 |
+| 排序鍵 | §6.2 | 每對話最新 `created_at`，只升不降 |
 
 `refreshConversation` 會重寫本機分區並重新發布，因此只在前兩種來源都沒有對象時呼叫，佇列上限 4、只為可見列呼叫；`RepositoryCancelled` 與 `UNAUTHENTICATED`（資料庫尚未開啟或工作階段更替）視為取消、不顯示錯誤，於下一次清單重新載入或列重新可見時再試，不自動迴圈重試。
 
 ### 6.2 排序
 
-- 鍵：每個對話目前見過的最後一則 `order_key`（20 位數字字串，全域遞增，比較見 `repository.ts:75`），只增不減。
+- 鍵：每個對話目前見過的最新一則訊息的 `created_at`（`Date.parse` 後的毫秒值），只增不減。**不使用 `order_key`**：契約只保證同一對話內可比較（R10）。
 - 鍵表為模組層級、依 `ownerPartition` 分區；owner 改變時清除；對話被撤權時刪除。
-- 排序：有鍵者依鍵由大到小，同鍵依 A11 位置；無鍵者其後並維持 A11 順序。
+- 排序：有鍵者依鍵由新到舊，同鍵依 A11 位置；無鍵者其後並維持 A11 順序。
+- 重新排序的時機：只有某對話的鍵前進（收到或送出並已持久化新訊息）時，該對話才移動；沒有新訊息時，背景同步、token 刷新與暫時清空都不改變順序。等待中的意圖沒有伺服器時間，持久化後才上移。
 - **已知限制**：
-  1. 只排序已載入的對話（R1）。
+  1. 只排序已載入的對話（R1）；不宣稱未載入對話的活動順序。完整最新活動排序另開 Issue（§13 第 2 項）。
   2. 頁面重新載入或重新登入時鍵表為空，清單會依序以 A11 順序 → 一對一訊息就緒 → 群組驗證完成重排，最多兩次；同一頁面期間不會因暫時清空而沉底。
   3. 排序後，第 2 頁以後在下一次重新載入時被收回的既有行為更容易察覺。
+  4. `created_at` 由伺服器時鐘產生；多個 API 實例之間若有時鐘偏差，兩個對話在相差極短時間內收到訊息時的先後可能相反。只影響顯示順序。
 
 ### 6.3 列的呈現
 
@@ -135,6 +141,7 @@
 - 骨架列只在清單沒有項目且載入中時顯示。
 - 搜尋比對名稱與對話標題，標示「只篩選已載入項目」。
 - Phase 2–3 期間沿用現有清單內「＋ 建立群組」；Phase 4 改為 ✎ 浮動按鈕。
+- 定位掛點（R11）：每列為 `button.list-item[data-conversation-id]`；標題在列內 `strong`（群組為 A11 `title` 原文）；未讀徽章 `.unread`，文字為伺服器值；`.chat-list` 內唯一的 `role="status"` 只在載入中存在（搜尋提示不用 `role="status"`）；分頁按鈕在 `.actions` 內，文字「載入下一頁」。
 
 ### 6.4 使用者摘要快取（P0-3）
 
@@ -206,6 +213,7 @@
 - 步驟 2：「群組名稱」＋「建立群組」。
 - 沿用 `GroupCreationIntentStore`（冪等鍵、原意圖重試／核對、結束原意圖、重新整理還原、有意圖時鎖定輸入）；名稱不可空白、不 trim；成員以去重後的 ID 計算。
 - 選取規則以作用在 `string[]` 的純函式實作，避免可變物件不觸發重繪。
+- 群組管理頁（R12）：`App` 以 `key={route.conversationId}` 渲染 `GroupsPage`，切換群組時重建實例（舊載入回覆不會寫入新實例，`memberIntent` 也不跨群組沿用）；`mutate` 在實例卸載後不再呼叫 `onNavigate`（`chat.withdraw` 照常完成）。CI 回歸檢查：攔截並延遲非群組路由 `/groups/{一對一ID}/manage` 的 A12 回應，於其未回覆前導覽到 `/groups/{群組ID}/manage`，放行後新頁仍顯示群組標題且沒有「這不是群組對話。」。
 
 ## 9. 無障礙
 
@@ -237,17 +245,18 @@
 
 | 限制 | 原因 | 影響 |
 |---|---|---|
-| 無法對全部對話依最新活動排序 | A11 只依 `conversation_id` 排序；契約未定義活動排序 | 只在已載入的 20 筆內排序 |
+| 無法對全部對話依最新活動排序 | A11 只依 `conversation_id` 排序；契約未定義活動排序；`order_key` 不可跨對話比較 | 只在已載入的對話內排序；完整需求另開 Issue |
 | 初次載入時清單最多重排兩次 | 鍵表為記憶體；群組要等首次同步驗證（`chat.ts:100,116`） | 進入頁面後短暫重排 |
+| 跨 API 實例時鐘偏差 | `created_at` 為各實例的資料庫時鐘 | 相近時間的兩個對話可能先後相反 |
 | 第 2 頁以後在重新載入時被收回 | 既有 `usePagedList` 行為 | 排序後更明顯 |
 | 名稱與頭像變更沒有即時推播 | 沒有 profile 事件 | 最長 5 分鐘或重新開啟聊天室後更新 |
 | 群組在驗證前沒有預覽 | `publish()` 對未驗證群組輸出空訊息（`chat.ts:100`） | 預覽暫顯「—」，位置由鍵表維持 |
 
-## 13. 待確認
+## 13. 決策紀錄（2026-10-17 使用者確認）
 
-1. **〔待確認〕寬版導覽**：`web-rwd.md:36-39` 為 PM 決議，要求寬版「導覽與內容並列」，與 v1 已確認的「寬版改為 ☰ 選單」衝突。推薦：寬版常駐窄圖示欄、窄版 ☰（本文件 §5 採此方案）。替代：依 v1 全面 ☰，並依 `CONTRIBUTING.md` 共同變更流程提請修改 `web-rwd.md`（需 PM 與受影響成員確認）。
-2. **〔待確認〕伺服器端最新活動排序**：是否另開 Issue 依共同介面流程提議 A11 依最新活動排序。推薦：另開 Issue，不納入本分支。
-3. **〔待確認〕#7 修正的分支歸屬**：`CONTRIBUTING.md:43` 規定每個分支只處理一項工作，而本分支已含 #7 修正（`fa37230`）。推薦：將該提交移到 `fix/attachment-error-message` 單獨送 PR，本分支移除該提交（尚未推送，無共享歷史）。
-4. **〔待確認〕GroupsPage 同工作階段競態**：`/groups/A` 快速切到 `/groups/B` 時，A 的回覆可能覆蓋 B（`GroupsPage.tsx:98-99`；`App.tsx:72` 未給 key）。推薦：Phase 4 以 `key={conversationId}` 修正。
-5. **〔待確認〕`frontend/app/tests/review-shell-native.ts`**：手動驗證腳本、沒有任何呼叫端，選擇器會因改版失效。推薦：同步更新選擇器，不新增執行入口。
-6. **〔待確認〕每個 Phase 推送分支觸發 CI**：本機缺少瀏覽器驗收所需的原生 PostgreSQL 17、Redis、Caddy，Phase 完成條件需以 GitHub Actions 驗證。推薦：每個 Phase 結束推送 `feature/ui-refresh`（不推送 main、不開 PR），全部完成後再開 PR。
+1. **寬版導覽**：採寬版常駐窄圖示欄、窄版 ☰ 側邊選單（§5）。取代 v1「寬版改為 ☰」。
+2. **伺服器端最新活動排序**：本分支不修改 A11；另開 GitHub Issue 依共同介面流程提議。前端依 §6.2 以 `created_at` 在已載入範圍內排序，`order_key` 不跨對話比較（R10）。
+3. **#7 修正的分支歸屬**：將 `fa37230` 以非破壞方式移到 `fix/attachment-error-message`（從 `origin/main` 建立並 cherry-pick，原提交保留在備份分支）；`feature/ui-refresh` 最終只含 UI 改版。需要改寫本分支歷史的操作先經使用者確認。
+4. **GroupsPage 競態**：Phase 4 依 §8 R12 修正，並以 CI 瀏覽器回歸檢查證明，不以「改一行」視為已解決。
+5. **`frontend/app/tests/review-shell-native.ts`**：同步更新選擇器，維持既有斷言語意（R11）。此腳本在 repo 內沒有執行入口，只能以 typecheck 驗證可編譯，不宣稱其通過。
+6. **CI**：每個 Phase 推送 `feature/ui-refresh` 觸發 GitHub Actions，以遠端結果為準；不推 main、不 merge、不開最終 PR、不 force push、不部署。

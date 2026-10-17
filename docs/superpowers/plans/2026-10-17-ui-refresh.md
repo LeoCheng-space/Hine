@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19.3、TypeScript 7.0、Bun 1.4.2（bun:test，無 DOM 環境；以 `renderToStaticMarkup` 做靜態渲染測試）、原生 CSS、Playwright 1.63（`tests/browser/browser_acceptance.py`，CI Chrome／Edge headed）。
 
-**Spec:** `docs/superpowers/specs/2026-10-17-ui-refresh-design.md`（v2.1）。本計畫假設 spec §13 第 1 項採推薦方案（寬版圖示欄、窄版 ☰）；若使用者選擇替代方案，Phase 1 需改寫。
+**Spec:** `docs/superpowers/specs/2026-10-17-ui-refresh-design.md`（v2.2）。spec §13 決策已由使用者確認（2026-10-17）：寬版圖示欄＋窄版 ☰；排序用 `created_at`；#7 移出本分支；GroupsPage 以回歸檢查證明；同步 `review-shell-native.ts`；每個 Phase 推送功能分支跑 CI。
 
 ## Global Constraints
 
@@ -20,7 +20,7 @@
 - 聊天室與其祖先不得有 opacity、scale、translateY 過場。
 - 不新增 npm 或 Python 依賴；不做訊息虛擬化。
 - 每個 Phase 改到哪個 UI，就在同一 Phase 更新依賴它的驗收步驟；只改定位與操作，不刪除、跳過或降低任何 `check(...)`。
-- 每個 Phase 的完成條件：三個前端命令 exit 0；推送 `feature/ui-refresh` 後 GitHub Actions `Repository Checks` 8／8 jobs 成功（待 spec §13 第 6 項確認）；本機截圖證據記錄於該 Phase 的提交訊息或 PR 說明。
+- 每個 Phase 的完成條件：三個前端命令 exit 0；推送 `feature/ui-refresh` 後 GitHub Actions `Repository Checks` 8／8 jobs 成功（以遠端 run 為準，記錄 run URL）；本機截圖證據記錄於該 Phase 的提交訊息或回報。第一次推送前，#7 分支整理（spec §13 第 3 項）必須完成。
 - 提交身分：`git -c user.name='Leo' -c user.email='126685053+LeoCheng-space@users.noreply.github.com' commit …`，不修改使用者 Git 設定。
 
 前端三命令（於 `frontend/app/` 執行）：
@@ -52,7 +52,7 @@ PUBLIC_ORIGIN=https://localhost:8443 ~/.bun/bin/bun run build
 | `AccountPages.tsx`、`ContactsPage.tsx`、`ProfilePage.tsx`、`AttachmentViewer.tsx` | 修改 | 外觀、`data-route-heading`、快取接線；行為不變 |
 | `Shell.css`、`Chat.css` | 修改 | token、版面、動畫、reduced-motion |
 | `tests/browser/browser_acceptance.py` | 修改 | 各 Phase 定位更新；Phase 5 新增檢查與效能記錄 |
-| `frontend/app/tests/review-shell-native.ts` | 修改（Phase 5，待確認） | 同步選擇器 |
+| `frontend/app/tests/review-shell-native.ts` | 修改（Phase 2、4） | 同步選擇器，斷言語意不變；無執行入口，只以 typecheck 驗證 |
 | `docs/CHANGELOG.md`、`docs/ui/web-rwd.md` | 修改（Phase 5） | 記錄 |
 
 ---
@@ -189,7 +189,7 @@ async def main_nav(page):
 
 **潛在失效模式**：重排或沉底；跨帳號顯示舊名稱；撤權列重新出現；請求風暴；骨架閃爍；`refreshConversation` 迴圈重試。
 
-**完成條件**：Task 2.1、2.2 測試通過；三命令 exit 0；CI 8／8；本機 25 個對話：首次載入時 `/users/` 與 `/conversations/{id}` 同時進行中請求各 ≤4（DevTools Network 截圖）；同一頁面等待兩次背景同步（約 20 秒）期間列順序不變（前後截圖）。
+**完成條件**：Task 2.1、2.2 測試通過；三命令 exit 0；CI 8／8；本機 25 個對話：首次載入時 `/users/` 與 `/conversations/{id}` 同時進行中請求各 ≤4（DevTools Network 截圖）；**沒有新訊息時**，等待兩次背景同步（約 20 秒）列順序不變；**由另一帳號對某個已載入但不在首位的對話送 1 則**後，該對話移到首位，其他列相對順序不變（前後截圖）。
 
 **建議提交**：Task 2.1、2.2、2.3 各一個提交。
 
@@ -198,13 +198,13 @@ async def main_nav(page):
 **Files:** Create `frontend/app/src/chat-presentation.ts`；Test `frontend/app/src/chat-presentation.test.ts`
 
 **Interfaces:**
-- Produces: `formatListTime(iso: string, now: Date): string`；`previewText(message: MessageView | undefined, kind: 'direct' | 'group', me: string, nameOf: (userId: string) => string): string`；`class OrderKeyBook`（`observe`、`drop`、`get`）；`orderKeyBookFor(owner: string): OrderKeyBook`；`class DeniedMemory`（`hide(id)`、`has(id)`、`clear()`）；`deniedMemoryFor(owner: string): DeniedMemory`；`sortConversations<T extends { id: string }>(items: T[], book: OrderKeyBook): T[]`；`accentIndex(id: string): 1 | 2 | 3 | 4 | 5 | 6`；內部 `dayStart(date: Date): number`。
+- Produces: `formatListTime(iso: string, now: Date): string`；`previewText(message: MessageView | undefined, kind: 'direct' | 'group', me: string, nameOf: (userId: string) => string): string`；`class ActivityBook`（`observe(id, createdAt?: string)`、`drop`、`get(id): number | undefined`）；`activityBookFor(owner: string): ActivityBook`；`class DeniedMemory`（`hide(id)`、`has(id)`、`clear()`）；`deniedMemoryFor(owner: string): DeniedMemory`；`sortConversations<T extends { id: string }>(items: T[], book: ActivityBook): T[]`；`accentIndex(id: string): 1 | 2 | 3 | 4 | 5 | 6`；內部 `dayStart(date: Date): number`。跨對話排序**不使用 `order_key`**（契約 C11 只保證同一對話內可比較）。
 
 - [ ] **Step 1：寫失敗測試**
 
 ```ts
 import { expect, test } from 'bun:test';
-import { DeniedMemory, OrderKeyBook, accentIndex, deniedMemoryFor, formatListTime, orderKeyBookFor, previewText, sortConversations } from './chat-presentation';
+import { ActivityBook, DeniedMemory, accentIndex, activityBookFor, deniedMemoryFor, formatListTime, previewText, sortConversations } from './chat-presentation';
 import type { MessageView } from './types';
 
 const now = new Date(2026, 9, 17, 15, 0);
@@ -232,27 +232,39 @@ test('preview prefixes own and group senders, folds whitespace and labels attach
   expect(previewText(image, 'direct', 'me', nameOf)).toBe('📷 圖片');
   expect(previewText(file, 'group', 'me', nameOf)).toBe('Ann：📄 檔案');
 });
-test('order key only moves forward and survives temporarily empty snapshots', () => {
-  const book = new OrderKeyBook();
-  book.observe('c', '00000000000000000005');
+test('activity only moves forward and survives temporarily empty snapshots', () => {
+  const book = new ActivityBook();
+  book.observe('c', '2026-10-17T01:00:05.000Z');
   book.observe('c', undefined);
-  book.observe('c', '00000000000000000003');
-  expect(book.get('c')).toBe('00000000000000000005');
+  book.observe('c', '2026-10-17T01:00:03.000Z');
+  expect(book.get('c')).toBe(Date.parse('2026-10-17T01:00:05.000Z'));
   book.drop('c');
   expect(book.get('c')).toBeUndefined();
 });
-test('sorting puts keyed conversations first by key and keeps A11 order otherwise', () => {
-  const book = new OrderKeyBook();
-  book.observe('b', '00000000000000000002');
-  book.observe('d', '00000000000000000009');
+test('unparseable timestamps are ignored', () => {
+  const book = new ActivityBook();
+  book.observe('c', 'not-a-time');
+  expect(book.get('c')).toBeUndefined();
+});
+test('sorting puts conversations with activity first, newest first, and keeps A11 order otherwise', () => {
+  const book = new ActivityBook();
+  book.observe('b', '2026-10-17T01:00:02.000Z');
+  book.observe('d', '2026-10-17T01:00:09.000Z');
   expect(sortConversations([{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], book).map(item => item.id)).toEqual(['d', 'b', 'a', 'c']);
 });
-test('order key books and denied memories are isolated per owner', () => {
-  orderKeyBookFor('["u1","d1"]').observe('c', '00000000000000000001');
+test('a new message moves only its conversation and equal times keep A11 order', () => {
+  const book = new ActivityBook(), items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  for (const id of ['a', 'b', 'c']) book.observe(id, '2026-10-17T01:00:00.000Z');
+  expect(sortConversations(items, book).map(item => item.id)).toEqual(['a', 'b', 'c']);
+  book.observe('c', '2026-10-17T01:00:01.000Z');
+  expect(sortConversations(items, book).map(item => item.id)).toEqual(['c', 'a', 'b']);
+});
+test('activity books and denied memories are isolated per owner', () => {
+  activityBookFor('["u1","d1"]').observe('c', '2026-10-17T01:00:00.000Z');
   deniedMemoryFor('["u1","d1"]').hide('g');
-  expect(orderKeyBookFor('["u2","d2"]').get('c')).toBeUndefined();
+  expect(activityBookFor('["u2","d2"]').get('c')).toBeUndefined();
   expect(deniedMemoryFor('["u2","d2"]').has('g')).toBe(false);
-  expect(orderKeyBookFor('["u1","d1"]').get('c')).toBeUndefined();
+  expect(activityBookFor('["u1","d1"]').get('c')).toBeUndefined();
 });
 test('denied memory hides until the next completed list reload', () => {
   const memory = new DeniedMemory();
@@ -291,15 +303,16 @@ export function previewText(message: MessageView | undefined, kind: 'direct' | '
   if (message.sender_id === me) return `你：${body}`;
   return kind === 'group' ? `${nameOf(message.sender_id)}：${body}` : body;
 }
-export class OrderKeyBook {
-  private readonly keys = new Map<string, string>();
-  observe(conversationId: string, orderKey: string | undefined): void {
-    if (orderKey === undefined) return;
-    const current = this.keys.get(conversationId);
-    if (current === undefined || orderKey > current) this.keys.set(conversationId, orderKey);
+export class ActivityBook {
+  private readonly times = new Map<string, number>();
+  observe(conversationId: string, createdAt: string | undefined): void {
+    if (createdAt === undefined) return;
+    const value = Date.parse(createdAt); if (Number.isNaN(value)) return;
+    const current = this.times.get(conversationId);
+    if (current === undefined || value > current) this.times.set(conversationId, value);
   }
-  drop(conversationId: string): void { this.keys.delete(conversationId); }
-  get(conversationId: string): string | undefined { return this.keys.get(conversationId); }
+  drop(conversationId: string): void { this.times.delete(conversationId); }
+  get(conversationId: string): number | undefined { return this.times.get(conversationId); }
 }
 export class DeniedMemory {
   private readonly ids = new Set<string>();
@@ -307,11 +320,11 @@ export class DeniedMemory {
   has(conversationId: string): boolean { return this.ids.has(conversationId); }
   clear(): void { this.ids.clear(); }
 }
-let scopedOwner: string | null = null, scopedBook = new OrderKeyBook(), scopedDenied = new DeniedMemory();
-function scope(owner: string): void { if (owner !== scopedOwner) { scopedOwner = owner; scopedBook = new OrderKeyBook(); scopedDenied = new DeniedMemory(); } }
-export function orderKeyBookFor(owner: string): OrderKeyBook { scope(owner); return scopedBook; }
+let scopedOwner: string | null = null, scopedBook = new ActivityBook(), scopedDenied = new DeniedMemory();
+function scope(owner: string): void { if (owner !== scopedOwner) { scopedOwner = owner; scopedBook = new ActivityBook(); scopedDenied = new DeniedMemory(); } }
+export function activityBookFor(owner: string): ActivityBook { scope(owner); return scopedBook; }
 export function deniedMemoryFor(owner: string): DeniedMemory { scope(owner); return scopedDenied; }
-export function sortConversations<T extends { id: string }>(items: T[], keys: OrderKeyBook): T[] {
+export function sortConversations<T extends { id: string }>(items: T[], keys: ActivityBook): T[] {
   return items.map((item, index) => ({ item, index, key: keys.get(item.id) }))
     .sort((a, b) => {
       if (a.key !== undefined && b.key !== undefined && a.key !== b.key) return a.key > b.key ? -1 : 1;
@@ -326,7 +339,7 @@ export function accentIndex(id: string): 1 | 2 | 3 | 4 | 5 | 6 {
 }
 ```
 
-- [ ] **Step 4：Run** 同 Step 2。Expected：7 pass。
+- [ ] **Step 4：Run** 同 Step 2。Expected：9 pass。
 - [ ] **Step 5：Commit** `feat: derive chat list presentation state`
 
 ### Task 2.2：使用者摘要快取（`user-directory.ts`）
@@ -536,17 +549,18 @@ export function directoryFor(session: SessionController): UserDirectory {
 ```tsx
 const snapshot = useSyncExternalStore(chat.subscribe, chat.getSnapshot);
 const context = session.getSnapshot().context, owner = ownerPartition(context.user_id, context.device_id);
-const book = orderKeyBookFor(owner), denied = deniedMemoryFor(owner);
+const book = activityBookFor(owner), denied = deniedMemoryFor(owner);
 for (const id of snapshot.denied) { book.drop(id); denied.hide(id); }
-for (const item of list.items) book.observe(item.id, snapshot.messages[item.id]?.at(-1)?.order_key);
+for (const item of list.items) book.observe(item.id, snapshot.messages[item.id]?.at(-1)?.created_at);
 const visible = useMemo(() => sortConversations(list.items.filter(item => !denied.has(item.id)), book), [list.items, snapshot.messages, snapshot.denied]);
 ```
 
 `usePagedList` 的重新載入完成時（`list.busy` 由 true 轉 false 且沒有 `list.error`）呼叫 `denied.clear()`。
 
 - [ ] **Step 2：一對一對象與名稱**：列以 `IntersectionObserver`（root 為清單捲動容器）回報可見後：對象 = `snapshot.messages[id]` 中第一個 `sender_id !== me` 的寄件者 → 否則 `snapshot.details[id]?.members` 中非自己 → 否則放入上限 4 的佇列呼叫 `chat.refreshConversation(id)`；錯誤若為 `RepositoryCancelled` 或 `code === 'UNAUTHENTICATED'` 靜默略過，其他錯誤只記在該列並顯示 ID；每個對話在一次清單載入週期內最多呼叫一次。取得對象後 `directory.ensure(peerId)`；群組預覽的寄件者名稱同樣 `ensure`。以 `useSyncExternalStore(directory.subscribe, directory.getVersion)` 觸發重繪。
-- [ ] **Step 3：列內容**：`Avatar`（`directory.get(peer)?.avatarId`，`avatarStale` 時顯示首字）、名稱（目錄名稱 → 對象 ID → 「一對一對話」；群組用標題）、`previewText`、`formatListTime(last.created_at, now)`、未讀徽章；`now` 每分鐘更新一次的 state。
-- [ ] **Step 4：搜尋、骨架、空狀態**：搜尋比對名稱與標題，提示文字「只篩選已載入項目」；`list.items.length === 0 && list.busy` 才顯示骨架；空狀態按鈕「到聯絡人開始聊天」；Phase 2 保留現行 `CreateGroup` 於清單頂部。
+- [ ] **Step 3：列內容**：`Avatar`（`directory.get(peer)?.avatarId`，`avatarStale` 時顯示首字）、名稱（目錄名稱 → 對象 ID → 「一對一對話」；群組用 A11 標題原文）、`previewText`、`formatListTime(last.created_at, now)`、未讀徽章；`now` 每分鐘更新一次的 state。定位掛點（spec R11）：列為 `<button className="list-item" data-conversation-id={item.id}>`，名稱放在列內唯一的 `<strong>`，未讀徽章 `<span className="unread" aria-label="N 則伺服器查詢未讀">N</span>`（0 時不渲染）。
+- [ ] **Step 4：搜尋、骨架、空狀態**：搜尋比對名稱與標題，提示文字「只篩選已載入項目」（一般 `<p>`，**不用** `role="status"`）；`list.items.length === 0 && list.busy` 才顯示骨架；載入中狀態沿用 `.chat-list` 內唯一的 `role="status"`，載入完成即移除；「載入下一頁」按鈕維持在 `.actions` 內；空狀態按鈕「到聯絡人開始聊天」；Phase 2 保留現行 `CreateGroup` 於清單頂部。
+- [ ] **Step 4a：同步 `review-shell-native.ts`**：`:126` 改為 `button.dataset.conversationId === id`；`:228` 改為 `[...document.querySelectorAll<HTMLElement>('.chat-list [data-conversation-id]')].map(element => element.dataset.conversationId)`；其他斷言（標題、`.unread`、`role="status"`、「載入下一頁」、游標、去重、舊 owner 隔離）不變。此腳本無執行入口，以 typecheck 確認可編譯；回報時明示未實際執行。
 - [ ] **Step 5：快取失效接線**：`snapshot.details[g].membership_version` 由 n 增為 m 時，`directory.markAvatarsStale(details[g].members.map(m => m.user_id))`（以 `useRef<Map<string, number>>` 記錄上次版本；版本消失或為 null 不觸發）；`ContactsPage.tsx:176` 聯絡人增刪後 `directoryFor(session).markAvatarsStale([selected.id])`；`ProfilePage.tsx:82` 儲存成功後 `directoryFor(session).put(result.data.id, result.data)`。
 - [ ] **Step 6：Run 三命令；CI 8／8；本機 25 個對話依完成條件驗證並截圖。**
 - [ ] **Step 7：Commit** `feat: Telegram-style chat list with stable ordering`
@@ -826,7 +840,7 @@ animationBaseline.current=ids;shownIntents.current=new Set(pending.map(intent=>i
 
 **潛在失效模式**：超過 49 人或重複 ID；結果不明時另建一群；未完成意圖重新整理後遺失；對話框關閉未卸載；多個「建立群組」按鈕使定位衝突。
 
-**完成條件**：Task 4.1 測試通過；三命令 exit 0；CI 8／8，`group_creation_preserves_original_title_members_and_intent` 與新增的 `group_creation_resolved_member_name_before_adding` 通過；本機在建立請求送出後立刻重新整理，對話框自動開啟並鎖定原名稱與成員（截圖）。
+**完成條件**：Task 4.1 測試通過；三命令 exit 0；CI 8／8，`group_creation_preserves_original_title_members_and_intent`、新增的 `group_creation_resolved_member_name_before_adding` 與 `group_manage_ignores_stale_previous_route_response` 通過，且後者有一次「修正前失敗」的 CI run 證據；本機在建立請求送出後立刻重新整理，對話框自動開啟並鎖定原名稱與成員（截圖）。
 
 **建議提交**：Task 4.1、4.2、4.3 各一個提交。
 
@@ -914,12 +928,45 @@ await dialog.get_by_role("button", name="建立群組", exact=True).click()
 - [ ] **Step 5：Run 三命令；CI 8／8；本機重新整理還原驗證並截圖。**
 - [ ] **Step 6：Commit** `feat: create groups by picking contacts`
 
-### Task 4.3：群組管理頁（spec §13 第 4 項同意後執行）
+### Task 4.3：群組管理頁實例隔離（spec R12）
 
-- [ ] **Step 1**：`App.tsx:72` 改為 `<GroupsPage key={route.conversationId} … />`。
-- [ ] **Step 2**：管理頁套用新樣式，保留 `.member-list li`、「移除」「前往群組管理」名稱、`data-route-heading`。
-- [ ] **Step 3**：本機 DevTools 限速為 Slow 3G，自 `/groups/A/manage` 立即切到 `/groups/B/manage`，確認 B 標題不被 A 覆蓋（截圖）；CI 8／8。
-- [ ] **Step 4：Commit** `fix: isolate group management pages per conversation`
+**Files:** Modify `tests/browser/browser_acceptance.py`（群組建立 `:719` 之後、群組資訊 `:735` 之前；寬版）、`App.tsx:72`、`GroupsPage.tsx:96-113`
+
+- [ ] **Step 1：先寫回歸檢查**（應用內導覽沿用 `router.ts:18-19` 的 `popstate`）：
+
+```python
+async def spa_go(page, path):
+    await page.evaluate("p => { history.pushState(null, '', p); dispatchEvent(new PopStateEvent('popstate')); }", path)
+
+release = asyncio.Event()
+async def hold(route):
+    await release.wait()
+    await route.continue_()
+stale_pattern = f"**/api/v1/conversations/{direct_conversation_id}"
+await page_a.route(stale_pattern, hold)
+try:
+    async with page_a.expect_request(stale_pattern):
+        await spa_go(page_a, f"/groups/{direct_conversation_id}/manage")
+    await spa_go(page_a, f"/groups/{group_id}/manage")
+    await page_a.locator(".group-page h2").get_by_text(group_title, exact=True).wait_for(state="visible")
+    async with page_a.expect_response(stale_pattern):
+        release.set()
+    await page_a.wait_for_timeout(500)
+    title_kept = await page_a.locator(".group-page h2").get_by_text(group_title, exact=True).is_visible()
+    no_stale_error = await page_a.get_by_text("這不是群組對話。", exact=True).count() == 0
+    check(test_record, "group_manage_ignores_stale_previous_route_response", title_kept and no_stale_error)
+finally:
+    release.set()
+    await page_a.unroute(stale_pattern, hold)
+```
+
+`direct_conversation_id`、`group_id` 使用腳本既有變數（實作時以實際名稱替換，不新增 API 呼叫）；結束後以 `spa_go` 回到原本路由，後續步驟起點不變。
+
+- [ ] **Step 2：只提交檢查並推送**，確認 CI 中此 check 為 false（證明檢查能抓到競態），記錄失敗 run URL。若意外通過，代表檢查無效：停止並重新設計，不進入 Step 3。
+- [ ] **Step 3：修正**：`App.tsx:72` 改為 `<GroupsPage key={route.conversationId} … />`；`GroupsPage` 加 `const alive = useRef(true); useEffect(() => () => { alive.current = false; }, []);`，`mutate` 中 `onNavigate('/chats')`（`:107`）與 `:112` 的導覽前檢查 `alive.current`（`chat.withdraw` 照常執行）。
+- [ ] **Step 4**：管理頁套用新樣式，保留 `.member-list li`、「移除」「前往群組管理」名稱、`data-route-heading`。
+- [ ] **Step 5：Run 三命令；推送後 CI 8／8，且此 check 為 true。**
+- [ ] **Step 6：Commit**（Step 1–2 一個：`test: catch stale group management responses`；Step 3–4 一個：`fix: isolate group management pages per conversation`）
 
 ---
 
@@ -988,8 +1035,8 @@ async def perf_sample(page, label, action, repeats=3):
 ### Task 5.3：文件與手動驗證腳本
 
 - [ ] **Step 1**：`docs/CHANGELOG.md` 新增條目：改版內容、保留行為、設計限制、CI run 連結與本機截圖說明。
-- [ ] **Step 2**：`docs/ui/web-rwd.md`：記錄寬版圖示欄＋窄版 ☰（若 spec §13 第 1 項採推薦方案，屬既有「導覽與內容並列」的實作細節，不改驗收條件）、reduced-motion 與 768 寫法。
-- [ ] **Step 3**：若 spec §13 第 5 項同意，更新 `frontend/app/tests/review-shell-native.ts` 選擇器。
+- [ ] **Step 2**：`docs/ui/web-rwd.md`：記錄寬版圖示欄＋窄版 ☰（屬既有「導覽與內容並列」的實作細節，不改驗收條件）、reduced-motion 與 768 寫法。
+- [ ] **Step 3**：確認 `review-shell-native.ts` 沒有殘留舊 UI 選擇器（Phase 2 Step 4a 已改；Phase 4 移除清單內舊建群組表單後再檢查一次）；typecheck 通過；回報中明示此腳本未實際執行。
 - [ ] **Step 4**：本機 Docker 實測（390／767／768／1280、鍵盤操作、一對一、三人群組、建群組、附件錯誤提示）；完成後刪除臨時帳號、停止容器。
 - [ ] **Step 5：Commit** `docs: record UI refresh behaviour and verification`
 
@@ -999,10 +1046,12 @@ async def perf_sample(page, label, action, repeats=3):
 
 | 情境 | 失效 | 使用者看到 | 資料／狀態風險 | 預防 | 恢復 | 驗證 |
 |---|---|---|---|---|---|---|
-| 非同步回覆亂序 | 舊名稱覆蓋新名稱；舊群組頁覆蓋新頁 | 錯誤名稱或頁面 | 無（呈現） | 每位使用者版本號＋epoch＋owner；`GroupsPage` key | 下一次 `ensure`、重新載入 | Task 2.2「newer put」「markAvatarsStale」測試；Task 4.3 限速驗證 |
+| 非同步回覆亂序 | 舊名稱覆蓋新名稱；舊群組頁覆蓋新頁；舊實例退出群組後把使用者導回清單 | 錯誤名稱或頁面 | `memberIntent` 跨群組沿用冪等鍵 | 每位使用者版本號＋epoch＋owner；`GroupsPage` key＋卸載後不導覽 | 下一次 `ensure`、重新載入 | Task 2.2「newer put」「markAvatarsStale」測試；Task 4.3 CI 回歸檢查（含修正前失敗證據） |
 | 快取過期 | 名稱或頭像過舊 | 最長 5 分鐘舊值 | 無 | TTL、開啟聊天室重新驗證、範圍化的頭像過期 | TTL 到期重抓 | Task 2.2 TTL 測試 |
 | Session 切換 | 舊帳號資料顯示在新帳號 | 他人名稱或頭像 | 隱私外洩 | `directoryFor` owner 重設、abort、`accept()`；session epoch 第二道防線 | 新帳號重新取得 | Task 2.2「switching account」測試；CI 換帳號流程 |
 | Token 刷新 | 清單重排、快取被清 | 列順序跳動 | 無 | 鍵表與目錄同 owner 保留 | — | Task 2.3 背景同步前後截圖 |
+| 跨對話排序依據錯誤 | 以 `order_key` 跨對話比較 | 契約變動後順序錯亂 | 無（呈現） | 只用 `created_at`（R10） | — | Task 2.1 測試；程式碼審查 |
+| 收到新訊息 | 未上移或其他列跟著跳動 | 列位置不合預期 | 無 | 只移動鍵前進的對話；同鍵依 A11 | — | Task 2.1「moves only its conversation」測試；Phase 2 截圖 |
 | 權限撤銷 | 撤權對話重新出現 | 不應看見的標題 | 隱私 | `snapshot.denied` 與 owner 範圍 `DeniedMemory` 至下次 A11 完成；預覽不快取內文 | A11 重新載入 | Task 2.1 測試；CI 群組移除流程 |
 | IndexedDB 不可用 | 聊天停止 | 既有提示 | 無新增 | 不改持久化 | 既有 | 既有測試 |
 | 網路中斷 | 群組預覽清空 | 預覽「—」，位置不變 | 無 | 鍵表保留 | 同步後恢復 | 本機離線驗證 |
@@ -1020,7 +1069,7 @@ async def perf_sample(page, label, action, repeats=3):
 |---|---|---|---|
 | Unit | 清單時間 | 00:05、09:05、昨天、週一、10/9、2025/12/31 | 2 |
 | Unit | 預覽 | 你：、名稱：、📷／📄、空白折疊、「—」 | 2 |
-| Unit | 排序鍵、撤權記憶、排序 | 只升不降；owner 隔離；清除；有鍵者在前 | 2 |
+| Unit | 活動時間鍵、撤權記憶、排序 | 只升不降；無效時間忽略；新訊息只移動該對話；owner 隔離；清除 | 2 |
 | Unit | 使用者摘要快取 | 去重、並行 ≤4、reset 中止與結算、失敗不拋、版本號亂序、TTL、owner 切換、未綁定 subscribe | 2 |
 | Unit | 時間軸 | 分組、跨日、key 穩定 | 3 |
 | Unit | 狀態對應 | 文字與現行相同 | 3 |
