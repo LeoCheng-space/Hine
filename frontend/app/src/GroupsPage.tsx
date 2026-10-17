@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type RefObject } from 'react';
 import { ApiError, describeError, isRecord, ownerPartition } from './api';
 import { Avatar, usePagedList } from './ContactsPage';
 import { GROUP_OTHER_MEMBER_LIMIT, addMember, groupPayload, removeMember } from './group-selection';
+import { accentIndex } from './chat-presentation';
+import { Icon } from './icons';
 import { directoryFor } from './user-directory';
 import type { SessionController } from './session';
 import type { ChatController } from './chat';
@@ -174,5 +176,50 @@ export function GroupsPage({ session, chat, conversationId, onNavigate }: { sess
   }
   const chatDetail = chat.getSnapshot().details[conversationId];
   useEffect(() => { if (chat.getSnapshot().denied.includes(conversationId)) { setDetail(null); onNavigate('/chats'); } else if (detail && chatDetail && chatDetail.membership_version !== detail.membership_version) { void load(); } }, [chatDetail?.membership_version, chat.getSnapshot().denied, conversationId]);
-  return <section className="page-content group-page"><button className="text-button" onClick={() => onNavigate(`/chats/${encodeURIComponent(conversationId)}`)}>← 返回對話</button><p className="eyebrow">GROUP SETTINGS</p><h1 tabIndex={-1} data-route-heading>群組管理</h1>{loading && <p role="status">正在確認群組權限…</p>}{error && <p className="notice error" role="alert">{error}</p>}{notice && <p className="notice success" role="status">{notice}</p>}{!detail && !loading && <button onClick={() => { void load(); }}>重新核對權限</button>}{detail && <><div className="card"><h2>{detail.title}</h2><p className="muted">{detail.members.length} / 50 位成員 · 版本 {detail.membership_version}</p><p className="small muted">管理權限由伺服器核對；不能移除、降級或退出最後一位管理員。</p>{isAdmin && <form onSubmit={event => { event.preventDefault(); if (!title) { setError('請輸入群組名稱。'); event.currentTarget.querySelector('input')?.focus(); return; } void mutate('title'); }}><label htmlFor="rename-group">群組名稱</label><div className="input-action"><input id="rename-group" value={title} onChange={event => setTitle(event.target.value)} disabled={busy} /><button disabled={busy}>儲存名稱</button></div></form>}</div><div className="card"><h2>成員</h2><ul className="member-list">{detail.members.map(member => <li key={member.user_id}><div><strong className="identifier">{member.user_id}</strong>{member.user_id === me && <span className="badge">您</span>}<p className="muted small">{member.role === 'admin' ? '管理員' : '成員'}</p></div>{isAdmin && <div className="actions"><button disabled={busy} onClick={() => { void mutate('role', member.user_id, member.role === 'admin' ? 'member' : 'admin'); }}>{member.role === 'admin' ? '改為成員' : '設為管理員'}</button>{member.user_id !== me && <button className="danger" disabled={busy} onClick={() => { void mutate('remove', member.user_id); }}>移除</button>}</div>}</li>)}</ul>{isAdmin && <form onSubmit={event => { event.preventDefault(); if (!newMember) { setError('請輸入成員的公開 ID。'); event.currentTarget.querySelector('input')?.focus(); return; } void mutate('add'); }}><label htmlFor="new-member">新增成員的公開 ID</label><div className="input-action"><input id="new-member" value={newMember} onChange={event => setNewMember(event.target.value)} disabled={busy} /><button disabled={busy}>加入成員</button></div></form>}</div><div className="card danger-zone"><h2>退出群組</h2><p>退出後不能繼續查看群組內容。重新加入只會取得新的加入界線之後的訊息。</p><button className="danger" disabled={busy} onClick={() => { if (me) void mutate('remove', me); }}>退出群組</button></div></>}</section>;
+  const directory = directoryFor(session); useSyncExternalStore(directory.subscribe, directory.getVersion);
+  const memberIds = detail?.members.map(member => member.user_id).join(',') ?? '';
+  useEffect(() => { for (const id of memberIds.split(',').filter(Boolean)) void directory.ensure(id); }, [memberIds, directory]);
+  return <section className="page-content group-page">
+    <button type="button" className="text-button group-back" onClick={() => onNavigate(`/chats/${encodeURIComponent(conversationId)}`)}><Icon name="back" />返回對話</button>
+    <h1 tabIndex={-1} data-route-heading>群組管理</h1>
+    {loading && <p role="status">正在確認群組權限…</p>}
+    {error && <p className="notice error" role="alert">{error}</p>}
+    {notice && <p className="notice success" role="status">{notice}</p>}
+    {!detail && !loading && <button onClick={() => { void load(); }}>重新核對權限</button>}
+    {detail && <>
+      <div className="card group-hero">
+        <span className={`avatar-accent accent-${accentIndex(detail.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={null} name={detail.title ?? '群組'} /></span>
+        <h2>{detail.title}</h2>
+        <p className="muted">{detail.members.length} / 50 位成員 · 版本 {detail.membership_version}</p>
+        {isAdmin && <form onSubmit={event => { event.preventDefault(); if (!title) { setError('請輸入群組名稱。'); event.currentTarget.querySelector('input')?.focus(); return; } void mutate('title'); }}>
+          <label htmlFor="rename-group">群組名稱</label>
+          <div className="input-action"><input id="rename-group" value={title} onChange={event => setTitle(event.target.value)} disabled={busy} /><button disabled={busy}>儲存名稱</button></div>
+        </form>}
+      </div>
+      <div className="card group-members">
+        <h2>成員 <span className="muted">{detail.members.length}</span></h2>
+        {isAdmin && <form onSubmit={event => { event.preventDefault(); if (!newMember) { setError('請輸入成員的公開 ID。'); event.currentTarget.querySelector('input')?.focus(); return; } void mutate('add'); }}>
+          <label htmlFor="new-member">新增成員的公開 ID</label>
+          <div className="input-action"><input id="new-member" value={newMember} onChange={event => setNewMember(event.target.value)} disabled={busy} /><button disabled={busy}>加入成員</button></div>
+        </form>}
+        <ul className="member-list">{detail.members.map(member => {
+          const entry = directory.get(member.user_id);
+          return <li key={member.user_id}>
+            <span className={`avatar-accent accent-${accentIndex(member.user_id)}`} aria-hidden="true"><Avatar session={session} attachmentId={entry && !entry.avatarStale ? entry.avatarId : null} name={entry?.displayName ?? member.user_id} /></span>
+            <div className="member-copy">
+              <p className="member-name"><strong>{entry?.displayName ?? member.user_id}</strong>{member.user_id === me && <span className="badge">您</span>}<span className={`badge${member.role === 'admin' ? ' admin' : ''}`}>{member.role === 'admin' ? '管理員' : '成員'}</span></p>
+              <p className="identifier">{member.user_id}</p>
+            </div>
+            {isAdmin && <div className="actions"><button disabled={busy} onClick={() => { void mutate('role', member.user_id, member.role === 'admin' ? 'member' : 'admin'); }}>{member.role === 'admin' ? '改為成員' : '設為管理員'}</button>{member.user_id !== me && <button className="danger" disabled={busy} onClick={() => { void mutate('remove', member.user_id); }}>移除</button>}</div>}
+          </li>;
+        })}</ul>
+        <p className="small muted">管理權限由伺服器核對；不能移除、降級或退出最後一位管理員。</p>
+      </div>
+      <div className="card danger-zone">
+        <h2>退出群組</h2>
+        <p>退出後不能繼續查看群組內容。重新加入只會取得新的加入界線之後的訊息。</p>
+        <button className="danger" disabled={busy} onClick={() => { if (me) void mutate('remove', me); }}>退出群組</button>
+      </div>
+    </>}
+  </section>;
 }
