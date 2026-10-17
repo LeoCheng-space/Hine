@@ -182,7 +182,7 @@ export function ContactsPage({ session, chat, onNavigate }: { session: SessionCo
   const loaded = list.items.filter(item => item.user.display_name.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
   return <section className={`split-page contacts-page ${selected ? 'detail-selected' : ''}`}>
     <div className="list-panel">
-      <header className="panel-header"><p className="eyebrow">YOUR PEOPLE</p><h1 tabIndex={-1}>聯絡人</h1><p className="muted">分享公開 ID，開啟新的對話。</p></header>
+      <header className="panel-header"><p className="eyebrow">YOUR PEOPLE</p><h1 tabIndex={-1} data-route-heading>聯絡人</h1><p className="muted">分享公開 ID，開啟新的對話。</p></header>
       <form className="lookup-form" onSubmit={lookup}><label htmlFor="known-id">已知公開 ID</label><div className="input-action"><input id="known-id" value={knownId} onChange={event => setKnownId(event.target.value)} placeholder="貼上對方分享的 ID" /><button disabled={busy}>查詢</button></div></form>
       <label htmlFor="contact-filter">篩選已載入的聯絡人</label><input id="contact-filter" type="search" value={filter} onChange={event => setFilter(event.target.value)} /><p className="small muted">僅篩選已載入項目，不是全站找人。</p>
       {list.error && <p className="notice error" role="alert">{list.error}</p>}{error && !selected && <p className="notice error" role="alert">{error}</p>}

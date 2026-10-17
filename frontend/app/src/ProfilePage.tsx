@@ -85,7 +85,7 @@ export function ProfilePage({ session }: { session: SessionController }) {
   }
   const name = draft.name ?? '', avatar = draft.avatarId ?? null;
   return <section className="page-content profile-page">
-    <p className="eyebrow">YOUR ACCOUNT</p><h1 tabIndex={-1}>個人檔案</h1><p className="muted">您的公開身分，以及只對您顯示的帳號資料。</p>
+    <p className="eyebrow">YOUR ACCOUNT</p><h1 tabIndex={-1} data-route-heading>個人檔案</h1><p className="muted">您的公開身分，以及只對您顯示的帳號資料。</p>
     {loading && <p role="status">載入個人檔案…</p>}{(loadError || draft.error) && <p className="notice error" role="alert">{loadError ?? draft.error}</p>}
     {!profile && !loading && <button onClick={() => { void load(); }}>重新載入</button>}
     {profile && <form className="card profile-form" onSubmit={save}>
