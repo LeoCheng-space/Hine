@@ -235,7 +235,7 @@ check_port() {
     if [ -n "$owners" ]; then
         conflict=$(printf '%s\n' "$owners" | awk -F'|' -v project="$project" \
             '!($2 == project && $3 == "caddy") { print $1 "（專案 " ($2 == "" ? "無" : $2) "）"; exit }')
-        [ -z "$conflict" ] || die "連接埠 $port 已被容器 $conflict 占用；請先停止它（docker stop 容器名稱）再執行"
+        [ -z "$conflict" ] || die "連接埠 $port 已被容器 ${conflict}占用；請先停止它（docker stop 容器名稱）再執行"
         return 0
     fi
     if ss -Hltn "( sport = :$port )" | grep -q .; then
