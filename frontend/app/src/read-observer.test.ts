@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { visibleRatio, shouldSubmitEnter, VisibilityClock } from './read-observer';
+import { bubbleMeasurable, visibleRatio, shouldSubmitEnter, VisibilityClock } from './read-observer';
 test('oversized bubble uses maximum possible intersection, not total bubble area',()=>{
  expect(visibleRatio({left:0,top:0,right:200,bottom:2000},{left:0,top:0,right:200,bottom:500})).toBe(1);
 });
@@ -14,4 +14,11 @@ test('unknown or software keyboard Enter is newline but modifier send remains av
  const event={key:'Enter',isComposing:false,keyCode:13,shiftKey:false,ctrlKey:false,metaKey:false};
  expect(shouldSubmitEnter(event,false)).toBe(false); expect(shouldSubmitEnter({...event,ctrlKey:true},false)).toBe(true);
  expect(shouldSubmitEnter(event,true)).toBe(true); expect(shouldSubmitEnter({...event,shiftKey:true},true)).toBe(false);
+});
+test('a bubble with an unfinished animation is not measured for read', () => {
+  expect(bubbleMeasurable({ getAnimations: () => [{ playState: 'running' }] })).toBe(false);
+  expect(bubbleMeasurable({ getAnimations: () => [{ playState: 'paused' }] })).toBe(false);
+  expect(bubbleMeasurable({ getAnimations: () => [{ playState: 'finished' }] })).toBe(true);
+  expect(bubbleMeasurable({ getAnimations: () => [] })).toBe(true);
+  expect(bubbleMeasurable({})).toBe(true);
 });

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEv
 import { describeError, ownerPartition } from './api';
 import { AttachmentTransferError, uploadAttachment } from './attachment-transfer';
 import { Avatar } from './ContactsPage';
+import { directoryFor } from './user-directory';
 import type { SessionController } from './session';
 import type { AttachmentView, UserProfile } from './types';
 export interface AvatarRecoverySnapshot { file: File | null; readyId: string | null; name: string | null; avatarId: string | null | undefined; pending: boolean; expired: boolean; attemptRetained: boolean; error: string | null; notice: string | null }
@@ -73,19 +74,19 @@ export function ProfilePage({ session }: { session: SessionController }) {
     const name = draft.name ?? '', file = draft.file;
     if (!name) { recovery.update({ error: '請輸入顯示名稱。' }); event.currentTarget.querySelector('input')?.focus(); return; }
     if (file && (!['image/jpeg', 'image/png'].includes(file.type) || file.size <= 0 || file.size > 10_485_760)) { recovery.update({ error: '頭像必須為 JPEG 或 PNG，檔案大於 0 且不超過 10 MiB。' }); event.currentTarget.querySelector<HTMLInputElement>('input[type=file]')?.focus(); return; }
-    recovery.update({ pending: true });
+    recovery.update({ pending: true }); const directory = directoryFor(session);
     try {
       const attachmentId = file ? await recovery.attachment(uploadFile => uploadAttachment(session, uploadFile, 'avatar', null)) : draft.avatarId ?? null;
       if (!ownerActive()) throw new Error('工作階段正在變更；原頭像嘗試已保留，登入後請核對。');
       const result = await session.request<UserProfile>('/users/me', { method: 'PATCH', json: { display_name: name, avatar_attachment_id: attachmentId } });
       if (!ownerActive() || result.data.id !== session.getSnapshot().context.user_id) throw new Error('工作階段已變更，尚未確認這次個人檔案操作。');
-      recovery.confirmed(result.data); if (active.current) setProfile(result.data);
+      recovery.confirmed(result.data); directory.put(result.data.id, result.data); if (active.current) setProfile(result.data);
     } catch (error) { recovery.update({ error: describeError(error) }); }
     finally { recovery.update({ pending: false }); }
   }
   const name = draft.name ?? '', avatar = draft.avatarId ?? null;
   return <section className="page-content profile-page">
-    <p className="eyebrow">YOUR ACCOUNT</p><h1 tabIndex={-1}>個人檔案</h1><p className="muted">您的公開身分，以及只對您顯示的帳號資料。</p>
+    <p className="eyebrow">YOUR ACCOUNT</p><h1 tabIndex={-1} data-route-heading>個人檔案</h1><p className="muted">您的公開身分，以及只對您顯示的帳號資料。</p>
     {loading && <p role="status">載入個人檔案…</p>}{(loadError || draft.error) && <p className="notice error" role="alert">{loadError ?? draft.error}</p>}
     {!profile && !loading && <button onClick={() => { void load(); }}>重新載入</button>}
     {profile && <form className="card profile-form" onSubmit={save}>

@@ -266,6 +266,20 @@ async def login(page, email: str, password: str, record: dict, tag: str) -> None
     check(record, f"{tag}_login_reached_authenticated_shell", True)
 
 
+async def main_nav(page):
+    menu_button = page.get_by_role("button", name="開啟選單", exact=True)
+    if await menu_button.is_visible():
+        await menu_button.click()
+        menu = page.get_by_role("dialog", name="選單")
+        await menu.wait_for(state="visible")
+        return menu.get_by_role("navigation", name="主要導覽")
+    return page.get_by_role("navigation", name="主要導覽")
+
+
+async def spa_go(page, path: str) -> None:
+    await page.evaluate("p => { history.pushState(null, '', p); dispatchEvent(new PopStateEvent('popstate')); }", path)
+
+
 async def public_id(page) -> str:
     await page.bring_to_front()
     await page.get_by_role("navigation", name="主要導覽").get_by_role("button", name="個人檔案").click()
@@ -611,6 +625,11 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             restored_intent = await indexeddb_intent(page_a, direct_id, uncertain_text)
             uncertain_m1 = str(uncertain_rows[0]["message_id"])
             uncertain_dom_count = await page_a.locator(f"[data-message-id='{uncertain_m1}']").count()
+            # Diagnostics only (the check below is unchanged): which component failed if it ever does.
+            test_record["counts"]["genuine_reload_replay_rows"] = len(replay_rows)
+            test_record["counts"]["genuine_reload_dom_count"] = uncertain_dom_count
+            test_record["counts"]["genuine_reload_intent_found"] = int(restored_intent is not None)
+            test_record["counts"]["genuine_reload_intent_persisted_same_m1"] = int(restored_intent is not None and restored_intent["status"] == "persisted" and restored_intent["messageId"] == uncertain_m1)
             check(test_record, "genuine_reload_replays_same_unconfirmed_c1_to_same_single_m1",
                   len(replay_rows) == 1 and str(replay_rows[0]["message_id"]) == uncertain_m1
                   and str(replay_rows[0]["client_message_id"]) == uncertain_c1
@@ -671,7 +690,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                   len(indexed_results) == 100 and all(indexed_results))
             check(test_record, "recipient_saved_cursor_advanced_after_real_reconnect", recovered_state["partition"]["cursor"] != cursor_before)
             check(test_record, "native_recipient_recovery_completed_within_five_seconds", recovery_ms <= 5000)
-            test_record["timings_ms"] = {"recipient_offline_to_100_dom_and_idb_recovery": recovery_ms}
+            test_record.setdefault("timings_ms", {}).update({"recipient_offline_to_100_dom_and_idb_recovery": recovery_ms})
             sender_intent_text = "browser-sender-offline-" + secrets.token_hex(8)
             await page_a.context.set_offline(True)
             await page_a.wait_for_function("() => !navigator.onLine")
@@ -702,11 +721,34 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             # Create a real group through the UI, prove original membership and
             # group message persistence, inspect real modal and responsive shell.
             await goto_chat_list(page_a)
-            await page_a.get_by_role("button", name=re.compile("建立群組")).click()
+            await page_a.locator(".chat-list").get_by_role("button", name="建立群組", exact=True).click()
             group_title = "Browser group " + secrets.token_hex(5)
-            await page_a.get_by_label("群組名稱").fill(group_title)
-            await page_a.get_by_label("初始成員公開 ID（每行一位）").fill(ids[1])
-            await page_a.get_by_role("button", name="建立群組並開啟").click()
+            create_dialog = page_a.get_by_role("dialog", name="建立群組")
+            lookup_suffix = "/api/v1/users/" + quote(ids[1], safe="")
+            lookup_gate = asyncio.Event()
+
+            async def hold_lookup(route):
+                await lookup_gate.wait()
+                await route.continue_()
+
+            await page_a.route("**" + lookup_suffix, hold_lookup)
+            try:
+                await create_dialog.get_by_label("以公開 ID 加入").fill(ids[1])
+                async with page_a.expect_request(lambda request: request.url.endswith(lookup_suffix)):
+                    await create_dialog.get_by_role("button", name="加入", exact=True).click()
+                absent_before_lookup = await create_dialog.locator(".selected-members li").count() == 0
+                async with page_a.expect_response(lambda response: response.url.endswith(lookup_suffix)):
+                    lookup_gate.set()
+            finally:
+                lookup_gate.set()
+                await page_a.unroute("**" + lookup_suffix, hold_lookup)
+            chosen = create_dialog.locator(".selected-members").get_by_text(names[1], exact=True)
+            await chosen.wait_for(state="visible")
+            check(test_record, "group_creation_resolved_member_name_before_adding", absent_before_lookup and await chosen.count() == 1)
+            await create_dialog.get_by_text("已選 1／49", exact=True).wait_for(state="visible")
+            await create_dialog.get_by_role("button", name="下一步", exact=True).click()
+            await create_dialog.get_by_label("群組名稱").fill(group_title)
+            await create_dialog.get_by_role("button", name="建立群組", exact=True).click()
             await page_a.wait_for_url(re.compile(r"/chats/[^/]+$"), timeout=20000)
             await page_a.get_by_role("heading", name=group_title).wait_for(state="visible")
             group_id = page_a.url.rstrip("/").rsplit("/", 1)[-1]
@@ -732,6 +774,48 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                     "SELECT count(*) FROM messages WHERE client_message_id=$1",
                     group_message_row["client_message_id"]) if group_message_row else 0
             check(test_record, "group_message_original_intent_persisted_once", group_message_row is not None and group_mapping_count == 1)
+
+            # Record-only UI performance baselines (no thresholds, no checks). page_a is wide
+            # and has the direct and group rooms; it ends back in the group room.
+            async def perf_sample(label: str, action, repeats: int = 3) -> None:
+                cdp = await page_a.context.new_cdp_session(page_a)
+                try:
+                    await cdp.send("Performance.enable")
+                    samples = []
+                    for _ in range(repeats):
+                        before = {metric["name"]: metric["value"] for metric in (await cdp.send("Performance.getMetrics"))["metrics"]}
+                        started = time.monotonic()
+                        await action()
+                        await page_a.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+                        after = {metric["name"]: metric["value"] for metric in (await cdp.send("Performance.getMetrics"))["metrics"]}
+                        samples.append({"elapsed_ms": (time.monotonic() - started) * 1000,
+                                        **{name: after.get(name, 0) - before.get(name, 0) for name in ("ScriptDuration", "TaskDuration", "LayoutCount", "RecalcStyleCount")}})
+                    test_record.setdefault("perf", {})[label] = {name: round(sorted(sample[name] for sample in samples)[len(samples) // 2], 4) for name in samples[0]}
+                finally:
+                    await cdp.detach()
+
+            async def open_room(conversation_id: str, title: str | None) -> None:
+                await page_a.locator(f".chat-list [data-conversation-id='{conversation_id}']").click()
+                await page_a.wait_for_url(re.compile("/chats/" + re.escape(quote(conversation_id, safe="")) + "$"))
+                if title is not None:
+                    await page_a.get_by_role("heading", name=title).wait_for(state="visible")
+                await page_a.locator("#chat-title").wait_for(state="visible")
+
+            async def room_round_trip() -> None:
+                await open_room(direct_id, None)
+                await open_room(group_id, group_title)
+
+            async def type_fifty() -> None:
+                composer = page_a.locator(".chat-composer textarea")
+                await composer.focus()
+                await page_a.keyboard.type("perf-" + "x" * 45)
+                await composer.fill("")
+
+            await page_a.bring_to_front()
+            await perf_sample("room_switch_round_trip", room_round_trip)
+            await perf_sample("composer_type_50_chars", type_fifty)
+            test_record.setdefault("perf", {})["dom"] = await page_a.evaluate(
+                "() => ({elements: document.getElementsByTagName('*').length, messages: document.querySelectorAll('[data-message-id]').length})")
             await page_a.get_by_role("button", name="群組資訊").click()
             dialog = page_a.get_by_role("dialog", name="群組資訊")
             await wait_visible(dialog)
@@ -774,6 +858,260 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                 final_members = await conn.fetchval("SELECT count(*) FROM memberships WHERE conversation_id=$1 AND active", group_id)
             check(test_record, "real_group_removal_persisted_in_sql", final_members == 1)
             test_record["counts"]["group_members_after_ui_removal"] = int(final_members)
+            # A leave request whose response arrives after the user navigated away must not
+            # drag them back to /chats (GroupsPage navigated after unmount).
+            temp_title = "Leave race " + secrets.token_hex(3)
+            await spa_go(page_a, "/chats")
+            await page_a.locator(".chat-list").get_by_role("button", name="建立群組", exact=True).click()
+            temp_dialog = page_a.get_by_role("dialog", name="建立群組")
+            await temp_dialog.get_by_label("以公開 ID 加入").fill(ids[1])
+            await temp_dialog.get_by_role("button", name="加入", exact=True).click()
+            await temp_dialog.locator(".selected-members").get_by_text(names[1], exact=True).wait_for(state="visible")
+            await temp_dialog.get_by_role("button", name="下一步", exact=True).click()
+            await temp_dialog.get_by_label("群組名稱").fill(temp_title)
+            await temp_dialog.get_by_role("button", name="建立群組", exact=True).click()
+            await page_a.get_by_role("heading", name=temp_title).wait_for(state="visible", timeout=20000)
+            temp_group_id = page_a.url.rstrip("/").rsplit("/", 1)[-1]
+            await spa_go(page_a, "/groups/" + temp_group_id + "/manage")
+            bob_row = page_a.locator(".member-list li", has_text=ids[1])
+            await bob_row.get_by_role("button", name="設為管理員", exact=True).click()
+            await bob_row.get_by_role("button", name="改為成員", exact=True).wait_for(state="visible", timeout=15000)
+            leave_suffix = "/members/" + quote(ids[0], safe="")
+            leave_gate = asyncio.Event()
+
+            def is_leave(item) -> bool:
+                request = item.request if hasattr(item, "request") else item
+                return request.method == "DELETE" and item.url.endswith(leave_suffix)
+
+            async def hold_leave(route):
+                if route.request.method == "DELETE":
+                    await leave_gate.wait()
+                await route.continue_()
+
+            await page_a.route("**" + leave_suffix, hold_leave)
+            try:
+                async with page_a.expect_request(is_leave):
+                    await page_a.get_by_role("button", name="退出群組", exact=True).click()
+                await spa_go(page_a, "/contacts")
+                await page_a.wait_for_url(re.compile(r"/contacts$"))
+                async with page_a.expect_response(is_leave) as leave_info:
+                    leave_gate.set()
+                leave_status = (await leave_info.value).status
+                await page_a.wait_for_timeout(1000)
+                stayed_on_contacts = page_a.url.endswith("/contacts")
+            finally:
+                leave_gate.set()
+                await page_a.unroute("**" + leave_suffix, hold_leave)
+            async with components.sql() as conn:
+                still_member = await conn.fetchval(
+                    "SELECT count(*) FROM memberships WHERE conversation_id=$1 AND user_id=$2 AND active", temp_group_id, ids[0])
+            check(test_record, "group_leave_response_after_navigation_does_not_redirect",
+                  leave_status == 204 and still_member == 0 and stayed_on_contacts)
+
+            # --- UI refresh behaviour (design §11). Bob (page_b) sends in the direct room and
+            # Alice (page_a) observes; page_c (also Alice) does not exist yet, so no second
+            # Alice window can commit reads on page_a's behalf. ---
+            restore_viewport = page_a.viewport_size or {"width": 390, "height": 844}
+            direct_path = "/chats/" + quote(direct_id, safe="")
+            await spa_go(page_b, direct_path)
+            await page_b.locator(".chat-composer textarea").wait_for(state="visible", timeout=45000)
+            await page_a.bring_to_front()
+            await spa_go(page_a, direct_path)
+            await page_a.locator(".chat-header small[role=status]").filter(has_text="即時連線").wait_for(timeout=45000)
+
+            async def bob_says(text: str) -> None:
+                await page_b.locator(".chat-composer textarea").fill(text)
+                await page_b.locator(".send-button").click()
+
+            async def to_latest() -> None:
+                await page_a.evaluate("() => { const s = document.querySelector('.message-scroller'); s.scrollTop = s.scrollHeight; s.dispatchEvent(new Event('scroll')); }")
+                await page_a.wait_for_function("() => { const s = document.querySelector('.message-scroller'); return s.scrollHeight - s.clientHeight - s.scrollTop <= 48; }")
+
+            dom_invariants = await page_a.evaluate("""() => {
+              const ids = [...document.querySelectorAll('[data-message-id]')].map(node => node.dataset.messageId);
+              const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+              return {count: ids.length, uuid: ids.every(id => uuid.test(id)), unique: new Set(ids).size === ids.length,
+                      occluders: document.querySelectorAll('.message-scroller [data-read-occlusion]').length};
+            }""")
+            check(test_record, "message_dom_invariants", dom_invariants["count"] > 0 and dom_invariants["uuid"]
+                  and dom_invariants["unique"] and dom_invariants["occluders"] == 0)
+
+            menu_button = page_a.get_by_role("button", name="開啟選單", exact=True)
+            await menu_button.click()
+            await page_a.get_by_role("dialog", name="選單").wait_for(state="visible")
+            await page_a.keyboard.press("Escape")
+            await page_a.get_by_role("dialog", name="選單").wait_for(state="detached")
+            check(test_record, "menu_escape_returns_focus", await menu_button.evaluate("button => button === document.activeElement"))
+            open_modals = await page_a.evaluate("() => [...document.querySelectorAll('[aria-modal=\"true\"],dialog[open]')].filter(node => node.getClientRects().length > 0).length")
+            await to_latest()
+            read_text = "menu-closed-read-" + secrets.token_hex(4)
+            await bob_says(read_text)
+            await wait_message(page_a, read_text, timeout=30000)
+            read_status = None
+            async with asyncio.timeout(15):
+                while True:
+                    async with components.sql() as conn:
+                        read_status = await conn.fetchval(
+                            "SELECT r.status FROM receipts r JOIN messages m ON m.message_id=r.message_id WHERE m.payload->>'text'=$1 AND r.user_id=$2",
+                            read_text, ids[0])
+                    if read_status == "read":
+                        break
+                    await asyncio.sleep(0.2)
+            check(test_record, "closed_menu_does_not_block_reads", open_modals == 0 and read_status == "read")
+
+            # The entry motion is WAAPI element.animate() started from an effect, so record the
+            # calls themselves (bound to the inserted message id) instead of sampling a frame.
+            record_entry = """() => {
+              window.__hineEntry = {inserted: [], animated: []};
+              if (!window.__hineAnimateHooked) {
+                window.__hineAnimateHooked = true;
+                const original = Element.prototype.animate;
+                Element.prototype.animate = function (...args) {
+                  if (this instanceof HTMLElement && this.dataset.messageId) window.__hineEntry.animated.push(this.dataset.messageId);
+                  return original.apply(this, args);
+                };
+              }
+              new MutationObserver(records => {
+                for (const node of records.flatMap(record => [...record.addedNodes]))
+                  if (node instanceof HTMLElement) for (const bubble of [node, ...node.querySelectorAll('[data-message-id]')])
+                    if (bubble.matches('[data-message-id]')) window.__hineEntry.inserted.push({id: bubble.dataset.messageId, text: bubble.querySelector('.message-text')?.textContent ?? ''});
+              }).observe(document.querySelector('.message-scroller'), {childList: true, subtree: true});
+            }"""
+            entry_of = """t => {
+              const inserted = window.__hineEntry.inserted.find(entry => entry.text === t);
+              if (!inserted) return null;
+              const node = [...document.querySelectorAll('[data-message-id]')].find(bubble => bubble.dataset.messageId === inserted.id);
+              return {id: inserted.id, animateCalls: window.__hineEntry.animated.filter(id => id === inserted.id).length,
+                      runningAnimations: node ? node.getAnimations({subtree: true}).length : -1};
+            }"""
+            await to_latest()
+            await page_a.evaluate(record_entry)
+            motion_text = "entry-motion-" + secrets.token_hex(4)
+            await bob_says(motion_text)
+            await wait_message(page_a, motion_text, timeout=30000)
+            await page_a.wait_for_function(f"t => ({entry_of})(t)?.animateCalls > 0", arg=motion_text, timeout=10000)
+            motion_entry = await page_a.evaluate(entry_of, motion_text)
+            check(test_record, "entry_animation_positive_control", motion_entry is not None and motion_entry["animateCalls"] == 1)
+            await page_a.emulate_media(reduced_motion="reduce")
+            await to_latest()
+            await page_a.evaluate(record_entry)
+            still_text = "reduced-motion-" + secrets.token_hex(4)
+            await bob_says(still_text)
+            await wait_message(page_a, still_text, timeout=30000)
+            await page_a.wait_for_function(f"t => ({entry_of})(t) !== null", arg=still_text, timeout=10000)
+            await page_a.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+            still_entry = await page_a.evaluate(entry_of, still_text)
+            check(test_record, "reduced_motion_no_entry_animation", still_entry is not None
+                  and still_entry["animateCalls"] == 0 and still_entry["runningAnimations"] == 0)
+            await page_a.emulate_media(reduced_motion="no-preference")
+
+            await page_a.evaluate("() => { const s = document.querySelector('.message-scroller'); s.scrollTop = 0; s.dispatchEvent(new Event('scroll')); }")
+            await page_a.wait_for_timeout(300)
+            for text in ("scrolled-up-1-" + secrets.token_hex(3), "scrolled-up-2-" + secrets.token_hex(3)):
+                await bob_says(text)
+                await page_a.locator("[data-message-id]").filter(has_text=text).wait_for(state="attached", timeout=30000)
+            fab = page_a.get_by_role("button", name="跳至最新", exact=True)
+            fab_count = page_a.locator(".jump-latest-fab .fab-count")
+            at_latest_js = "() => { const s = document.querySelector('.message-scroller'); return s.scrollHeight - s.clientHeight - s.scrollTop <= 48; }"
+            # Waits here must not raise: the check records the observed count instead of a runner error.
+            with contextlib.suppress(PlaywrightError):
+                await fab_count.filter(has_text="2").wait_for(state="visible", timeout=10000)
+            fab_count_text = (await fab_count.text_content()) if await fab_count.count() else None
+            test_record["counts"]["new_message_fab_count"] = int(fab_count_text) if fab_count_text and fab_count_text.isdigit() else -1
+            fab_counted = fab_count_text == "2" and await fab.is_visible()
+            fab_cleared = False
+            if fab_counted:
+                await fab.click()
+                with contextlib.suppress(PlaywrightError):
+                    await page_a.wait_for_function(at_latest_js, timeout=10000)
+                    await page_a.locator(".jump-latest-fab").wait_for(state="hidden", timeout=10000)
+                fab_cleared = await page_a.evaluate(at_latest_js) and not await fab.is_visible()
+            check(test_record, "new_message_count_while_scrolled_up", fab_counted and fab_cleared)
+
+            await page_a.evaluate("() => { const s = document.querySelector('.message-scroller'); s.scrollTop = Math.max(0, s.scrollHeight / 3); s.dispatchEvent(new Event('scroll')); }")
+            saved_anchor, previous_anchor = None, False
+            async with asyncio.timeout(10):
+                while saved_anchor is None or saved_anchor != previous_anchor:
+                    previous_anchor = saved_anchor
+                    saved_anchor = await page_a.evaluate("""async conversationId => {
+                      const db = await new Promise((resolve, reject) => { const r = indexedDB.open('hine-chat-v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+                      const rows = await new Promise(resolve => { const q = db.transaction('anchors', 'readonly').objectStore('anchors').getAll(); q.onsuccess = () => resolve(q.result); });
+                      db.close();
+                      const row = rows.find(item => item.conversation === conversationId);
+                      return row && !row.value.atLatest ? row.value : null;
+                    }""", direct_id)
+                    if saved_anchor is None or saved_anchor != previous_anchor:
+                        await asyncio.sleep(0.25)
+            await spa_go(page_a, "/chats/" + quote(group_id, safe=""))
+            await page_a.get_by_role("button", name="群組資訊").wait_for(state="visible", timeout=30000)
+            await page_a.get_by_role("button", name="群組資訊").click()
+            await page_a.get_by_role("dialog", name="群組資訊").wait_for(state="visible")
+            await page_a.keyboard.press("Escape")
+            await page_a.get_by_role("dialog", name="群組資訊").wait_for(state="detached")
+            check(test_record, "group_info_escape_returns_focus",
+                  await page_a.get_by_role("button", name="群組資訊").evaluate("button => button === document.activeElement"))
+            await spa_go(page_a, direct_path)
+            await page_a.locator(".chat-header small[role=status]").filter(has_text="即時連線").wait_for(timeout=30000)
+            await page_a.wait_for_timeout(300)
+            restored = await page_a.evaluate("""messageId => {
+              const s = document.querySelector('.message-scroller'), top = s.getBoundingClientRect().top;
+              const first = [...s.querySelectorAll('[data-message-id]')].find(node => node.getBoundingClientRect().bottom > top);
+              const target = [...s.querySelectorAll('[data-message-id]')].find(node => node.dataset.messageId === messageId);
+              return {first: first?.dataset.messageId ?? null, offset: target ? target.getBoundingClientRect().top - top : null};
+            }""", saved_anchor["messageId"])
+            check(test_record, "anchor_restored_after_room_switch", restored["first"] == saved_anchor["messageId"]
+                  and restored["offset"] is not None and abs(restored["offset"] - saved_anchor["offset"]) <= 1)
+
+            await to_latest()
+            composer = page_a.locator(".chat-composer textarea")
+            await composer.fill("")
+            await composer.focus()
+            ime_counts = """async conversationId => {
+              const db = await new Promise((resolve, reject) => { const r = indexedDB.open('hine-chat-v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+              const partitions = await new Promise(resolve => { const q = db.transaction('partitions', 'readonly').objectStore('partitions').getAll(); q.onsuccess = () => resolve(q.result); });
+              db.close();
+              const intents = partitions.reduce((total, partition) => total + Object.values(partition.intents ?? {}).filter(intent => intent.conversationId === conversationId).length, 0);
+              return {intents, pending: document.querySelectorAll('.pending-message').length, messages: document.querySelectorAll('[data-message-id]').length,
+                      draft: document.querySelector('#chat-draft').value};
+            }"""
+            ime_cdp = await page_a.context.new_cdp_session(page_a)
+            try:
+                ime_before = await page_a.evaluate(ime_counts, direct_id)
+                await ime_cdp.send("Input.imeSetComposition", {"text": "ㄋㄧˇ", "selectionStart": 3, "selectionEnd": 3})
+                await page_a.keyboard.press("Enter")
+                await page_a.wait_for_timeout(1000)
+                ime_during = await page_a.evaluate(ime_counts, direct_id)
+                await ime_cdp.send("Input.insertText", {"text": "你"})
+                await page_a.keyboard.press("Control+Enter")
+                await page_a.wait_for_function("() => document.querySelector('#chat-draft').value === ''", timeout=10000)
+                async with asyncio.timeout(10):
+                    while (ime_after := await page_a.evaluate(ime_counts, direct_id))["intents"] == ime_before["intents"]:
+                        await asyncio.sleep(0.2)
+            finally:
+                await ime_cdp.detach()
+            check(test_record, "ime_composition_enter_does_not_send",
+                  ime_during["intents"] == ime_before["intents"] and ime_during["pending"] == ime_before["pending"]
+                  and ime_during["messages"] == ime_before["messages"] and "ㄋㄧˇ" in ime_during["draft"]
+                  and ime_after["intents"] == ime_before["intents"] + 1)
+
+            geometry = """() => {
+              const area = element => { if (!element) return 0; const r = element.getBoundingClientRect();
+                return Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0)) * Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0)); };
+              const list = document.querySelector('.chat-list'), room = document.querySelector('.chat-room');
+              return {list: area(list), room: area(room), listRects: list ? list.getClientRects().length : 0, roomRects: room ? room.getClientRects().length : 0,
+                      noOverflow: document.scrollingElement.scrollWidth <= innerWidth};
+            }"""
+            await page_a.set_viewport_size({"width": 767, "height": 900})
+            await page_a.wait_for_timeout(400)
+            narrow = await page_a.evaluate(geometry)
+            check(test_record, "layout_767_single_column", narrow["noOverflow"] and (
+                (narrow["room"] > 0 and narrow["listRects"] == 0) or (narrow["list"] > 0 and narrow["roomRects"] == 0)))
+            await page_a.set_viewport_size({"width": 768, "height": 900})
+            await page_a.wait_for_timeout(400)
+            wide = await page_a.evaluate(geometry)
+            check(test_record, "layout_768_two_columns", wide["noOverflow"] and wide["list"] > 0 and wide["room"] > 0)
+            await page_a.set_viewport_size(restore_viewport)
+            await page_a.wait_for_timeout(300)
             context_c = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
             contexts.append(context_c)
             page_c = await context_c.new_page()
@@ -792,7 +1130,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             await page_c.locator(".chat-room").wait_for(state="visible")
             async with page_a.expect_response(
                     lambda response: response.url.endswith("/api/v1/auth/logout") and response.request.method == "POST") as logout_info:
-                await page_a.get_by_role("button", name="登出").click()
+                await (await main_nav(page_a)).get_by_role("button", name="登出").click()
             logout_response = await logout_info.value
             check(test_record, "real_ui_logout_received_committed_http_204", logout_response.status == 204)
             await page_a.wait_for_url(re.compile(r"/login$"), timeout=15000)

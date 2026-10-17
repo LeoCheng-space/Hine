@@ -4,6 +4,8 @@ export function visibleRatio(bubble:Rect,viewport:Rect):number {
  const maximum=Math.min(bw,vw)*Math.min(bh,vh);if(!maximum)return 0;
  return Math.max(0,Math.min(bubble.right,viewport.right)-Math.max(bubble.left,viewport.left))*Math.max(0,Math.min(bubble.bottom,viewport.bottom)-Math.max(bubble.top,viewport.top))/maximum;
 }
+/** A bubble with a running or paused animation (entry motion) is not measured this frame; this can only delay a read, never make it earlier. */
+export function bubbleMeasurable(bubble:{getAnimations?:()=>{playState:string}[]}):boolean {return !(bubble.getAnimations?.()??[]).some(animation=>animation.playState==='running'||animation.playState==='paused');}
 export class VisibilityClock {
  private since:number|null=null;
  update(eligible:boolean,now:number):boolean {if(!eligible){this.since=null;return false;}if(this.since===null)this.since=now;return now-this.since>=500;}
@@ -39,7 +41,7 @@ export class ReadObserver {
   for(const bubble of this.container.querySelectorAll<HTMLElement>('[data-message-id]')){
    const id=bubble.dataset.messageId;if(!id)continue;present.add(id);
    let observation=this.observations.get(id);if(!observation){observation={clock:new VisibilityClock(),pending:false,done:false};this.observations.set(id,observation);}
-   const eligible=permitted&&bubble.dataset.readEligible==='true'&&visibleRatio(bubble.getBoundingClientRect(),visible)>=0.5;
+   const eligible=permitted&&bubble.dataset.readEligible==='true'&&bubbleMeasurable(bubble)&&visibleRatio(bubble.getBoundingClientRect(),visible)>=0.5;
    if(!observation.clock.update(eligible,now)||observation.pending||observation.done)continue;
    observation.pending=true;const item=observation;
    void this.onRead(id).then(()=>{item.done=true;},()=>{item.clock.update(false,performance.now());}).finally(()=>{item.pending=false;});

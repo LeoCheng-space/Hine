@@ -1,5 +1,17 @@
 # HINE 文件變更紀錄
 
+## 2026-10-17 — Web UI 改版（Telegram 風格、保留 HINE 品牌），feature branch 五階段完成
+
+- 只改前端；REST／WSS 契約、PostgreSQL schema、Redis、JWT／Session、IndexedDB 格式、已讀／未讀／同步語意與 `ChatController` 公開 API 不變。Web Lock、原意圖重試、群組建立冪等保留。設計 v2.3：`docs/superpowers/specs/2026-10-17-ui-refresh-design.md`。
+- 外殼：寬版常駐圖示欄（`navigation "主要導覽"`）、窄版頂部列＋☰ 原生 dialog 選單；路由切換焦點移至 `data-route-heading`。斷點 CSS／JS 一律 `(max-width: 767.98px)`（見 [web-rwd](ui/web-rwd.md#rwd-ui-refresh-2026-10-17)）。
+- 聊天清單：頭像、預覽、時間；只在已載入項目內依各對話伺服器 `created_at` 排序（`order_key` 不得跨對話比較，C11）。完整伺服器端排序由 [Issue #11](https://github.com/LeoCheng-space/Hine/issues/11) 追蹤。切換對話時清單不重掛載。
+- 聊天室：泡泡分組、日期分隔／捲動時日期膠囊、狀態圖示、「跳至最新」＋本機新訊息數、新訊息進場動畫（reduced-motion 不播放；動畫中泡泡不計入已讀計時）。
+- 建立群組改為兩步驟 dialog；未決意圖重新整理後自動開啟一次。修正：退出群組的回應若在離開管理頁後才到，不再把使用者導回 `/chats`。測試先行：修正前 [run39018196391](https://github.com/LeoCheng-space/Hine/actions/runs/39018196391) 兩瀏覽器 `group_leave_response_after_navigation_does_not_redirect` 為 false；修正後通過。
+- 群組管理頁改版：群組頭像與名稱卡、成員列顯示頭像／顯示名稱（取自使用者目錄，未取得前以 ID 代替）／「您」與角色徽章，公開 ID 保留在名稱下方；窄版操作按鈕移到成員資訊下方、「退出群組」全寬。操作、按鈕名稱與伺服器權限規則不變。
+- Browser acceptance 由 59 增至 72 個 checks，未刪除、略過或放寬既有 check。新增項目：訊息 DOM 不變式、選單／群組資訊 Escape 焦點返回、關閉選單不阻擋已讀（SQL receipt）、進場動畫正控制對 reduced-motion、捲離底部新訊息數、切換對話後錨點還原、IME 組字 Enter 不送出、767／768 版面。另記錄效能基準（僅記錄、無門檻）。
+- CI（各 8／8 SUCCESS）：Phase 1 [run39015775029](https://github.com/LeoCheng-space/Hine/actions/runs/39015775029)、Phase 2 [run39016697210](https://github.com/LeoCheng-space/Hine/actions/runs/39016697210)、Phase 3 [run39017509797](https://github.com/LeoCheng-space/Hine/actions/runs/39017509797)、Phase 4 [run39018452562](https://github.com/LeoCheng-space/Hine/actions/runs/39018452562)、Phase 5 checks [run39019069471](https://github.com/LeoCheng-space/Hine/actions/runs/39019069471)。Phase 3 與 Phase 4 的 Chrome job 首次各失敗一次後 rerun 通過，分別為 `genuine_reload_replays_same_unconfirmed_c1_to_same_single_m1` 與 native recipient 啟動 runner error；根因未明，前者已加診斷計數。
+- `frontend/app/tests/review-shell-native.ts` 沒有 runner，只經 typecheck 驗證；其選擇器已與新清單 DOM 核對。附件錯誤訊息修正（#7）由 [PR #10](https://github.com/LeoCheng-space/Hine/pull/10) 先合併至 main，再隨 main 併入本分支（見下一節）。
+
 ## 2026-10-17 — 附件錯誤依原因與場景顯示（Refs #7）
 
 - 個人檔案儲存頭像時，原本任何上傳失敗都沿用聊天室的「附件傳輸失敗，尚未傳送訊息。」；附件儲存服務未設定或暫時無法使用（A20 回 `DEPENDENCY_UNAVAILABLE`）時，使用者看不出真正原因。現改為依錯誤原因顯示說明，結尾依場景標示「頭像尚未儲存。」或「尚未傳送訊息。」，重試與原上傳核對流程不變。

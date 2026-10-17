@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ApiError, describeError, ownerPartition } from './api';
 import { downloadAttachment } from './attachment-transfer';
+import { avatarCacheFor } from './avatar-cache';
+import { directoryFor } from './user-directory';
 import type { SessionController } from './session';
 import type { ChatController } from './chat';
 import type { ContactView, ConversationCreateResult, Page, UserSummary, DownloadGrant } from './types';
@@ -92,28 +94,24 @@ export async function fetchAvatarBytes(grant: DownloadGrant, fetcher: (url: stri
   if (blob.size !== grant.size_bytes) throw new Error('頭像位元組與已核驗版本不符。');
   return blob;
 }
+/** Downloads verified avatar bytes for the cache, aborting after 30 seconds like the original per-component fetch. */
+function loadAvatar(session: SessionController): (attachmentId: string, signal: AbortSignal) => Promise<Blob> {
+  return async (attachmentId, signal) => {
+    const child = new AbortController(), stop = (): void => child.abort();
+    signal.addEventListener('abort', stop, { once: true }); const timeout = setTimeout(stop, 30_000);
+    try { return await fetchAvatarBytes(await downloadAttachment(session, attachmentId), fetch, child.signal); }
+    finally { clearTimeout(timeout); signal.removeEventListener('abort', stop); }
+  };
+}
 export function Avatar({ session, attachmentId, name }: { session: SessionController; attachmentId: string | null; name: string }) {
   const [url, setUrl] = useState<string | null>(null), [failed, setFailed] = useState(false);
   useEffect(() => {
-    const before = session.getSnapshot().context, abort = new AbortController();
-    let active = true, objectUrl: string | undefined; setUrl(null); setFailed(false);
-    const bindingCurrent = () => {
-      const now = session.getSnapshot().context;
-      return before.state === 'authenticated' && now.state === 'authenticated' && before.user_id === now.user_id && before.device_id === now.device_id && before.session_generation === now.session_generation && before.access_token === now.access_token;
-    };
-    const timeout = window.setTimeout(() => abort.abort(), 30_000);
-    if (attachmentId && before.state === 'authenticated') void (async () => {
-      try {
-        const grant = await downloadAttachment(session, attachmentId);
-        if (!active || abort.signal.aborted || !bindingCurrent()) return;
-        const blob = await fetchAvatarBytes(grant, fetch, abort.signal);
-        if (!active || abort.signal.aborted || !bindingCurrent()) return;
-        objectUrl = URL.createObjectURL(blob); setUrl(objectUrl);
-      } catch { if (active && bindingCurrent()) setFailed(true); }
-      finally { clearTimeout(timeout); }
-    })();
-    else clearTimeout(timeout);
-    return () => { active = false; clearTimeout(timeout); abort.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+    setUrl(null); setFailed(false);
+    if (!attachmentId || session.getSnapshot().context.state !== 'authenticated') return;
+    const handle = avatarCacheFor(session, loadAvatar(session)).acquire(attachmentId);
+    let active = true;
+    void handle.url.then(value => { if (!active) return; if (value) setUrl(value); else setFailed(true); });
+    return () => { active = false; handle.release(); };
   }, [session, attachmentId]);
   return <span className="avatar" aria-label={failed ? '頭像載入失敗' : name}>{url ? <img src={url} alt={`${name}的頭像`} /> : <span aria-hidden="true">{Array.from(name)[0] ?? 'H'}</span>}</span>;
 }
@@ -167,13 +165,14 @@ export function ContactsPage({ session, chat, onNavigate }: { session: SessionCo
     finally { if (ownerActive()) lifetime.apply(version, () => setBusy(false)); }
   }
   async function action(kind: 'add' | 'remove' | 'chat') {
-    if (!selected || busy) return; const version = lifetime.begin(); setBusy(true); setError(null); setNotice(null);
+    if (!selected || busy) return; const version = lifetime.begin(), directory = directoryFor(session); setBusy(true); setError(null); setNotice(null);
     try {
       if (kind === 'chat') {
         const result = await session.request<ConversationCreateResult>('/conversations/direct', { method: 'POST', json: { peer_user_id: selected.id } });
         if (ownerActive()) lifetime.apply(version, () => onNavigate(`/chats/${encodeURIComponent(result.data.id)}`));
       } else {
         await session.request<void | ContactView>(kind === 'add' ? '/contacts' : `/contacts/${encodeURIComponent(selected.id)}`, { method: kind === 'add' ? 'POST' : 'DELETE', ...(kind === 'add' ? { json: { user_id: selected.id } } : {}) });
+        directory.markAvatarsStale([selected.id]);
         await list.load(true); if (ownerActive()) lifetime.apply(version, () => setNotice(kind === 'add' ? '已加入聯絡人。' : '已移除聯絡人，聊天歷史不受影響。'));
       }
     } catch (error) { if (ownerActive()) lifetime.apply(version, () => setError(describeError(error))); }
@@ -182,7 +181,7 @@ export function ContactsPage({ session, chat, onNavigate }: { session: SessionCo
   const loaded = list.items.filter(item => item.user.display_name.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
   return <section className={`split-page contacts-page ${selected ? 'detail-selected' : ''}`}>
     <div className="list-panel">
-      <header className="panel-header"><p className="eyebrow">YOUR PEOPLE</p><h1 tabIndex={-1}>聯絡人</h1><p className="muted">分享公開 ID，開啟新的對話。</p></header>
+      <header className="panel-header"><p className="eyebrow">YOUR PEOPLE</p><h1 tabIndex={-1} data-route-heading>聯絡人</h1><p className="muted">分享公開 ID，開啟新的對話。</p></header>
       <form className="lookup-form" onSubmit={lookup}><label htmlFor="known-id">已知公開 ID</label><div className="input-action"><input id="known-id" value={knownId} onChange={event => setKnownId(event.target.value)} placeholder="貼上對方分享的 ID" /><button disabled={busy}>查詢</button></div></form>
       <label htmlFor="contact-filter">篩選已載入的聯絡人</label><input id="contact-filter" type="search" value={filter} onChange={event => setFilter(event.target.value)} /><p className="small muted">僅篩選已載入項目，不是全站找人。</p>
       {list.error && <p className="notice error" role="alert">{list.error}</p>}{error && !selected && <p className="notice error" role="alert">{error}</p>}
