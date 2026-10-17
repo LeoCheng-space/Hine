@@ -15,7 +15,8 @@ import { directoryFor } from './user-directory';
 import type { ConversationDetail } from './types';
 import './Shell.css';
 
-const NARROW_QUERY = '(width < 768px)';
+// Must equal the CSS breakpoint text exactly. `(width < 768px)` is rewritten by the bundler to max-width:767.999px, which Chrome rounds to 768px.
+const NARROW_QUERY = '(max-width: 767.98px)';
 function subscribeNarrow(listener: () => void): () => void { const query = matchMedia(NARROW_QUERY); query.addEventListener('change', listener); return () => query.removeEventListener('change', listener); }
 function narrowSnapshot(): boolean { return matchMedia(NARROW_QUERY).matches; }
 export function App({ session, chat, router }: { session: SessionController; chat: ChatController; router: BrowserRouter }) {

@@ -178,7 +178,7 @@ form > button.primary { margin-top: 24px; }
 .group-info-dialog::backdrop { background: #18312e70; }
 .group-info-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .group-info-header h2 { margin: 0; }
-@media (width < 768px) {
+@media (max-width: 767.98px) {
   .app-shell { --app-nav-height: 56px; display: block; }
   .split-page { display: block; }
   .split-page > .detail-panel { display: none; }
