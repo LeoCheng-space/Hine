@@ -266,6 +266,16 @@ async def login(page, email: str, password: str, record: dict, tag: str) -> None
     check(record, f"{tag}_login_reached_authenticated_shell", True)
 
 
+async def main_nav(page):
+    menu_button = page.get_by_role("button", name="開啟選單", exact=True)
+    if await menu_button.is_visible():
+        await menu_button.click()
+        menu = page.get_by_role("dialog", name="選單")
+        await menu.wait_for(state="visible")
+        return menu.get_by_role("navigation", name="主要導覽")
+    return page.get_by_role("navigation", name="主要導覽")
+
+
 async def public_id(page) -> str:
     await page.bring_to_front()
     await page.get_by_role("navigation", name="主要導覽").get_by_role("button", name="個人檔案").click()
@@ -792,7 +802,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             await page_c.locator(".chat-room").wait_for(state="visible")
             async with page_a.expect_response(
                     lambda response: response.url.endswith("/api/v1/auth/logout") and response.request.method == "POST") as logout_info:
-                await page_a.get_by_role("button", name="登出").click()
+                await (await main_nav(page_a)).get_by_role("button", name="登出").click()
             logout_response = await logout_info.value
             check(test_record, "real_ui_logout_received_committed_http_204", logout_response.status == 204)
             await page_a.wait_for_url(re.compile(r"/login$"), timeout=15000)

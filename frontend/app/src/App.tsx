@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { AppMenu, type AppMenuItem } from './AppMenu';
+import { Icon } from './icons';
 import { AccountPage } from './AccountPages';
 import { ContactsPage, usePagedList } from './ContactsPage';
 import { CreateGroup, GroupsPage } from './GroupsPage';
@@ -10,6 +12,10 @@ import type { SessionController } from './session';
 import type { ChatController } from './chat';
 import type { ConversationDetail, ConversationSummary } from './types';
 import './Shell.css';
+
+const NARROW_QUERY = '(width < 768px)';
+function subscribeNarrow(listener: () => void): () => void { const query = matchMedia(NARROW_QUERY); query.addEventListener('change', listener); return () => query.removeEventListener('change', listener); }
+function narrowSnapshot(): boolean { return matchMedia(NARROW_QUERY).matches; }
 function ChatList({ session, path, onNavigate }: { session: SessionController; path: string; onNavigate: (path: string) => void }) {
   const list = usePagedList<ConversationSummary>(session, 'conversations', item => item.id), [filter, setFilter] = useState('');
   useEffect(() => { void list.load(true); }, [path, list.load]);
@@ -26,6 +32,8 @@ export function App({ session, chat, router }: { session: SessionController; cha
   const route = parseRoute(path), requested = useRef<string | null>(route && !['root', 'login', 'register'].includes(route.kind) ? path : null);
   const [allowedKey, setAllowedKey] = useState<string | null>(null), [routeError, setRouteError] = useState<string | null>(null), [shellNotice, setShellNotice] = useState<string | null>(null);
   const redirecting = useRef<Promise<void> | null>(null);
+  const narrow = useSyncExternalStore(subscribeNarrow, narrowSnapshot), [menuOpen, setMenuOpen] = useState(false), menuButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => { setMenuOpen(false); }, [path, narrow]);
   const context = snapshot.context, key = JSON.stringify([ownerPartition(context.user_id, context.device_id), path]);
   async function authorizedDestination(target: string): Promise<string> {
     const next = parseRoute(target); if (!next || ['root', 'login', 'register'].includes(next.kind)) return '/chats';
@@ -71,5 +79,24 @@ export function App({ session, chat, router }: { session: SessionController; cha
   else if (route.kind === 'profile') content = <ProfilePage session={session} />;
   else if (route.kind === 'group') content = <GroupsPage session={session} chat={chat} conversationId={route.conversationId} onNavigate={router.navigate} />;
   else content = <section className={`split-page chats-page ${route.kind === 'chat' ? 'detail-selected' : ''}`}><ChatList session={session} path={path} onNavigate={router.navigate} /><div className="detail-panel chat-detail">{route.kind === 'chat' && <button className="narrow-back text-button" onClick={() => router.navigate('/chats')}>← 返回聊天清單</button>}<Chat session={session} chat={chat} conversationId={route.kind === 'chat' ? route.conversationId : null} onNavigate={router.navigate} /></div></section>;
-  return <div className="app-shell"><a className="skip-link" href="#main-content">跳至主要內容</a><nav className="app-nav" aria-label="主要導覽"><button className="brand-button" aria-label="HINE 聊天首頁" onClick={() => router.navigate('/chats')}><span className="brand-mark">H</span><strong>HINE</strong></button><div className="nav-links">{[{ path: '/chats', label: '聊天', symbol: '◷', active: route.kind === 'chats' || route.kind === 'chat' || route.kind === 'group' }, { path: '/contacts', label: '聯絡人', symbol: '◎', active: route.kind === 'contacts' }, { path: '/profile', label: '個人檔案', symbol: '◉', active: route.kind === 'profile' }].map(item => <button key={item.path} className={item.active ? 'active' : ''} aria-current={item.active ? 'page' : undefined} onClick={() => router.navigate(item.path)}><span aria-hidden="true">{item.symbol}</span>{item.label}</button>)}</div><button className="logout-button" onClick={() => { void session.logout().catch(error => setShellNotice(describeError(error))); }}>登出</button></nav><div className="workspace"><header className="workspace-header"><span>{titles[route.kind]}</span><span className="connection-indicator">● {chatSnapshot.connection}</span></header>{shellNotice && <div className="notice" role="status">{shellNotice}<button className="text-button" onClick={() => setShellNotice(null)} aria-label="關閉提示">×</button></div>}<main id="main-content">{content}</main></div></div>;
+  const navItems: AppMenuItem[] = [
+    { label: '聊天', icon: 'chat', active: route.kind === 'chats' || route.kind === 'chat' || route.kind === 'group', onSelect: () => router.navigate('/chats') },
+    { label: '聯絡人', icon: 'contacts', active: route.kind === 'contacts', onSelect: () => router.navigate('/contacts') },
+    { label: '個人檔案', icon: 'profile', active: route.kind === 'profile', onSelect: () => router.navigate('/profile') },
+  ];
+  const brand = <button type="button" className="brand-button" aria-label="HINE 聊天首頁" onClick={() => router.navigate('/chats')}><span className="brand-mark" aria-hidden="true">H</span>{narrow && <strong aria-hidden="true">HINE</strong>}</button>;
+  return <div className={`app-shell${narrow ? ' narrow' : ''}`}><a className="skip-link" href="#main-content">跳至主要內容</a>
+    {narrow
+      ? <header className="app-nav app-topbar">
+          <button ref={menuButton} type="button" className="icon-button" aria-label="開啟選單" aria-haspopup="dialog" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}><Icon name="menu" /></button>
+          {brand}<span className="topbar-title" aria-hidden="true">{titles[route.kind]}</span>
+        </header>
+      : <nav className="app-nav app-rail" aria-label="主要導覽">
+          {brand}
+          <div className="nav-links">{navItems.map(item => <button key={item.label} type="button" className={item.active ? 'active' : undefined} aria-current={item.active ? 'page' : undefined} onClick={item.onSelect}><span className="nav-icon"><Icon name={item.icon} /></span><span className="nav-label">{item.label}</span></button>)}</div>
+          <button type="button" className="logout-button" onClick={() => { void session.logout().catch(error => setShellNotice(describeError(error))); }}><span className="nav-icon"><Icon name="logout" /></span><span className="nav-label">登出</span></button>
+        </nav>}
+    {narrow && <AppMenu open={menuOpen} triggerRef={menuButton} onClose={() => setMenuOpen(false)} items={[...navItems, { label: '登出', icon: 'logout', onSelect: () => { void session.logout().catch(error => setShellNotice(describeError(error))); } }]} />}
+    <div className="workspace">{shellNotice && <div className="notice" role="status">{shellNotice}<button className="text-button" onClick={() => setShellNotice(null)} aria-label="關閉提示">×</button></div>}<main id="main-content">{content}</main></div>
+  </div>;
 }
