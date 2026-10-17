@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type RefObject } from 'react';
 import { ApiError, describeError, isRecord, ownerPartition } from './api';
 import { Avatar, usePagedList } from './ContactsPage';
-import { GROUP_OTHER_MEMBER_LIMIT, addMember, groupPayload, removeMember } from './group-selection';
+import { GROUP_OTHER_MEMBER_LIMIT, addMember, removeMember } from './group-selection';
 import { accentIndex } from './chat-presentation';
 import { Icon } from './icons';
 import { directoryFor } from './user-directory';
@@ -50,7 +50,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
   useEffect(() => {
     if (!open) return;
     const element = dialog.current; if (!element) return;
-    element.showModal(); (element.querySelector<HTMLElement>('.create-group-step input:not(:disabled), .create-group-step button:not(:disabled)') ?? element.querySelector<HTMLElement>('button:not(:disabled)'))?.focus(); window.dispatchEvent(new Event('hine-overlay-change'));
+    element.showModal(); window.dispatchEvent(new Event('hine-overlay-change'));
     return () => {
       element.close(); window.dispatchEvent(new Event('hine-overlay-change'));
       const trigger = triggerRef.current;
@@ -58,6 +58,11 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
       else document.querySelector<HTMLElement>('[data-route-heading]')?.focus();
     };
   }, [open, triggerRef]);
+  // Focus follows the rendered step: a recovered intent switches to the title step after mount, and 下一步／上一步 remove the focused button.
+  useEffect(() => {
+    const element = dialog.current; if (!open || !element) return;
+    (element.querySelector<HTMLElement>('.create-group-step input:not(:disabled), .create-group-step button:not(:disabled)') ?? element.querySelector<HTMLElement>('button:not(:disabled)'))?.focus();
+  }, [open, step]);
   const nameOf = (id: string): string => contacts.items.find(item => item.user.id === id)?.user.display_name ?? directory.get(id)?.displayName ?? id;
   function toggle(id: string, checked: boolean) {
     setError(null);
@@ -82,7 +87,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
     event.preventDefault(); if (busy) return; setError(null);
     if (!title) { setError('請輸入群組名稱。'); event.currentTarget.querySelector<HTMLInputElement>('#group-title')?.focus(); return; }
     let intent: GroupCreateIntent;
-    try { intent = store.begin(groupPayload(title, selected)); setPending(intent); } catch (error) { session.failStorage(error); return; }
+    try { intent = store.begin({ title, member_ids: [...selected] }); setPending(intent); } catch (error) { session.failStorage(error); return; }
     setBusy(true);
     try {
       const result = await session.request<ConversationCreateResult>('/conversations/groups', { method: 'POST', json: intent.payload, idempotencyKey: intent.key });
@@ -98,12 +103,13 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
     try { store.confirm(pending.key); setPending(null); setStep('members'); setTitle(''); setSelected([]); setError(null); } catch (error) { session.failStorage(error); }
   }
   if (!open) return null;
-  const locked = busy || !!pending;
+  // A public-ID lookup computes the next selection from the list it started with, so the selection stays fixed until it settles.
+  const locked = busy || !!pending, selectionLocked = locked || lookupBusy;
   return <dialog ref={dialog} className="create-group-dialog" aria-modal="true" aria-labelledby="create-group-title" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
     <header className="create-group-header"><h2 id="create-group-title">建立群組</h2><button type="button" className="text-button" onClick={onClose} disabled={busy}>關閉</button></header>
     {pending && <p className="notice" role="status">原建立意圖已保留。重試會核對相同群組，不會另建一個；請先確認結果再修改內容。</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
-    <ul className="selected-members" aria-label="已選成員">{selected.map(id => <li key={id}><span>{nameOf(id)}</span>{!locked && <button type="button" className="text-button" aria-label={`移除 ${nameOf(id)}`} onClick={() => setSelected(current => removeMember(current, id))}>×</button>}</li>)}</ul>
+    <ul className="selected-members" aria-label="已選成員">{selected.map(id => <li key={id}><span>{nameOf(id)}</span>{!locked && <button type="button" className="text-button" aria-label={`移除 ${nameOf(id)}`} disabled={lookupBusy} onClick={() => setSelected(current => removeMember(current, id))}>×</button>}</li>)}</ul>
     <p className="small muted selected-count">已選 {selected.length}／{GROUP_OTHER_MEMBER_LIMIT}</p>
     {step === 'members'
       ? <div className="create-group-step">
@@ -113,7 +119,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
             <button type="submit" disabled={locked || lookupBusy || !lookupId.trim()}>{lookupBusy ? '查詢中…' : '加入'}</button>
           </form>
           <ul className="contact-picker" aria-label="聯絡人">{contacts.items.map(item => { const checked = selected.includes(item.user.id); return <li key={item.user.id}><label className="contact-option">
-            <input type="checkbox" checked={checked} disabled={locked || (!checked && selected.length >= GROUP_OTHER_MEMBER_LIMIT)} onChange={event => toggle(item.user.id, event.target.checked)} />
+            <input type="checkbox" checked={checked} disabled={selectionLocked || (!checked && selected.length >= GROUP_OTHER_MEMBER_LIMIT)} onChange={event => toggle(item.user.id, event.target.checked)} />
             <span aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /></span><span>{item.user.display_name}</span>
           </label></li>; })}</ul>
           {contacts.busy && <p role="status" className="small muted">載入聯絡人…</p>}
