@@ -10,7 +10,13 @@
 - 群組管理頁改版：群組頭像與名稱卡、成員列顯示頭像／顯示名稱（取自使用者目錄，未取得前以 ID 代替）／「您」與角色徽章，公開 ID 保留在名稱下方；窄版操作按鈕移到成員資訊下方、「退出群組」全寬。操作、按鈕名稱與伺服器權限規則不變。
 - Browser acceptance 由 59 增至 72 個 checks，未刪除、略過或放寬既有 check。新增項目：訊息 DOM 不變式、選單／群組資訊 Escape 焦點返回、關閉選單不阻擋已讀（SQL receipt）、進場動畫正控制對 reduced-motion、捲離底部新訊息數、切換對話後錨點還原、IME 組字 Enter 不送出、767／768 版面。另記錄效能基準（僅記錄、無門檻）。
 - CI（各 8／8 SUCCESS）：Phase 1 [run39015775029](https://github.com/LeoCheng-space/Hine/actions/runs/39015775029)、Phase 2 [run39016697210](https://github.com/LeoCheng-space/Hine/actions/runs/39016697210)、Phase 3 [run39017509797](https://github.com/LeoCheng-space/Hine/actions/runs/39017509797)、Phase 4 [run39018452562](https://github.com/LeoCheng-space/Hine/actions/runs/39018452562)、Phase 5 checks [run39019069471](https://github.com/LeoCheng-space/Hine/actions/runs/39019069471)。Phase 3 與 Phase 4 的 Chrome job 首次各失敗一次後 rerun 通過，分別為 `genuine_reload_replays_same_unconfirmed_c1_to_same_single_m1` 與 native recipient 啟動 runner error；根因未明，前者已加診斷計數。
-- `frontend/app/tests/review-shell-native.ts` 沒有 runner，只經 typecheck 驗證；其選擇器已與新清單 DOM 核對。附件錯誤訊息修正（#7）另以 [PR #10](https://github.com/LeoCheng-space/Hine/pull/10) 處理，不在本分支。
+- `frontend/app/tests/review-shell-native.ts` 沒有 runner，只經 typecheck 驗證；其選擇器已與新清單 DOM 核對。附件錯誤訊息修正（#7）由 [PR #10](https://github.com/LeoCheng-space/Hine/pull/10) 先合併至 main，再隨 main 併入本分支（見下一節）。
+
+## 2026-10-17 — 附件錯誤依原因與場景顯示（Refs #7）
+
+- 個人檔案儲存頭像時，原本任何上傳失敗都沿用聊天室的「附件傳輸失敗，尚未傳送訊息。」；附件儲存服務未設定或暫時無法使用（A20 回 `DEPENDENCY_UNAVAILABLE`）時，使用者看不出真正原因。現改為依錯誤原因顯示說明，結尾依場景標示「頭像尚未儲存。」或「尚未傳送訊息。」，重試與原上傳核對流程不變。
+- 「原上傳嘗試已保留。再次儲存會核對相同嘗試。」只在伺服器已建立上傳嘗試時顯示；建立前即被拒絕時不再出現。
+- 僅前端修改，未變更 REST／WebSocket／資料庫。頭像實際上傳成功仍需已設定的私有 GCS bucket 與簽章權限；新增 4 個前端行為測試，前端 67 項與 typecheck 通過，並以本機 Docker 實測個人檔案頁顯示新提示。
 
 ## 2026-10-08 — 真Chrome／Edge与完整八job CI全數通過
 

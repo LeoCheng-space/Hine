@@ -5,9 +5,9 @@ import { Avatar } from './ContactsPage';
 import { directoryFor } from './user-directory';
 import type { SessionController } from './session';
 import type { AttachmentView, UserProfile } from './types';
-export interface AvatarRecoverySnapshot { file: File | null; readyId: string | null; name: string | null; avatarId: string | null | undefined; pending: boolean; expired: boolean; error: string | null; notice: string | null }
+export interface AvatarRecoverySnapshot { file: File | null; readyId: string | null; name: string | null; avatarId: string | null | undefined; pending: boolean; expired: boolean; attemptRetained: boolean; error: string | null; notice: string | null }
 export class AvatarSaveRecovery {
-  private snapshot: AvatarRecoverySnapshot = { file: null, readyId: null, name: null, avatarId: undefined, pending: false, expired: false, error: null, notice: null };
+  private snapshot: AvatarRecoverySnapshot = { file: null, readyId: null, name: null, avatarId: undefined, pending: false, expired: false, attemptRetained: false, error: null, notice: null };
   private listeners = new Set<() => void>();
   private generation = 0;
   private inflight: Promise<string> | null = null;
@@ -16,22 +16,22 @@ export class AvatarSaveRecovery {
   getSnapshot = (): AvatarRecoverySnapshot => this.snapshot;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   update(update: Partial<AvatarRecoverySnapshot>): void { this.snapshot = { ...this.snapshot, ...update }; for (const listener of this.listeners) listener(); }
-  select(file: File | null): void { ++this.generation; this.retry = null; this.inflight = null; this.update({ file, readyId: null, expired: false, error: null, notice: null }); }
+  select(file: File | null): void { ++this.generation; this.retry = null; this.inflight = null; this.update({ file, readyId: null, expired: false, attemptRetained: false, error: null, notice: null }); }
   attachment(upload: (file: File) => Promise<AttachmentView>): Promise<string> {
     if (this.snapshot.readyId) return Promise.resolve(this.snapshot.readyId);
-    if (this.snapshot.expired) return Promise.reject(new AttachmentTransferError('UPLOAD_EXPIRED', false));
-    if (!this.snapshot.file) return Promise.reject(new AttachmentTransferError('INVALID_ATTACHMENT', false));
+    if (this.snapshot.expired) return Promise.reject(new AttachmentTransferError('UPLOAD_EXPIRED', false, null, { scope: 'avatar' }));
+    if (!this.snapshot.file) return Promise.reject(new AttachmentTransferError('INVALID_ATTACHMENT', false, null, { scope: 'avatar' }));
     if (this.inflight) return this.inflight;
     const generation = this.generation, file = this.snapshot.file, transfer = this.retry;
     this.inflight = (transfer ? transfer() : upload(file)).then(attachment => {
       if (generation !== this.generation) throw new Error('已選擇其他頭像，舊上傳不會指派至個人檔案。');
-      if (attachment.state !== 'ready') throw new AttachmentTransferError('UPLOAD_NOT_READY', true);
-      this.retry = null; this.update({ readyId: attachment.id });
+      if (attachment.state !== 'ready') throw new AttachmentTransferError('UPLOAD_NOT_READY', true, null, { scope: 'avatar', attemptCreated: true });
+      this.retry = null; this.update({ readyId: attachment.id, attemptRetained: false });
       return attachment.id;
     }).catch(error => {
       if (generation === this.generation && error instanceof AttachmentTransferError) {
-        if (error.retry) this.retry = error.retry;
-        if (error.code === 'UPLOAD_EXPIRED') { this.retry = null; this.update({ expired: true }); }
+        if (error.retry) { this.retry = error.retry; this.update({ attemptRetained: error.attemptCreated }); }
+        if (error.code === 'UPLOAD_EXPIRED') { this.retry = null; this.update({ expired: true, attemptRetained: false }); }
       }
       throw error;
     }).finally(() => { if (generation === this.generation) this.inflight = null; });
@@ -102,7 +102,7 @@ export function ProfilePage({ session }: { session: SessionController }) {
         </div>
       </div>
       {draft.readyId && <p className="notice" role="status">頭像已核驗就緒。再次儲存只核對 A06 指派，不會重新上傳。</p>}
-      {recovery.retry && !draft.readyId && <p className="notice" role="status">原上傳嘗試已保留。再次儲存會核对相同嘗試。</p>}
+      {draft.attemptRetained && !draft.readyId && <p className="notice" role="status">原上傳嘗試已保留。再次儲存會核對相同嘗試。</p>}
       {draft.expired && <p className="notice error" role="alert">原授權已過期。請重新選取檔案，明確建立新的上傳嘗試。</p>}
       {draft.notice && <p className="notice success" role="status">{draft.notice}</p>}
       <div className="actions"><button className="primary" disabled={draft.pending || draft.expired} type="submit">{draft.pending ? '核對上傳與儲存中…' : '儲存 / 核對原變更'}</button>
