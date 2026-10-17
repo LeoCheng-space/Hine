@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-18 — 資料庫重建後舊裝置導致無法登入（Fixes #18）
+
+- 問題：`./build.sh clean` 重建資料庫後，瀏覽器 `localStorage` 仍保存舊的 `device_id`；重新註冊同一電子郵件、輸入正確密碼登入時，A02 回 `UNAUTHENTICATED`，畫面顯示兩次「電子郵件或密碼不正確。」。
+- 契約變更（[interface-contract](contracts/interface-contract.md#api-a02)）：A02 在密碼驗證通過、但 `device_id` 不屬於此帳號時改回 `DEVICE_NOT_RECOGNIZED` 401。帳號不存在與密碼錯誤仍一律 `UNAUTHENTICATED`，新錯誤碼不洩漏帳號是否存在。
+- 前端收到此碼時，刪除該帳號的本機裝置綁定，並以 `device_id:null` 自動重試登入恰好一次；密碼錯誤不重試。登入失敗訊息只在表單顯示一次（不再同時出現在頁面底部通知）。
+
 ## 2026-10-17 — 一鍵安裝／部署 `./build.sh`
 
 - 新增根目錄 `./build.sh`：本機一個指令完成前置工具安裝（Ubuntu／Debian 以 sudo 從 Docker 官方 apt 來源安裝；Bun 1.4.2 以寫死的 SHA-256 驗證）、密鑰與 `.env`、前端建置與啟動，完成後開啟 `https://localhost:8443`（Caddy 本機 CA，只綁 loopback；首次需接受憑證警告）。`stop`／`status`／`logs` 子指令；`clean` 先預覽、`clean --yes` 才清除本機資料庫與 Docker 專案資源（只限本機，且拒絕清除由其他資料夾建立的同名專案），其他指令不刪除資料。

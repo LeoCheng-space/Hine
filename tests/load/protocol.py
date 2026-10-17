@@ -553,7 +553,7 @@ def remote_error(payload):
             not (isinstance(details, dict) and "auth_layer" in details),
             "PUBLIC_INTERNAL_METADATA_LEAK")
     # Never trust server-provided code/message as a safe log string.
-    codes = {"INVALID_ARGUMENT", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT",
+    codes = {"INVALID_ARGUMENT", "UNAUTHENTICATED", "DEVICE_NOT_RECOGNIZED", "FORBIDDEN", "NOT_FOUND", "CONFLICT",
              "IDEMPOTENCY_CONFLICT", "CURSOR_INVALID", "CURSOR_EXPIRED", "SYNC_RESET_REQUIRED",
              "PAYLOAD_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE", "UPLOAD_NOT_READY", "RATE_LIMITED",
              "DEPENDENCY_UNAVAILABLE", "PERSISTENCE_FAILED", "OUTCOME_UNCONFIRMED"}

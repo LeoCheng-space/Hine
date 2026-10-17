@@ -56,6 +56,31 @@ export class DeviceStore {
     for (let index = 0; index < storage.length; index++) { const key = storage.key(index); if (key?.startsWith('hine-device:')) obsolete.push(key); }
     for (const key of obsolete) storage.removeItem(key);
   }
+  /** Drops the owner bound to this email and every alias of that owner; other owners are untouched. */
+  forget(submittedEmail: string): void {
+    try {
+      const bindings = this.read(), alias = emailCasefold(submittedEmail);
+      if (!Object.hasOwn(bindings.aliases, alias)) return;
+      const owner = bindings.aliases[alias];
+      const owners = Object.fromEntries(Object.entries(bindings.owners).filter(([id]) => id !== owner));
+      const aliases = Object.fromEntries(Object.entries(bindings.aliases).filter(([, id]) => id !== owner));
+      (this.storage ?? localStorage).setItem('hine-device-store', JSON.stringify({ owners, aliases }));
+    } catch { throw new ApiError('STORAGE_UNAVAILABLE'); }
+  }
+}
+/**
+ * A02 with the stored device. A server that no longer knows that device (e.g. its database was
+ * reset) answers DEVICE_NOT_RECOGNIZED only after the password matched, so the stale binding is
+ * dropped and the login retried exactly once as a new device.
+ */
+export async function loginWithStoredDevice<T>(store: DeviceStore, email: string, send: (deviceId: string | null) => Promise<T>): Promise<T> {
+  const deviceId = store.lookup(email);
+  try { return await send(deviceId); }
+  catch (error) {
+    if (deviceId === null || !(error instanceof ApiError) || error.code !== 'DEVICE_NOT_RECOGNIZED') throw error;
+    store.forget(email);
+    return send(null);
+  }
 }
 export class SessionController {
   readonly config: RuntimeConfig;
@@ -132,15 +157,18 @@ export class SessionController {
     return this.authOperations.run(async () => {
       this.requireLock(); this.clear(); const epoch = this.epoch;
       try {
-        const device_id = (this.deviceStore ??= new DeviceStore()).lookup(email);
-        this.activeAbort = new AbortController();
-        const { data } = await wireRequest<unknown>(this.config, '/auth/login', { method: 'POST', json: { email, password, device_id } }, undefined, this.activeAbort.signal);
+        const { data } = await loginWithStoredDevice(this.deviceStore ??= new DeviceStore(), email, device_id => {
+          if (this.disposed || epoch !== this.epoch) throw new ApiError('OUTCOME_UNCONFIRMED');
+          this.activeAbort = new AbortController();
+          return wireRequest<unknown>(this.config, '/auth/login', { method: 'POST', json: { email, password, device_id } }, undefined, this.activeAbort.signal);
+        });
         if (this.disposed || epoch !== this.epoch) return;
         await this.install(data, email);
       } catch (error) {
         if (!this.disposed && epoch === this.epoch) {
           if (error instanceof ApiError && error.code === 'STORAGE_UNAVAILABLE') this.failStorage(error);
-          else { this.clear(); this.publish(loggedOut, 'ready', error instanceof ApiError && error.code === 'UNAUTHENTICATED' ? '電子郵件或密碼不正確。' : describeError(error)); }
+          // The login form shows this failure next to its fields; publishing it too would show it twice.
+          else { this.clear(); this.publish(loggedOut, 'ready'); }
         }
         throw error;
       } finally { this.activeAbort = undefined; }

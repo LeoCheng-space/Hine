@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { AuthOperations, DeviceStore } from '../src/session';
+import { AuthOperations, DeviceStore, loginWithStoredDevice } from '../src/session';
+import { ApiError } from '../src/api';
 import { GroupCreationIntentStore } from '../src/GroupsPage';
 import { AvatarSaveRecovery } from '../src/ProfilePage';
 import { ContactLookupLifetime } from '../src/ContactsPage';
@@ -73,4 +74,35 @@ test('a late contact lookup cannot apply global history after a newer selection 
 test('corrupt DeviceStore cannot send an invented device or bypass persistence failure', () => {
   const storage = new TestStorage(); storage.setItem('hine-device-store', '{broken');
   expect(() => new DeviceStore(storage).lookup('a@example.test')).toThrow('本機儲存不可用');
+});
+const ownerA = { id: 'public-a', email: 'a@example.test', display_name: 'A', avatar_attachment_id: null };
+const ownerB = { id: 'public-b', email: 'b@example.test', display_name: 'B', avatar_attachment_id: null };
+test('a device the server no longer recognizes is forgotten and the login retried once as a new device', async () => {
+  const storage = new TestStorage(), store = new DeviceStore(storage);
+  store.save(ownerA, 'stale-a', 'A@example.test'); store.save(ownerB, 'device-b');
+  const sent: (string | null)[] = [];
+  const result = await loginWithStoredDevice(store, 'A@example.test', async deviceId => {
+    sent.push(deviceId);
+    if (deviceId !== null) throw new ApiError('DEVICE_NOT_RECOGNIZED');
+    return 'new session';
+  });
+  expect(result).toBe('new session');
+  expect(sent).toEqual(['stale-a', null]);
+  expect(new DeviceStore(storage).lookup('a@example.test')).toBeNull();
+  expect(new DeviceStore(storage).lookup('A@example.test')).toBeNull();
+  expect(new DeviceStore(storage).lookup('b@example.test')).toBe('device-b');
+});
+test('wrong credentials are sent once and keep the device binding', async () => {
+  const store = new DeviceStore(new TestStorage()); store.save(ownerA, 'device-a');
+  const sent: (string | null)[] = [];
+  await expect(loginWithStoredDevice(store, 'a@example.test', async deviceId => { sent.push(deviceId); throw new ApiError('UNAUTHENTICATED'); }))
+    .rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+  expect(sent).toEqual(['device-a']);
+  expect(store.lookup('a@example.test')).toBe('device-a');
+});
+test('a device rejection is not retried when no device was sent', async () => {
+  const sent: (string | null)[] = [];
+  await expect(loginWithStoredDevice(new DeviceStore(new TestStorage()), 'a@example.test', async deviceId => { sent.push(deviceId); throw new ApiError('DEVICE_NOT_RECOGNIZED'); }))
+    .rejects.toMatchObject({ code: 'DEVICE_NOT_RECOGNIZED' });
+  expect(sent).toEqual([null]);
 });
