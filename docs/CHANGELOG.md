@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-17 — 一鍵安裝／部署 `./build.sh`
+
+- 新增根目錄 `./build.sh`：本機一個指令完成前置工具安裝（Ubuntu／Debian 以 sudo 從 Docker 官方 apt 來源安裝；Bun 1.4.2 以寫死的 SHA-256 驗證）、密鑰與 `.env`、前端建置與啟動，完成後開啟 `https://localhost:8443`（Caddy 本機 CA，只綁 loopback；首次需接受憑證警告）。`stop`／`status`／`logs` 子指令；資料不會被刪除。
+- `./build.sh --production` 依 GCP 既定架構（單台 Compute Engine VM＋Docker Compose）部署：嚴格解析 `deploy.env`（不執行內容）、預檢 80／443 占用、DNS 完全符合（不得有 AAAA）與子網路衝突，建立 `/srv/hine`（releases 755、secrets／backups 700），升級時先停止寫入並備份資料庫，再走既有 `preflight.sh`／`stack.sh migrate`／`stack.sh up`／`preflight.sh --public`；成功後才寫入 `/srv/hine/active.env`，子指令只依它操作上線版本。
+- `compose.production.yml` 的 `edge`／`backend` 改為固定子網路（`HINE_EDGE_SUBNET`／`HINE_BACKEND_SUBNET`，`configure_stack` 必填），`TRUSTED_PROXY_NETWORKS` 由兩者組成。`init-dev.sh` 的密鑰產生抽成 `init-secrets.sh`／`init-env.sh`，開發與正式共用、行為不變。
+- 操作手冊：[docs/deployment/one-click.md](deployment/one-click.md)。正式機實際部署（VM、DNS、Let's Encrypt、GCS）尚未執行；本機以單元測試、全新 clone 實跑與一次性 Ubuntu 容器驗證。
+
 ## 2026-10-17 — Web UI 改版（Telegram 風格、保留 HINE 品牌），feature branch 五階段完成
 
 - 只改前端；REST／WSS 契約、PostgreSQL schema、Redis、JWT／Session、IndexedDB 格式、已讀／未讀／同步語意與 `ChatController` 公開 API 不變。Web Lock、原意圖重試、群組建立冪等保留。設計 v2.3：`docs/superpowers/specs/2026-10-17-ui-refresh-design.md`。

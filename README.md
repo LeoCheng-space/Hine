@@ -89,6 +89,7 @@ Hine/
 - [Backend A](backend/realtime/README.md)：`backend/realtime/src/hine_realtime/` 提供 W01–W20（W21／W22 活動租約範圍外）、Redis 通知／在線狀態、W18 聯絡人 presence；BB 仍是 JWT／工作階段／授權／持久化權威。
 - [Web 應用](frontend/app/README.md)：`frontend/app/src/` 為整合 FA＋FB 的 React／TypeScript 網站，含 Session、路由、資料頁、唯一 WSS、IndexedDB 原子投影與同步。
 - [系統架構程式碼對應](docs/architecture/README.md#arch-code-map)：列出 API、Web、realtime、infra 與測試的實際來源目錄。
+- [一鍵安裝與部署](docs/deployment/one-click.md)：`./build.sh` 一個指令安裝前置工具、建置並啟動本機 `https://localhost:8443`；`./build.sh --production` 依 `deploy.env` 在 GCP VM 正式部署。
 - [共用環境](infra/docker/README.md)：`sh infra/scripts/init-dev.sh` 產生不覆寫既有值的私有設定／Secret；`docker compose --profile product --profile realtime up -d --build --wait` 啟動 PostgreSQL／Redis 與真實 API、realtime 服務。資料卷保留，開發端口須明確選用 loopback override。
 - [部署與維運](docs/deployment/README.md)：列出真實雲端／VM 部署前提、私網路由、備份／還原、回滾與 preflight；雲端執行結果不得由本機證據推論。
 - [QA 協定工具](tests/load/README.md)：HTTP＋WebSocket 工具量測協定 ACK／收訊／歷史與負載節奏；協定呈現不等同瀏覽器保存／呈現。容量政策與實測結果分開記錄。
