@@ -82,6 +82,20 @@ docker compose --project-directory . --env-file .env -f docker-compose.yml -f in
 
 `.secrets/` 與 `.env` 要保留：PostgreSQL volume 被刪除後，下次會用同一組密鑰重新初始化。
 
+### 2.5 完全重新安裝（清除所有本機資料與設定）
+
+**破壞性、無法復原**：會刪除本機所有帳號、訊息與開發密鑰。在 repo 根目錄執行：
+
+```sh
+./build.sh stop
+docker compose --project-directory . --env-file .env -f docker-compose.yml -f infra/docker/compose.local.yml \
+  --profile product --profile realtime --profile local down -v --remove-orphans
+rm -rf .env .secrets .build-logs frontend/app/dist frontend/app/node_modules
+./build.sh
+```
+
+若 `.env` 已經不存在，第二行改成 `docker volume rm hine-dev_postgres_data hine-dev_redis_data hine-dev_caddy_local_data hine-dev_caddy_local_config`（不存在的會顯示錯誤，可忽略）。
+
 ## 3. 正式機部署（GCP Compute Engine VM）
 
 正式機使用 repo 既定的架構：**單台 Compute Engine VM＋Docker Compose**（`docs/decisions.md`）。`./build.sh --production` 走既有的 `preflight.sh` 與 `stack.sh`，不使用 Cloud Run、Cloud SQL 或 GKE。
@@ -203,6 +217,7 @@ git pull
 | `連接埠 8443 已被容器 X（專案 Y）占用` | 另一套 stack 占用了 8443。用 `docker stop X` 停掉後再執行 |
 | `連接埠 N 已被其他程式占用（不是 Docker 容器）` | 用 `sudo ss -ltnp 'sport = :N'` 找出程式並停止（正式機常見是 Nginx：`sudo systemctl disable --now nginx`） |
 | `已切換到 docker 群組但仍無法連線 Docker` | Docker 服務沒有在執行：`sudo systemctl status docker`，必要時 `sudo systemctl enable --now docker` |
+| `init-secrets: run initialization as the existing secret owner UID/GID` | `.secrets/` 裡的檔案擁有者（使用者或群組）與目前執行的使用者不同，`build.sh` 拒絕改動既有密鑰。用 `ls -ln .secrets` 對照 `id`；若是用 `sudo` 或其他帳號產生的，改回正確擁有者（`sudo chown -R 你的帳號:你的群組 .secrets .env`）後重跑。若確定不需要舊資料，依 §2.5 完全重新安裝 |
 | `需要 Docker Compose v2.20 以上` | Docker 太舊；Ubuntu／Debian 可移除舊版後重新執行 `./build.sh` 由官方來源安裝 |
 | 第 4 步逾時，`./build.sh logs api` 出現 PostgreSQL 密碼驗證失敗（`password authentication failed`） | 資料庫 volume 是用**另一組密鑰**初始化的：同一台電腦上另一份 checkout 用過同樣的 project 名稱（預設 `hine-dev`），但兩份 `.secrets/` 不同。處理方式擇一：在這份 checkout 的 `.env` 把 `COMPOSE_PROJECT_NAME` 改成不同名稱；或把原本那份 checkout 的 `.secrets/` 複製過來；或確認舊資料不需要後依 §2.4 清除資料 |
 | `Bun 下載檔的 SHA-256 不符` | 下載內容遭到修改或不完整，已拒絕安裝；檢查網路或代理後重試 |
