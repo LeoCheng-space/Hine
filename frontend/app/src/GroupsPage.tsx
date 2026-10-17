@@ -154,7 +154,8 @@ export function GroupInfoDialog({ detail, names, onClose, onManage, returnFocus 
 }
 export function GroupsPage({ session, chat, conversationId, onNavigate }: { session: SessionController; chat: ChatController; conversationId: string; onNavigate: (path: string) => void }) {
   const [detail, setDetail] = useState<ConversationDetail | null>(null), [title, setTitle] = useState(''), [newMember, setNewMember] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null);
-  const memberIntent = useRef<Record<string,string>>({});
+  const memberIntent = useRef<Record<string,string>>({}), alive = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const path = `/conversations/${encodeURIComponent(conversationId)}`;
   async function load() { setLoading(true); try { const result = await session.request<ConversationDetail>(path); if (result.data.type !== 'group') throw new Error('這不是群組對話。'); setDetail(result.data); setTitle(result.data.title ?? ''); setError(null); } catch (error) { setDetail(null); setError(describeError(error)); } finally { setLoading(false); } }
   useEffect(() => { void load(); }, [conversationId]);
@@ -165,7 +166,8 @@ export function GroupsPage({ session, chat, conversationId, onNavigate }: { sess
       if (operation === 'title') await session.request<ConversationMutationResult>(path, { method: 'PATCH', json: { title } });
       if (operation === 'add') { const id = newMember; memberIntent.current[id] ??= crypto.randomUUID(); await session.request<MemberMutationResult>(`${path}/members`, { method: 'POST', json: { user_id: id }, idempotencyKey: memberIntent.current[id] }); delete memberIntent.current[id]; setNewMember(''); }
       if (operation === 'role' && userId) await session.request<MemberMutationResult>(`${path}/members/${encodeURIComponent(userId)}`, { method: 'PATCH', json: { role } });
-      if (operation === 'remove' && userId) { await session.request<void>(`${path}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }); if (userId === me) { await chat.withdraw(conversationId); onNavigate('/chats'); return; } }
+      // Leaving still withdraws the conversation locally, but a page the user already left must not navigate them back.
+      if (operation === 'remove' && userId) { await session.request<void>(`${path}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }); if (userId === me) { await chat.withdraw(conversationId); if (alive.current) onNavigate('/chats'); return; } }
       if ((operation === 'add' || operation === 'remove') && target) directory.markAvatarsStale([target, ...(detail?.members.map(member => member.user_id) ?? [])]);
       await load(); setNotice('群組資料已更新。');
     } catch (error) { setError(describeError(error)); } finally { setBusy(false); }
