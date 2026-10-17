@@ -21,6 +21,9 @@ configure_stack() {
             [ -n "${HINE_DOMAIN:-}" ] || fail 'HINE_DOMAIN is required'
             case "$HINE_DOMAIN" in *[!a-zA-Z0-9.-]*|.*|*.) fail 'HINE_DOMAIN must be a DNS hostname without scheme or port' ;; esac
             [ -n "${ACME_EMAIL:-}" ] || fail 'ACME_EMAIL is required'
+            for subnet in "${HINE_EDGE_SUBNET:-}" "${HINE_BACKEND_SUBNET:-}"; do
+                case "$subnet" in ""|*[!0-9./]*) fail 'HINE_EDGE_SUBNET and HINE_BACKEND_SUBNET must pin the production networks as IPv4 CIDRs' ;; esac
+            done
             for name in postgres_password redis_password redis_url api_internal_token realtime_internal_token database_url jwt_signing_key; do
                 [ -f "$HINE_SECRET_DIR/$name" ] && [ -s "$HINE_SECRET_DIR/$name" ] || fail "required production secret file missing: $name"
                 [ ! -L "$HINE_SECRET_DIR/$name" ] || fail 'production secret files must not be symlinks'

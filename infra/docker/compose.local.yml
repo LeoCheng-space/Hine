@@ -1,0 +1,49 @@
+# ./build.sh local stack: Caddy with Caddy's private local CA on 127.0.0.1:8443 only.
+# Shares infra/docker/Caddyfile.acceptance. Never use this overlay on a public host.
+services:
+  api:
+    environment:
+      HINE_ENV: development
+      PUBLIC_ORIGIN: https://localhost:8443
+
+  realtime:
+    environment:
+      HINE_ENV: development
+      PUBLIC_ORIGIN: https://localhost:8443
+      API_INTERNAL_URL: http://api:8080
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [local]
+    restart: unless-stopped
+    environment:
+      HINE_DOMAIN: localhost
+    ports:
+      - "127.0.0.1:8443:443"
+    volumes:
+      - type: bind
+        source: ./infra/docker/Caddyfile.acceptance
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./frontend/app/dist
+        target: /srv/hine
+        read_only: true
+        bind:
+          create_host_path: false
+      - caddy_local_data:/data
+      - caddy_local_config:/config
+    networks:
+      - backend
+      - edge
+    depends_on:
+      api:
+        condition: service_healthy
+      realtime:
+        condition: service_healthy
+
+volumes:
+  caddy_local_data:
+  caddy_local_config:
