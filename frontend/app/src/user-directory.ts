@@ -66,15 +66,17 @@ export class UserDirectory {
     this.changed();
   }
   put(userId: string, summary: DirectorySummary): void { if (!this.deps.accept()) return; this.bump(userId); this.failedAt.delete(userId); this.store(userId, summary); }
-  /** Long-lived views (list, rail, open room) only call `ensure` when their ID sets change, so users already shown are refetched here. */
+  /** Long-lived views (list, rail, open room) only call `ensure` when their ID sets change, so users already shown are refetched here. Every mark bumps the version and discards in-flight responses, so already-stale entries are refetched too. */
   markAvatarsStale(userIds: string[]): void {
     const known: string[] = [];
+    let changed = false;
     for (const id of userIds) {
       const entry = this.entries.get(id); this.bump(id);
-      if (entry && !entry.avatarStale) { this.entries.set(id, { ...entry, avatarStale: true }); known.push(id); }
+      if (!entry) continue;
+      known.push(id);
+      if (!entry.avatarStale) { this.entries.set(id, { ...entry, avatarStale: true }); changed = true; }
     }
-    if (!known.length) return;
-    this.changed();
+    if (changed) this.changed();
     for (const id of known) void this.ensure(id);
   }
   observeMembership(groupId: string, version: number | null, memberIds: string[]): void {
