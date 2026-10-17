@@ -199,31 +199,43 @@ install_prerequisites() {
     ensure_bun
 }
 shell_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
-# Runs before the lock exists: the re-executed process takes the lock itself.
+# Re-runs this script with the docker group active for the current login (e.g. right after usermod, before re-login).
+# Every argument already passed the allowlist above; only paths need quoting. sg makes docker the primary group, so
+# switch straight back to the user's own primary group: files keep their normal owner group (existing .secrets stay
+# valid) and docker remains a supplementary group.
+reexec_in_docker_group() {
+    user=$(id -un)
+    command -v sg >/dev/null 2>&1 || die '找不到 sg 指令；請登出再登入讓 docker 群組生效後重新執行'
+    primary_group=$(id -gn "$user")
+    case "$primary_group" in ""|*[!A-Za-z0-9._-]*) die "無法判斷使用者 $user 的主要群組；請登出再登入後重新執行" ;; esac
+    inner=HINE_BUILD_REEXEC=1
+    [ -z "$LOG_FILE" ] || inner="$inner HINE_BUILD_LOG=$(shell_quote "$LOG_FILE")"
+    inner="$inner sh $(shell_quote "$ROOT/build.sh")"
+    for argument in "$@"; do inner="$inner $argument"; done
+    command_line="sg $primary_group -c $(shell_quote "$inner")"
+    [ -z "$LOG_FILE" ] || printf '+ sg docker -c %s\n' "$command_line" >> "$LOG_FILE"
+    exec sg docker -c "$command_line"
+}
+# Install/deploy: may add the user to the docker group first. Runs before the lock exists; the re-executed process
+# takes the lock itself.
 ensure_docker_access() {
     docker info >/dev/null 2>&1 && return 0
     [ "${HINE_BUILD_REEXEC:-}" != 1 ] || die '已切換到 docker 群組但仍無法連線 Docker；請確認 Docker 服務正在執行（sudo systemctl status docker）'
-    user=$(id -un)
-    if ! id -nG "$user" | tr ' ' '\n' | grep -qx docker; then
-        command -v sudo >/dev/null 2>&1 || die "使用者 $user 不在 docker 群組，且沒有 sudo 可以加入"
-        run sudo usermod -aG docker "$user"
+    if ! id -nG "$(id -un)" | tr ' ' '\n' | grep -qx docker; then
+        command -v sudo >/dev/null 2>&1 || die "使用者 $(id -un) 不在 docker 群組，且沒有 sudo 可以加入"
+        run sudo usermod -aG docker "$(id -un)"
     fi
-    command -v sg >/dev/null 2>&1 || die '找不到 sg 指令；請登出再登入讓 docker 群組生效後重新執行'
     printf '  以 docker 群組重新執行（本次不需登出）\n'
-    # Every argument already passed the allowlist above; only the path needs quoting.
-    # sg makes docker the primary group. Switch straight back to the user's own primary group so files keep their
-    # normal owner group (and existing .secrets stay valid); docker remains a supplementary group.
-    primary_group=$(id -gn "$user")
-    case "$primary_group" in ""|*[!A-Za-z0-9._-]*) die "無法判斷使用者 $user 的主要群組；請登出再登入後重新執行" ;; esac
-    inner="HINE_BUILD_REEXEC=1 HINE_BUILD_LOG=$(shell_quote "$LOG_FILE") sh $(shell_quote "$ROOT/build.sh")"
-    for argument in "$@"; do inner="$inner $argument"; done
-    command_line="sg $primary_group -c $(shell_quote "$inner")"
-    printf '+ sg docker -c %s\n' "$command_line" >> "$LOG_FILE"
-    exec sg docker -c "$command_line"
+    reexec_in_docker_group "$@"
 }
+# stop/status/logs: never change group membership, but use the docker group the user already has.
 require_docker_session() {
     command -v docker >/dev/null 2>&1 || die '尚未安裝 Docker；請先執行 ./build.sh'
-    docker info >/dev/null 2>&1 || die '無法連線 Docker（服務未啟動，或目前登入尚未生效 docker 群組）；請先執行 ./build.sh 或重新登入'
+    docker info >/dev/null 2>&1 && return 0
+    [ "${HINE_BUILD_REEXEC:-}" != 1 ] || die '已切換到 docker 群組但仍無法連線 Docker；請確認 Docker 服務正在執行（sudo systemctl status docker）'
+    id -nG "$(id -un)" | tr ' ' '\n' | grep -qx docker \
+        || die "使用者 $(id -un) 還不在 docker 群組；請先執行 ./build.sh（會自動加入並啟動服務）"
+    reexec_in_docker_group "$@"
 }
 acquire_lock() {
     if ! mkdir "$LOCK_DIR" 2>/dev/null; then
@@ -491,11 +503,11 @@ case "$MODE:$COMMAND" in
     local:up) start_log; local_up "$@" ;;
     production:up) start_log; production_up "$@" ;;
     local:*)
-        require_docker_session
+        require_docker_session "$@"
         [ "$COMMAND" != stop ] || acquire_lock
         local_command ;;
     production:*)
-        require_docker_session
+        require_docker_session "$@"
         [ "$COMMAND" != stop ] || acquire_lock
         production_command ;;
 esac

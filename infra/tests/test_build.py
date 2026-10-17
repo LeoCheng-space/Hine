@@ -184,6 +184,27 @@ class BuildScriptTests(unittest.TestCase):
         self.assertTrue(command.endswith(" sh " + quoted + " --production"), command)
         self.assertFalse((self.root / ".build.lock").exists())
 
+    def test_subcommands_switch_to_the_docker_group_like_the_main_flow(self):
+        primary = subprocess.run([shutil.which("id"), "-gn"], text=True, capture_output=True, check=True).stdout.strip()
+        for arguments in (("stop",), ("status",), ("--production", "logs", "api", "--follow")):
+            with self.subTest(arguments=arguments):
+                self.log.write_text("")
+                result = self.build(*arguments, FAKE_DOCKER_INFO="fail", FAKE_GROUPS="users docker")
+                # The re-executed child still cannot reach the fake daemon and says so; the switch itself is the point.
+                self.assertIn("已切換到 docker 群組", result.stderr)
+                outer = [line for line in self.calls() if line.startswith("sg docker -c ")]
+                self.assertEqual(len(outer), 1, self.log.read_text())
+                self.assertTrue(outer[0].startswith(f"sg docker -c sg {primary} -c "), outer[0])
+                self.assertTrue(self.sg_command.read_text().endswith("/build.sh' " + " ".join(arguments)))
+                self.assertFalse(any(line.startswith("sudo") for line in self.calls()))
+                self.assertFalse((self.root / ".build.lock").exists())
+
+    def test_subcommands_for_users_outside_the_docker_group_point_to_build_without_sudo(self):
+        result = self.build("stop", FAKE_DOCKER_INFO="fail", FAKE_GROUPS="users")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("請先執行 ./build.sh", result.stderr)
+        self.assertFalse(any(line.startswith(("sudo", "sg")) for line in self.calls()))
+
     # Local mode --------------------------------------------------------------------------------
     def test_local_run_initializes_builds_with_local_origin_and_waits(self):
         result = self.build()
