@@ -20,6 +20,16 @@
 .message-meta { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 7px; font-size: .65rem; color: #768879; line-height: 1.5; }
 .pending-message { border-style: dashed; opacity: .86; }
 .rejected-message { border-color: #d9959d !important; }
+.date-separator { display: flex; justify-content: center; margin: 14px 0 10px; }
+.date-separator span { padding: 3px 12px; border-radius: 12px; background: #0f3d352e; color: #fff; font-size: .74rem; font-weight: 600; }
+.date-pill { position: absolute; top: 100px; left: 50%; z-index: 3; transform: translateX(-50%); padding: 3px 12px; border-radius: 12px; background: #0f3d3566; color: #fff; font-size: .74rem; font-weight: 600; pointer-events: none; }
+.jump-latest-fab[hidden], .date-pill[hidden] { display: none !important; }
+.message-status { display: inline-flex; align-items: center; }
+.message-status .icon { width: 16px; height: 16px; }
+.status-double-read { color: var(--brand-500); }
+.status-warn { color: var(--danger); }
+.message-avatar { display: inline-flex; align-self: flex-end; width: 34px; flex-shrink: 0; margin-right: 8px; }
+.message-avatar .avatar { width: 34px; height: 34px; font-size: .85rem; }
 .intent-error { font-size: .76rem; color: var(--danger); }
 .pending-message button { font-size: .75rem; margin-top: 9px; }
 .chat-start { text-align: center; padding: 40px 10px; font-size: .85rem; }
