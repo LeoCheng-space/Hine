@@ -690,7 +690,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                   len(indexed_results) == 100 and all(indexed_results))
             check(test_record, "recipient_saved_cursor_advanced_after_real_reconnect", recovered_state["partition"]["cursor"] != cursor_before)
             check(test_record, "native_recipient_recovery_completed_within_five_seconds", recovery_ms <= 5000)
-            test_record["timings_ms"] = {"recipient_offline_to_100_dom_and_idb_recovery": recovery_ms}
+            test_record.setdefault("timings_ms", {}).update({"recipient_offline_to_100_dom_and_idb_recovery": recovery_ms})
             sender_intent_text = "browser-sender-offline-" + secrets.token_hex(8)
             await page_a.context.set_offline(True)
             await page_a.wait_for_function("() => !navigator.onLine")
@@ -774,6 +774,48 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                     "SELECT count(*) FROM messages WHERE client_message_id=$1",
                     group_message_row["client_message_id"]) if group_message_row else 0
             check(test_record, "group_message_original_intent_persisted_once", group_message_row is not None and group_mapping_count == 1)
+
+            # Record-only UI performance baselines (no thresholds, no checks). page_a is wide
+            # and has the direct and group rooms; it ends back in the group room.
+            async def perf_sample(label: str, action, repeats: int = 3) -> None:
+                cdp = await page_a.context.new_cdp_session(page_a)
+                try:
+                    await cdp.send("Performance.enable")
+                    samples = []
+                    for _ in range(repeats):
+                        before = {metric["name"]: metric["value"] for metric in (await cdp.send("Performance.getMetrics"))["metrics"]}
+                        started = time.monotonic()
+                        await action()
+                        await page_a.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+                        after = {metric["name"]: metric["value"] for metric in (await cdp.send("Performance.getMetrics"))["metrics"]}
+                        samples.append({"elapsed_ms": (time.monotonic() - started) * 1000,
+                                        **{name: after.get(name, 0) - before.get(name, 0) for name in ("ScriptDuration", "TaskDuration", "LayoutCount", "RecalcStyleCount")}})
+                    test_record.setdefault("perf", {})[label] = {name: round(sorted(sample[name] for sample in samples)[len(samples) // 2], 4) for name in samples[0]}
+                finally:
+                    await cdp.detach()
+
+            async def open_room(conversation_id: str, title: str | None) -> None:
+                await page_a.locator(f".chat-list [data-conversation-id='{conversation_id}']").click()
+                await page_a.wait_for_url(re.compile("/chats/" + re.escape(quote(conversation_id, safe="")) + "$"))
+                if title is not None:
+                    await page_a.get_by_role("heading", name=title).wait_for(state="visible")
+                await page_a.locator("#chat-title").wait_for(state="visible")
+
+            async def room_round_trip() -> None:
+                await open_room(direct_id, None)
+                await open_room(group_id, group_title)
+
+            async def type_fifty() -> None:
+                composer = page_a.locator(".chat-composer textarea")
+                await composer.focus()
+                await page_a.keyboard.type("perf-" + "x" * 45)
+                await composer.fill("")
+
+            await page_a.bring_to_front()
+            await perf_sample("room_switch_round_trip", room_round_trip)
+            await perf_sample("composer_type_50_chars", type_fifty)
+            test_record.setdefault("perf", {})["dom"] = await page_a.evaluate(
+                "() => ({elements: document.getElementsByTagName('*').length, messages: document.querySelectorAll('[data-message-id]').length})")
             await page_a.get_by_role("button", name="群組資訊").click()
             dialog = page_a.get_by_role("dialog", name="群組資訊")
             await wait_visible(dialog)
