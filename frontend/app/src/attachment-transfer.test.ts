@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { ApiError } from './api';
 import { AttachmentTransferError, canResumeUpload, uploadAttachment, validateUploadGrant } from './attachment-transfer';
 import type { SessionController } from './session';
 const grant={attachment_id:'a',upload_attempt_id:'attempt',upload_url:'https://storage.googleapis.com/private/object?X-Goog-SignedHeaders=cache-control%3Bcontent-type%3Bhost%3Bx-goog-if-generation-match',expires_at:'2099-01-01T00:00:00Z',required_headers:{'Content-Type':'image/png','x-goog-if-generation-match':'0','Cache-Control':'no-transform'}};
@@ -61,4 +62,27 @@ test('a refused PUT can retry the original immutable upload after A21 confirms a
   expect(grants).toBe(1);
   expect(puts[1].headers.get('x-goog-if-generation-match')).toBe('0');
  } finally { globalThis.fetch = originalFetch; }
+});
+
+function storageRefusingSession(): SessionController {
+ const context = { state: 'authenticated', user_id: 'me', device_id: 'device', expires_at: '2099-01-01T00:00:00Z' };
+ return { getSnapshot: () => ({ context }), async request() { throw new ApiError('DEPENDENCY_UNAVAILABLE', true); } } as unknown as SessionController;
+}
+test('avatar upload refused by the storage service explains the service without chat wording', async () => {
+ const file = new File([Uint8Array.from([137, 80, 78, 71])], 'avatar.png', { type: 'image/png' });
+ const error = await uploadAttachment(storageRefusingSession(), file, 'avatar', null).catch(error => error);
+ expect(error).toBeInstanceOf(AttachmentTransferError);
+ expect(error.code).toBe('DEPENDENCY_UNAVAILABLE');
+ expect(error.message).toContain('附件儲存服務目前無法使用');
+ expect(error.message).toContain('頭像尚未儲存');
+ expect(error.message).not.toContain('傳送訊息');
+ expect(error.attemptCreated).toBe(false);
+ expect(error.retryable).toBe(true);
+});
+test('conversation upload refused by the storage service keeps the message-not-sent outcome', async () => {
+ const file = new File([Uint8Array.from([137, 80, 78, 71])], 'photo.png', { type: 'image/png' });
+ const error = await uploadAttachment(storageRefusingSession(), file, 'conversation', 'room').catch(error => error);
+ expect(error.message).toContain('附件儲存服務目前無法使用');
+ expect(error.message).toContain('尚未傳送訊息');
+ expect(error.message).not.toContain('頭像');
 });
