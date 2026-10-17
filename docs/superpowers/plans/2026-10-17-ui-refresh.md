@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19.3、TypeScript 7.0、Bun 1.4.2（bun:test，無 DOM 環境；以 `renderToStaticMarkup` 做靜態渲染測試）、原生 CSS、Playwright 1.63（`tests/browser/browser_acceptance.py`，CI Chrome／Edge headed）。
 
-**Spec:** `docs/superpowers/specs/2026-10-17-ui-refresh-design.md`（v2.2）。spec §13 決策已由使用者確認（2026-10-17）：寬版圖示欄＋窄版 ☰；排序用 `created_at`；#7 移出本分支；GroupsPage 以回歸檢查證明；同步 `review-shell-native.ts`；每個 Phase 推送功能分支跑 CI。
+**Spec:** `docs/superpowers/specs/2026-10-17-ui-refresh-design.md`（v2.3）。spec §13 決策已由使用者確認（2026-10-17）：寬版圖示欄＋窄版 ☰；排序用 `created_at`（Issue #11 追蹤伺服器端排序）；#7 移出本分支（PR #10）；GroupsPage 以回歸檢查證明；同步 `review-shell-native.ts`；每個 Phase 推送功能分支跑 CI。v2.3 依第二次獨立審查修正（R8、R12–R14）。
 
 ## Global Constraints
 
@@ -41,15 +41,16 @@ PUBLIC_ORIGIN=https://localhost:8443 ~/.bun/bin/bun run build
 | `frontend/app/src/chat-presentation.test.ts` | 新增 | 上述單元測試 |
 | `frontend/app/src/user-directory.ts` | 新增 | 依 owner 分區的使用者摘要快取 |
 | `frontend/app/src/user-directory.test.ts` | 新增 | 快取單元測試 |
+| `frontend/app/src/avatar-cache.ts`、`avatar-cache.test.ts` | 新增 | 依 owner 分區的頭像物件 URL 快取 |
 | `frontend/app/src/group-selection.ts`、`group-selection.test.ts` | 新增 | 建群組成員選取純函式 |
 | `frontend/app/src/AppMenu.tsx` | 新增 | 窄版 ☰ 選單 |
 | `frontend/app/src/ChatList.tsx` | 新增（自 `App.tsx:13-23` 移出） | 對話清單 |
 | `frontend/app/src/MessageRow.tsx`、`message-row.test.tsx` | 新增 | 訊息列、待送列、日期分隔、浮動日期膠囊；DOM 不變式測試 |
 | `frontend/app/src/read-observer.ts`、`read-observer.test.ts` | 修改 | `bubbleMeasurable` |
-| `frontend/app/src/App.tsx` | 修改 | 外殼、圖示欄、窄版頂部列、路由焦點、建群組掛載 |
+| `frontend/app/src/App.tsx` | 修改 | 外殼、圖示欄、窄版頂部列、路由焦點、聊天路由只閘門聊天室（R13）、建群組掛載 |
 | `frontend/app/src/ChatView.tsx` | 修改 | 頂部列、時間軸、浮動按鈕、輸入列、名稱快取、進場動畫 |
-| `frontend/app/src/GroupsPage.tsx` | 修改 | 兩步建群組對話框、管理頁外觀 |
-| `AccountPages.tsx`、`ContactsPage.tsx`、`ProfilePage.tsx`、`AttachmentViewer.tsx` | 修改 | 外觀、`data-route-heading`、快取接線；行為不變 |
+| `frontend/app/src/GroupsPage.tsx` | 修改 | 兩步建群組對話框、管理頁外觀、卸載後不導覽（R12） |
+| `AccountPages.tsx`、`ContactsPage.tsx`（`Avatar` 改用頭像快取，匯出不變）、`ProfilePage.tsx`、`AttachmentViewer.tsx` | 修改 | 外觀、`data-route-heading`、快取接線；行為不變 |
 | `Shell.css`、`Chat.css` | 修改 | token、版面、動畫、reduced-motion |
 | `tests/browser/browser_acceptance.py` | 修改 | 各 Phase 定位更新；Phase 5 新增檢查與效能記錄 |
 | `frontend/app/tests/review-shell-native.ts` | 修改（Phase 2、4） | 同步選擇器，斷言語意不變；無執行入口，只以 typecheck 驗證 |
@@ -151,7 +152,7 @@ export function AppMenu({ open, items, onClose, triggerRef }: { open: boolean; i
 }
 ```
 
-- [ ] **Step 2：`App.tsx` 外殼**：以 `matchMedia('(width < 768px)')` 的 state（監聽 `change`）決定窄版。寬版 `.app-nav` 內為 `<nav aria-label="主要導覽">`：品牌按鈕（`aria-label="HINE 聊天首頁"`）、「聊天」「聯絡人」「個人檔案」按鈕（圖示＋visually-hidden 文字，`title` 為同名提示）、底部「登出」。窄版 `.app-nav` 內為 ☰（`ref={menuButton}`、`aria-label="開啟選單"`、`aria-haspopup="dialog"`）與品牌按鈕，並渲染 `<AppMenu open={menuOpen} items={[聊天, 個人檔案, 聯絡人, 登出]} …/>`。登出沿用 `App.tsx:74` 既有處理器。保留「跳至主要內容」、`.session-notice`。
+- [ ] **Step 2：`App.tsx` 外殼**：以 `matchMedia('(width < 768px)')` 的 state（監聽 `change`）決定窄版。寬版 `.app-nav` 內為 `<nav aria-label="主要導覽">`：品牌按鈕（`aria-label="HINE 聊天首頁"`）、「聊天」「聯絡人」「個人檔案」按鈕（圖示 `<span aria-hidden="true">`＋visually-hidden 文字，`title` 為同名提示；可存取名稱必須恰為文字，`browser_acceptance.py:282` 以 `exact=True` 比對）、底部「登出」。窄版 `.app-nav` 內為 ☰（`ref={menuButton}`、`aria-label="開啟選單"`、`aria-haspopup="dialog"`）與品牌按鈕，並渲染 `<AppMenu open={menuOpen} items={[聊天, 個人檔案, 聯絡人, 登出]} …/>`。登出沿用 `App.tsx:74` 既有處理器。保留「跳至主要內容」、`.session-notice`。
 - [ ] **Step 3：`Shell.css`**：`.app-shell` 寬版 `grid-template-columns: 72px 1fr`；`.app-nav` 寬版 `position: sticky; top: 0; height: 100dvh`，窄版 `position: sticky; top: 0; z-index: 10`；`.app-menu::backdrop` 半透明；`.app-menu-panel` 寬 280px、自左滑入（`@starting-style { transform: translateX(-100%) }`、`transition: transform var(--motion-base) var(--ease-out)`）；修正 `Shell.css:64-65,124-125` 寫死的 68／109px 高度為以變數 `--app-nav-height` 計算。
 - [ ] **Step 4：更新驗收**（只改 `:795` 的定位，條件不變；其他使用「主要導覽」的步驟都在寬版執行，不需修改）：
 
@@ -189,9 +190,9 @@ async def main_nav(page):
 
 **潛在失效模式**：重排或沉底；跨帳號顯示舊名稱；撤權列重新出現；請求風暴；骨架閃爍；`refreshConversation` 迴圈重試。
 
-**完成條件**：Task 2.1、2.2 測試通過；三命令 exit 0；CI 8／8；本機 25 個對話：首次載入時 `/users/` 與 `/conversations/{id}` 同時進行中請求各 ≤4（DevTools Network 截圖）；**沒有新訊息時**，等待兩次背景同步（約 20 秒）列順序不變；**由另一帳號對某個已載入但不在首位的對話送 1 則**後，該對話移到首位，其他列相對順序不變（前後截圖）。
+**完成條件**：Task 2.1、2.2、2.2b 測試通過；三命令 exit 0；CI 8／8；本機 25 個對話：首次載入時 `/users/`、`/conversations/{id}`、`/attachments/…/download` 同時進行中請求各 ≤4（DevTools Network 截圖）；**沒有新訊息時**，等待兩次背景同步（約 20 秒）列順序不變；**由另一帳號對某個已載入但不在首位的對話送 1 則**後，該對話移到首位，其他列相對順序不變（前後截圖）；切換對話時清單不重建（Task 2.4 Step 3）。
 
-**建議提交**：Task 2.1、2.2、2.3 各一個提交。
+**建議提交**：Task 2.1、2.2、2.2b、2.3、2.4 各一個提交。
 
 ### Task 2.1：清單推導（`chat-presentation.ts` 第一部分）
 
@@ -347,7 +348,8 @@ export function accentIndex(id: string): 1 | 2 | 3 | 4 | 5 | 6 {
 **Files:** Create `frontend/app/src/user-directory.ts`；Test `frontend/app/src/user-directory.test.ts`
 
 **Interfaces:**
-- Produces: `interface DirectoryEntry { displayName: string; avatarId: string | null; fetchedAt: number; avatarStale: boolean }`；`interface DirectoryDeps { fetchSummary(userId: string, signal: AbortSignal): Promise<{ display_name: string; avatar_attachment_id: string | null }>; now(): number; accept(): boolean }`；`class UserDirectory`：`get(userId)`、`ensure(userId): Promise<void>`（永不 reject）、`put(userId, summary)`、`markAvatarsStale(userIds: string[])`、`reset()`、箭頭屬性 `subscribe`、`getVersion`；`directoryFor(session: SessionController): UserDirectory`。
+- Produces: `interface DirectoryEntry { displayName: string; avatarId: string | null; fetchedAt: number; avatarStale: boolean }`；`interface DirectoryDeps { fetchSummary(userId: string, signal: AbortSignal): Promise<{ display_name: string; avatar_attachment_id: string | null }>; now(): number; accept(): boolean }`；`class UserDirectory`：`get(userId)`、`ensure(userId): Promise<void>`（永不 reject）、`put(userId, summary)`（未被 `accept()` 時不寫入）、`markAvatarsStale(userIds: string[])`、`observeMembership(groupId: string, version: number | null, memberIds: string[])`、`reset()`、箭頭屬性 `subscribe`、`getVersion`；`directoryFor(session: SessionController): UserDirectory`。
+- 呼叫規則：`ensure` 只在 effect 中依使用者 ID 集合呼叫，不在 render 中呼叫。
 
 - [ ] **Step 1：寫失敗測試**
 
@@ -361,7 +363,7 @@ function deferred<T>() { let resolve!: (value: T) => void, reject!: (error: unkn
 function harness(options: { concurrency?: number; accept?: () => boolean } = {}) {
   const calls: { id: string; signal: AbortSignal; done: ReturnType<typeof deferred<Summary>> }[] = [];
   let time = 0;
-  const directory = new UserDirectory({ fetchSummary: (id, signal) => { const done = deferred<Summary>(); calls.push({ id, signal, done }); return done.promise; }, now: () => time, accept: options.accept ?? (() => true) }, { ttlMs: 300_000, concurrency: options.concurrency ?? 4 });
+  const directory = new UserDirectory({ fetchSummary: (id, signal) => { const done = deferred<Summary>(); calls.push({ id, signal, done }); return done.promise; }, now: () => time, accept: options.accept ?? (() => true) }, { ttlMs: 300_000, concurrency: options.concurrency ?? 4, failureBackoffMs: 30_000 });
   return { directory, calls, advance: (ms: number) => { time += ms; } };
 }
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -387,13 +389,14 @@ test('reset aborts requests, discards late responses and settles queued work', a
   calls[0].done.resolve({ display_name: 'Old account', avatar_attachment_id: 'old' }); await running;
   expect(directory.get('u')).toBeUndefined();
 });
-test('failures resolve quietly and are not cached', async () => {
-  const { directory, calls } = harness();
+test('failures resolve quietly, are not cached and back off before retrying', async () => {
+  const { directory, calls, advance } = harness();
   const first = directory.ensure('u'); await flush();
   calls[0].done.reject(new Error('DEPENDENCY_UNAVAILABLE'));
   await first;
   expect(directory.get('u')).toBeUndefined();
-  void directory.ensure('u'); await flush();
+  await directory.ensure('u'); expect(calls.length).toBe(1);
+  advance(30_001); void directory.ensure('u'); await flush();
   expect(calls.length).toBe(2);
 });
 test('a newer put is not overwritten by an older in-flight response', async () => {
@@ -403,17 +406,26 @@ test('a newer put is not overwritten by an older in-flight response', async () =
   calls[0].done.resolve({ display_name: 'Old name', avatar_attachment_id: null }); await first;
   expect(directory.get('me')?.displayName).toBe('New name');
 });
+test('an in-flight request made stale by a version change is replaced, not reused', async () => {
+  const { directory, calls } = harness();
+  const old = directory.ensure('u'); await flush();
+  directory.markAvatarsStale(['u']);
+  const fresh = directory.ensure('u'); await flush();
+  expect(calls.length).toBe(2);
+  calls[0].done.resolve({ display_name: 'Ann', avatar_attachment_id: 'old' }); await old;
+  expect(directory.get('u')).toBeUndefined();
+  calls[1].done.resolve({ display_name: 'Ann', avatar_attachment_id: 'new' }); await fresh;
+  expect(directory.get('u')?.avatarId).toBe('new');
+});
 test('marking avatars stale forces a refetch that clears the stale flag', async () => {
   const { directory, calls } = harness();
   const first = directory.ensure('u'); await flush();
   calls[0].done.resolve({ display_name: 'Ann', avatar_attachment_id: 'x' }); await first;
-  const second = directory.ensure('u'); await flush();
-  expect(calls.length).toBe(1);
+  await directory.ensure('u'); expect(calls.length).toBe(1);
   directory.markAvatarsStale(['u']);
   expect(directory.get('u')?.avatarStale).toBe(true);
-  void second;
-  const third = directory.ensure('u'); await flush();
-  calls[1].done.resolve({ display_name: 'Ann', avatar_attachment_id: 'y' }); await third;
+  const again = directory.ensure('u'); await flush();
+  calls[1].done.resolve({ display_name: 'Ann', avatar_attachment_id: 'y' }); await again;
   expect(directory.get('u')).toMatchObject({ avatarId: 'y', avatarStale: false });
 });
 test('fresh entries are reused and expired entries are revalidated', async () => {
@@ -424,13 +436,28 @@ test('fresh entries are reused and expired entries are revalidated', async () =>
   advance(300_001); void directory.ensure('u'); await flush();
   expect(calls.length).toBe(2);
 });
-test('responses are discarded when the owner is no longer accepted', async () => {
+test('responses and puts are discarded when the owner is no longer accepted', async () => {
   let accepted = true;
   const { directory, calls } = harness({ accept: () => accepted });
   const first = directory.ensure('u'); await flush();
   accepted = false;
   calls[0].done.resolve({ display_name: 'Ann', avatar_attachment_id: null }); await first;
+  directory.put('v', { display_name: 'Leaked', avatar_attachment_id: 'a' });
   expect(directory.get('u')).toBeUndefined();
+  expect(directory.get('v')).toBeUndefined();
+});
+test('a group membership version increase marks only that group members stale', async () => {
+  const { directory, calls } = harness();
+  for (const id of ['a', 'b', 'c']) { const done = directory.ensure(id); await flush(); calls.at(-1)!.done.resolve({ display_name: id, avatar_attachment_id: null }); await done; }
+  directory.observeMembership('g', 3, ['a', 'b']);
+  expect(directory.get('a')?.avatarStale).toBe(false);
+  directory.observeMembership('g', 3, ['a', 'b']);
+  directory.observeMembership('g', null, ['a', 'b']);
+  expect(directory.get('a')?.avatarStale).toBe(false);
+  directory.observeMembership('g', 4, ['a', 'b']);
+  expect(directory.get('a')?.avatarStale).toBe(true);
+  expect(directory.get('b')?.avatarStale).toBe(true);
+  expect(directory.get('c')?.avatarStale).toBe(false);
 });
 test('subscribe works when passed unbound', () => {
   const { directory } = harness();
@@ -448,10 +475,13 @@ test('switching account resets the directory and ignores the old account respons
   snapshot = { context: { state: 'authenticated', user_id: 'B', device_id: 'd' } };
   for (const listener of listeners) listener();
   pending[0].resolve({ data: { display_name: 'From A', avatar_attachment_id: null } }); await loading;
+  first.put('y', { display_name: 'A view of y', avatar_attachment_id: 'a' });
   const second = directoryFor(session);
   expect(second).not.toBe(first);
   expect(first.get('x')).toBeUndefined();
+  expect(first.get('y')).toBeUndefined();
   expect(second.get('x')).toBeUndefined();
+  expect(second.get('y')).toBeUndefined();
 });
 ```
 
@@ -471,7 +501,9 @@ interface Job { run(): void; cancel(): void }
 export class UserDirectory {
   private entries = new Map<string, DirectoryEntry>();
   private versions = new Map<string, number>();
-  private inflight = new Map<string, Promise<void>>();
+  private failedAt = new Map<string, number>();
+  private memberships = new Map<string, number>();
+  private inflight = new Map<string, { version: number; promise: Promise<void> }>();
   private queue: Job[] = [];
   private running = 0;
   private epoch = 0;
@@ -480,43 +512,58 @@ export class UserDirectory {
   private version = 0;
   private readonly ttl: number;
   private readonly limit: number;
-  constructor(private readonly deps: DirectoryDeps, options: { ttlMs?: number; concurrency?: number } = {}) { this.ttl = options.ttlMs ?? 300_000; this.limit = options.concurrency ?? 4; }
+  private readonly backoff: number;
+  constructor(private readonly deps: DirectoryDeps, options: { ttlMs?: number; concurrency?: number; failureBackoffMs?: number } = {}) {
+    this.ttl = options.ttlMs ?? 300_000; this.limit = options.concurrency ?? 4; this.backoff = options.failureBackoffMs ?? 30_000;
+  }
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getVersion = (): number => this.version;
   get(userId: string): DirectoryEntry | undefined { return this.entries.get(userId); }
   private changed(): void { this.version++; for (const listener of this.listeners) listener(); }
-  private bump(userId: string): void { this.versions.set(userId, (this.versions.get(userId) ?? 0) + 1); }
+  private versionOf(userId: string): number { return this.versions.get(userId) ?? 0; }
+  private bump(userId: string): void { this.versions.set(userId, this.versionOf(userId) + 1); }
   ensure(userId: string): Promise<void> {
-    const entry = this.entries.get(userId);
-    if (entry && !entry.avatarStale && this.deps.now() - entry.fetchedAt <= this.ttl) return Promise.resolve();
-    const existing = this.inflight.get(userId); if (existing) return existing;
-    const epoch = this.epoch, signal = this.abort.signal, version = this.versions.get(userId) ?? 0;
+    const entry = this.entries.get(userId), now = this.deps.now();
+    if (entry && !entry.avatarStale && now - entry.fetchedAt <= this.ttl) return Promise.resolve();
+    const failed = this.failedAt.get(userId);
+    if (failed !== undefined && now - failed <= this.backoff) return Promise.resolve();
+    const version = this.versionOf(userId), existing = this.inflight.get(userId);
+    if (existing && existing.version === version) return existing.promise;
+    const epoch = this.epoch, signal = this.abort.signal;
     const work = new Promise<void>(resolve => {
       const run = (): void => {
         this.running++;
         this.deps.fetchSummary(userId, signal).then(summary => {
-          if (epoch === this.epoch && (this.versions.get(userId) ?? 0) === version && this.deps.accept()) this.store(userId, summary);
-        }, () => undefined).finally(() => { this.running--; resolve(); this.pump(); });
+          if (epoch !== this.epoch || this.versionOf(userId) !== version || !this.deps.accept()) return;
+          this.failedAt.delete(userId); this.store(userId, summary);
+        }, () => { if (epoch === this.epoch) this.failedAt.set(userId, this.deps.now()); })
+          .finally(() => { this.running--; resolve(); this.pump(); });
       };
       this.queue.push({ run, cancel: resolve });
       this.pump();
     });
-    const tracked = work.finally(() => { if (this.inflight.get(userId) === tracked) this.inflight.delete(userId); });
-    this.inflight.set(userId, tracked);
+    const tracked = work.finally(() => { if (this.inflight.get(userId)?.promise === tracked) this.inflight.delete(userId); });
+    this.inflight.set(userId, { version, promise: tracked });
     return tracked;
   }
   private pump(): void { while (this.running < this.limit && this.queue.length) this.queue.shift()!.run(); }
   private store(userId: string, summary: Summary): void { this.entries.set(userId, { displayName: summary.display_name, avatarId: summary.avatar_attachment_id, fetchedAt: this.deps.now(), avatarStale: false }); this.changed(); }
-  put(userId: string, summary: Summary): void { this.bump(userId); this.store(userId, summary); }
+  put(userId: string, summary: Summary): void { if (!this.deps.accept()) return; this.bump(userId); this.failedAt.delete(userId); this.store(userId, summary); }
   markAvatarsStale(userIds: string[]): void {
     let changed = false;
     for (const id of userIds) { const entry = this.entries.get(id); this.bump(id); if (entry && !entry.avatarStale) { this.entries.set(id, { ...entry, avatarStale: true }); changed = true; } }
     if (changed) this.changed();
   }
+  observeMembership(groupId: string, version: number | null, memberIds: string[]): void {
+    if (version === null) return;
+    const previous = this.memberships.get(groupId);
+    this.memberships.set(groupId, version);
+    if (previous !== undefined && version > previous) this.markAvatarsStale(memberIds);
+  }
   reset(): void {
     this.epoch++; this.abort.abort(); this.abort = new AbortController();
     for (const job of this.queue) job.cancel();
-    this.queue = []; this.entries.clear(); this.versions.clear(); this.inflight.clear(); this.changed();
+    this.queue = []; this.entries.clear(); this.versions.clear(); this.failedAt.clear(); this.memberships.clear(); this.inflight.clear(); this.changed();
   }
 }
 
@@ -533,16 +580,185 @@ export function directoryFor(session: SessionController): UserDirectory {
 }
 ```
 
-- [ ] **Step 4：Run** 同 Step 2。Expected：10 pass。
+- [ ] **Step 4：Run** 同 Step 2。Expected：13 pass。
 - [ ] **Step 5：Commit** `feat: add owner-scoped user summary cache`
+
+### Task 2.2b：頭像位元組快取（`avatar-cache.ts`）
+
+**Files:** Create `frontend/app/src/avatar-cache.ts`、`frontend/app/src/avatar-cache.test.ts`；Modify `frontend/app/src/ContactsPage.tsx:95-119`（`Avatar` 改用快取；匯出名稱與 props 不變）
+
+**Interfaces:**
+- Produces: `interface AvatarDeps { load(attachmentId: string, signal: AbortSignal): Promise<Blob>; createURL(blob: Blob): string; revokeURL(url: string): void; accept(): boolean }`；`class AvatarCache`：`acquire(attachmentId): Promise<string | null>`（永不 reject；失敗回 null 且不快取）、`release(attachmentId)`、`reset()`（中止下載、撤銷全部 URL、所有未完成的 `acquire` 以 null 結算）；`avatarCacheFor(session, load): AvatarCache`（owner 改變時 `reset` 舊實例；`load` 由呼叫端注入，避免 `avatar-cache.ts` 反向 import `ContactsPage.tsx`）。
+
+- [ ] **Step 1：寫失敗測試**
+
+```ts
+import { expect, test } from 'bun:test';
+import { AvatarCache } from './avatar-cache';
+
+function deferred<T>() { let resolve!: (value: T) => void, reject!: (error: unknown) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
+function harness(options: { idleLimit?: number; concurrency?: number } = {}) {
+  const loads: { id: string; signal: AbortSignal; done: ReturnType<typeof deferred<Blob>> }[] = [], revoked: string[] = [];
+  let next = 0;
+  const cache = new AvatarCache({ load: (id, signal) => { const done = deferred<Blob>(); loads.push({ id, signal, done }); return done.promise; }, createURL: () => `blob:${++next}`, revokeURL: url => { revoked.push(url); }, accept: () => true }, { idleLimit: options.idleLimit ?? 48, concurrency: options.concurrency ?? 4 });
+  return { cache, loads, revoked };
+}
+const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+const blob = () => new Blob(['x']);
+
+test('concurrent acquires share one download and one object URL', async () => {
+  const { cache, loads } = harness();
+  const a = cache.acquire('p'), b = cache.acquire('p'); await flush();
+  expect(loads.length).toBe(1);
+  loads[0].done.resolve(blob());
+  expect(await a).toBe('blob:1'); expect(await b).toBe('blob:1');
+});
+test('a released avatar is reused without downloading again', async () => {
+  const { cache, loads } = harness();
+  const first = cache.acquire('p'); await flush(); loads[0].done.resolve(blob()); await first;
+  cache.release('p');
+  expect(await cache.acquire('p')).toBe('blob:1');
+  expect(loads.length).toBe(1);
+});
+test('idle avatars beyond the limit are revoked oldest first; in-use ones are kept', async () => {
+  const { cache, loads, revoked } = harness({ idleLimit: 1 });
+  for (const id of ['a', 'b', 'c']) { const done = cache.acquire(id); await flush(); loads.at(-1)!.done.resolve(blob()); await done; }
+  cache.release('a'); cache.release('b');
+  expect(revoked).toEqual(['blob:1']);
+  expect(await cache.acquire('c')).toBe('blob:3');
+});
+test('failures are not cached and resolve to null', async () => {
+  const { cache, loads } = harness();
+  const first = cache.acquire('p'); await flush(); loads[0].done.reject(new Error('expired'));
+  expect(await first).toBeNull();
+  cache.release('p');
+  void cache.acquire('p'); await flush();
+  expect(loads.length).toBe(2);
+});
+test('no more than the configured number of downloads run at once', async () => {
+  const { cache, loads } = harness({ concurrency: 2 });
+  for (const id of ['a', 'b', 'c']) void cache.acquire(id);
+  await flush(); expect(loads.length).toBe(2);
+  loads[0].done.resolve(blob()); await flush();
+  expect(loads.length).toBe(3);
+});
+test('reset aborts downloads, revokes every URL and settles pending acquires with null', async () => {
+  const { cache, loads, revoked } = harness();
+  const held = cache.acquire('a'); await flush(); loads[0].done.resolve(blob()); await held;
+  const pending = cache.acquire('b'); await flush();
+  cache.reset();
+  expect(loads[1].signal.aborted).toBe(true);
+  expect(await pending).toBeNull();
+  expect(revoked).toEqual(['blob:1']);
+  loads[1].done.resolve(blob()); await flush();
+  expect(revoked.length).toBe(1);
+});
+```
+
+- [ ] **Step 2：Run** `~/.bun/bin/bun test src/avatar-cache.test.ts`。Expected：FAIL（模組不存在）。
+- [ ] **Step 3：實作**
+
+```ts
+import { ownerPartition } from './api';
+import type { SessionController } from './session';
+
+export interface AvatarDeps { load(attachmentId: string, signal: AbortSignal): Promise<Blob>; createURL(blob: Blob): string; revokeURL(url: string): void; accept(): boolean }
+interface Entry { refs: number; url: string | null; promise: Promise<string | null>; settle(value: string | null): void }
+
+export class AvatarCache {
+  private entries = new Map<string, Entry>();
+  private idle: string[] = [];
+  private queue: { run(): void }[] = [];
+  private running = 0;
+  private epoch = 0;
+  private abort = new AbortController();
+  private readonly idleLimit: number;
+  private readonly limit: number;
+  constructor(private readonly deps: AvatarDeps, options: { idleLimit?: number; concurrency?: number } = {}) { this.idleLimit = options.idleLimit ?? 48; this.limit = options.concurrency ?? 4; }
+  acquire(attachmentId: string): Promise<string | null> {
+    const existing = this.entries.get(attachmentId);
+    if (existing) { existing.refs++; this.idle = this.idle.filter(id => id !== attachmentId); return existing.promise; }
+    const epoch = this.epoch, signal = this.abort.signal;
+    let settle!: (value: string | null) => void;
+    const entry: Entry = { refs: 1, url: null, promise: new Promise<string | null>(resolve => { settle = resolve; }), settle: value => settle(value) };
+    this.entries.set(attachmentId, entry);
+    this.queue.push({ run: () => {
+      if (this.entries.get(attachmentId) !== entry) { entry.settle(null); return; }
+      this.running++;
+      this.deps.load(attachmentId, signal).then(blob => {
+        if (epoch !== this.epoch || !this.deps.accept() || this.entries.get(attachmentId) !== entry) { entry.settle(null); return; }
+        entry.url = this.deps.createURL(blob); entry.settle(entry.url);
+      }, () => { if (this.entries.get(attachmentId) === entry) this.entries.delete(attachmentId); entry.settle(null); })
+        .finally(() => { this.running--; this.pump(); });
+    } });
+    this.pump();
+    return entry.promise;
+  }
+  release(attachmentId: string): void {
+    const entry = this.entries.get(attachmentId); if (!entry || entry.refs === 0) return;
+    entry.refs--; if (entry.refs > 0) return;
+    if (entry.url === null) { this.entries.delete(attachmentId); return; }
+    this.idle.push(attachmentId);
+    while (this.idle.length > this.idleLimit) {
+      const oldest = this.idle.shift()!, evicted = this.entries.get(oldest);
+      this.entries.delete(oldest); if (evicted?.url) this.deps.revokeURL(evicted.url);
+    }
+  }
+  private pump(): void { while (this.running < this.limit && this.queue.length) this.queue.shift()!.run(); }
+  reset(): void {
+    this.epoch++; this.abort.abort(); this.abort = new AbortController();
+    for (const entry of this.entries.values()) { if (entry.url) this.deps.revokeURL(entry.url); entry.settle(null); }
+    this.queue = []; this.entries.clear(); this.idle = [];
+  }
+}
+
+let current: { owner: string; cache: AvatarCache; unsubscribe: () => void } | null = null;
+export function avatarCacheFor(session: SessionController, load: (attachmentId: string, signal: AbortSignal) => Promise<Blob>): AvatarCache {
+  const context = session.getSnapshot().context, owner = ownerPartition(context.user_id, context.device_id);
+  if (current?.owner === owner) return current.cache;
+  current?.unsubscribe(); current?.cache.reset();
+  const accept = (): boolean => { const now = session.getSnapshot().context; return now.state === 'authenticated' && ownerPartition(now.user_id, now.device_id) === owner; };
+  const cache = new AvatarCache({ load, createURL: blob => URL.createObjectURL(blob), revokeURL: url => URL.revokeObjectURL(url), accept });
+  const unsubscribe = session.subscribe(() => { const now = session.getSnapshot().context; if (ownerPartition(now.user_id, now.device_id) !== owner) cache.reset(); });
+  current = { owner, cache, unsubscribe };
+  return cache;
+}
+```
+
+`ContactsPage.tsx` 提供下載函式（沿用現行 `downloadAttachment` 與 `fetchAvatarBytes`，30 秒逾時與現行 `:104` 相同）：
+
+```ts
+function loadAvatar(session: SessionController) {
+  return async (attachmentId: string, signal: AbortSignal): Promise<Blob> => {
+    const child = new AbortController(), stop = (): void => child.abort();
+    signal.addEventListener('abort', stop, { once: true }); const timeout = setTimeout(stop, 30_000);
+    try { return await fetchAvatarBytes(await downloadAttachment(session, attachmentId), fetch, child.signal); }
+    finally { clearTimeout(timeout); signal.removeEventListener('abort', stop); }
+  };
+}
+```
+
+- [ ] **Step 4：`Avatar` 改用快取**（props、外層 `span.avatar`、`aria-label`、`alt`、首字後備不變）：
+
+```tsx
+useEffect(() => {
+  if (!attachmentId || session.getSnapshot().context.state !== 'authenticated') { setUrl(null); setFailed(false); return; }
+  const cache = avatarCacheFor(session, loadAvatar(session)); let active = true; setUrl(null); setFailed(false);
+  void cache.acquire(attachmentId).then(value => { if (!active) return; if (value) setUrl(value); else setFailed(true); });
+  return () => { active = false; cache.release(attachmentId); };
+}, [session, attachmentId]);
+```
+
+- [ ] **Step 5：Run** Step 2 與三命令。Expected：6 pass；既有測試全數通過。
+- [ ] **Step 6：Commit** `feat: share owner-scoped avatar downloads`
 
 ### Task 2.3：`ChatList.tsx`
 
 **Files:** Create `frontend/app/src/ChatList.tsx`（移出 `App.tsx:13-23`）；Modify `App.tsx`、`ContactsPage.tsx:176`、`ProfilePage.tsx:82`、`Shell.css`
 
 **Interfaces:**
-- Consumes: Task 2.1、2.2 全部匯出；`usePagedList`、`Avatar`、`CreateGroup`（Phase 2 仍為現行 inline 版本）；`chat.getSnapshot()`、`chat.subscribe`、`chat.refreshConversation`。
-- Produces: `export function ChatList({ session, chat, path, onNavigate }: { session: SessionController; chat: ChatController; path: string; onNavigate: (path: string) => void })`；根元素 `className="list-panel chat-list"`；`<ul aria-label="對話清單">`；未讀徽章 `aria-label="N 則伺服器查詢未讀"`。
+- Consumes: Task 2.1、2.2、2.2b 全部匯出；`usePagedList`、`Avatar`、`CreateGroup`（Phase 2 仍為現行 inline 版本）；`chat.getSnapshot()`、`chat.subscribe`、`chat.refreshConversation`。
+- Produces: `export function ChatList({ session, chat, path, onNavigate }: { session: SessionController; chat: ChatController; path: string; onNavigate: (path: string) => void })`；根元素 `className="list-panel chat-list"`；`<ul className="item-list" aria-label="對話清單">`；未讀徽章 `aria-label="N 則伺服器查詢未讀"`。
 
 - [ ] **Step 1：排序與撤權接線**
 
@@ -557,13 +773,22 @@ const visible = useMemo(() => sortConversations(list.items.filter(item => !denie
 
 `usePagedList` 的重新載入完成時（`list.busy` 由 true 轉 false 且沒有 `list.error`）呼叫 `denied.clear()`。
 
-- [ ] **Step 2：一對一對象與名稱**：列以 `IntersectionObserver`（root 為清單捲動容器）回報可見後：對象 = `snapshot.messages[id]` 中第一個 `sender_id !== me` 的寄件者 → 否則 `snapshot.details[id]?.members` 中非自己 → 否則放入上限 4 的佇列呼叫 `chat.refreshConversation(id)`；錯誤若為 `RepositoryCancelled` 或 `code === 'UNAUTHENTICATED'` 靜默略過，其他錯誤只記在該列並顯示 ID；每個對話在一次清單載入週期內最多呼叫一次。取得對象後 `directory.ensure(peerId)`；群組預覽的寄件者名稱同樣 `ensure`。以 `useSyncExternalStore(directory.subscribe, directory.getVersion)` 觸發重繪。
+- [ ] **Step 2：一對一對象與名稱**：列以 `IntersectionObserver`（root 為清單捲動容器）回報可見後：對象 = `snapshot.messages[id]` 中第一個 `sender_id !== me` 的寄件者 → 否則 `snapshot.details[id]?.members` 中非自己 → 否則放入上限 4 的佇列呼叫 `chat.refreshConversation(id)`；錯誤若為 `RepositoryCancelled` 或 `code === 'UNAUTHENTICATED'` 靜默略過，其他錯誤只記在該列並顯示 ID；每個對話在一次清單載入週期內最多呼叫一次。需要名稱的使用者 ID（可見列的對象、群組預覽寄件者）在 render 中算成**排序後以逗號連接的字串**，`useEffect(() => { for (const id of ids.split(',').filter(Boolean)) void directory.ensure(id); }, [ids, directory])`，不在 render 中呼叫 `ensure`。以 `useSyncExternalStore(directory.subscribe, directory.getVersion)` 觸發重繪。
 - [ ] **Step 3：列內容**：`Avatar`（`directory.get(peer)?.avatarId`，`avatarStale` 時顯示首字）、名稱（目錄名稱 → 對象 ID → 「一對一對話」；群組用 A11 標題原文）、`previewText`、`formatListTime(last.created_at, now)`、未讀徽章；`now` 每分鐘更新一次的 state。定位掛點（spec R11）：列為 `<button className="list-item" data-conversation-id={item.id}>`，名稱放在列內唯一的 `<strong>`，未讀徽章 `<span className="unread" aria-label="N 則伺服器查詢未讀">N</span>`（0 時不渲染）。
 - [ ] **Step 4：搜尋、骨架、空狀態**：搜尋比對名稱與標題，提示文字「只篩選已載入項目」（一般 `<p>`，**不用** `role="status"`）；`list.items.length === 0 && list.busy` 才顯示骨架；載入中狀態沿用 `.chat-list` 內唯一的 `role="status"`，載入完成即移除；「載入下一頁」按鈕維持在 `.actions` 內；空狀態按鈕「到聯絡人開始聊天」；Phase 2 保留現行 `CreateGroup` 於清單頂部。
-- [ ] **Step 4a：同步 `review-shell-native.ts`**：`:126` 改為 `button.dataset.conversationId === id`；`:228` 改為 `[...document.querySelectorAll<HTMLElement>('.chat-list [data-conversation-id]')].map(element => element.dataset.conversationId)`；其他斷言（標題、`.unread`、`role="status"`、「載入下一頁」、游標、去重、舊 owner 隔離）不變。此腳本無執行入口，以 typecheck 確認可編譯；回報時明示未實際執行。
-- [ ] **Step 5：快取失效接線**：`snapshot.details[g].membership_version` 由 n 增為 m 時，`directory.markAvatarsStale(details[g].members.map(m => m.user_id))`（以 `useRef<Map<string, number>>` 記錄上次版本；版本消失或為 null 不觸發）；`ContactsPage.tsx:176` 聯絡人增刪後 `directoryFor(session).markAvatarsStale([selected.id])`；`ProfilePage.tsx:82` 儲存成功後 `directoryFor(session).put(result.data.id, result.data)`。
+- [ ] **Step 4a：同步 `review-shell-native.ts`**：`:126` 改為 `button.dataset.conversationId === id`；`:228` 改為 `[...document.querySelectorAll<HTMLElement>('.chat-list [data-conversation-id]')].map(element => element.dataset.conversationId)`；`:130` 改為群組列 `strong` 等於 A11 `title`、一對一列 `strong` 非空（腳本的情境只建立群組，群組斷言不變）；`:254,259` 依賴的 `.chat-list .item-list` 保留不改。其他斷言（`.unread`、`role="status"`、「載入下一頁」、游標、去重、舊 owner 隔離）不變。此腳本無執行入口，以 typecheck 確認可編譯；回報時明示未實際執行。
+- [ ] **Step 5：快取失效接線**：ChatList 與 ChatView 在 `snapshot.details` 變化的 effect 中，對每個群組呼叫 `directory.observeMembership(id, detail.membership_version, detail.members.map(m => m.user_id))`（上次版本存在快取實例內，不用元件 ref）；`ContactsPage.tsx:176` 聯絡人增刪後 `markAvatarsStale([selected.id])`；`GroupsPage` 變更成功後 `markAvatarsStale(detail.members.map(m => m.user_id))`；`ProfilePage.tsx:82` 在**送出請求前**取得 `const directory = directoryFor(session)`，成功後 `directory.put(result.data.id, result.data)`（`put` 內再做 owner 檢查）。
 - [ ] **Step 6：Run 三命令；CI 8／8；本機 25 個對話依完成條件驗證並截圖。**
 - [ ] **Step 7：Commit** `feat: Telegram-style chat list with stable ordering`
+
+### Task 2.4：聊天路由保留清單實例、自身資訊（spec R13、§6.4）
+
+**Files:** Modify `frontend/app/src/App.tsx:67-74`、`Shell.css`
+
+- [ ] **Step 1：權限閘門只包聊天室**：`route.kind` 為 `chats` 或 `chat` 且沒有 `routeError` 時，不論 `allowedKey`，都渲染同一個 `<section className="split-page chats-page …">`，`ChatList` 位於固定位置；`.chat-detail` 內：`allowedKey === key` 時渲染現行 `.narrow-back` 與 `Chat`，否則渲染 `<p role="status">正在確認頁面權限…</p>`。`routeError` 錯誤頁、其他路由的整頁閘門、`App.tsx:40-59` 的 effect 全部不變。
+- [ ] **Step 2：自身資訊**：圖示欄底部與 ☰ 選單頂部顯示自己的頭像與名稱，來源為 `directory.get(me)`（effect 中 `ensure(me)`），沒有資料時顯示首字「H」。
+- [ ] **Step 3：驗證**：三命令；本機在寬版從對話 A 點到對話 B，清單捲動位置不變、Network 面板沒有重新發出清單列的 `/users/`、`/attachments/…/download` 請求（截圖）；直接開 `/chats/{無權限 ID}` 仍顯示「無法存取此頁面」。推送後 CI 8／8。
+- [ ] **Step 4：Commit** `feat: keep the chat list mounted while switching conversations`
 
 ---
 
@@ -754,7 +979,7 @@ test('date separators never carry message ids or read occlusion', () => {
 - [ ] **Step 3：實作 `MessageRow.tsx`**
 
 ```tsx
-import { useEffect, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { dateLabel, intentStatus, messageStatus, type StatusIcon, type TimelineItem } from './chat-presentation';
 import type { SendIntent } from './repository';
 import type { MessageView } from './types';
@@ -788,20 +1013,22 @@ export function IntentRow({ intent, connectionReady, onRetry, children }: { inte
 }
 export function DatePill({ scroller, messages, now }: { scroller: RefObject<HTMLElement | null>; messages: MessageView[]; now: Date }) {
   const [label, setLabel] = useState<string | null>(null);
+  const latest = useRef({ messages, now });
+  latest.current = { messages, now };
   useEffect(() => {
     const element = scroller.current; if (!element) return; let frame = 0;
     const measure = (): void => {
       frame = 0;
       const top = element.getBoundingClientRect().top, atLatest = element.scrollHeight - element.clientHeight - element.scrollTop <= 48;
-      const first = [...element.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => node.getBoundingClientRect().bottom > top);
-      const message = first ? messages.find(item => item.id === first.dataset.messageId) : undefined;
-      const next = atLatest || !message ? null : dateLabel(new Date(message.created_at), now);
+      const first = atLatest ? undefined : [...element.querySelectorAll<HTMLElement>('[data-message-id]')].find(node => node.getBoundingClientRect().bottom > top);
+      const message = first ? latest.current.messages.find(item => item.id === first.dataset.messageId) : undefined;
+      const next = !message ? null : dateLabel(new Date(message.created_at), latest.current.now);
       setLabel(current => (current === next ? current : next));
     };
     const onScroll = (): void => { if (!frame) frame = requestAnimationFrame(measure); };
-    element.addEventListener('scroll', onScroll, { passive: true }); measure();
+    element.addEventListener('scroll', onScroll, { passive: true }); onScroll();
     return () => { element.removeEventListener('scroll', onScroll); if (frame) cancelAnimationFrame(frame); };
-  }, [scroller, messages, now]);
+  }, [scroller]);
   return <div className="date-pill" data-read-occlusion aria-hidden="true" hidden={label === null}>{label}</div>;
 }
 ```
@@ -815,9 +1042,9 @@ export function DatePill({ scroller, messages, now }: { scroller: RefObject<HTML
 **Files:** Modify `ChatView.tsx`、`Chat.css`
 
 - [ ] **Step 1：頂部列**：`#chat-title` 只放名稱並帶 `data-route-heading`；頭像在 h1 外；副標題（一對一 `snapshot.presence[peer]==='online'` 為「線上」、群組「N 位成員」）；`<small role="status">{CONNECTION_LABEL[snapshot.connection]}</small>` 常駐；「群組資訊」為圖示按鈕，內含 visually-hidden 文字「群組資訊」。保留 `.chat-header` class 與 `data-read-occlusion`。
-- [ ] **Step 2：跳至最新**：刪除捲動區內 `.history-control` 的「跳至最新」按鈕（保留「載入較早訊息」）；取代 `.new-message-prompt` 為捲動區外的 `<button className="jump-latest-fab" data-read-occlusion aria-label="跳至最新" hidden={atLatest && newCount === 0} onClick={latest}>↓{newCount > 0 && <span aria-hidden="true">{newCount}</span>}</button>`，另放 `<p className="visually-hidden" role="status">{newCount > 0 ? `${newCount} 則新訊息 · 不代表未讀數` : ''}</p>`。`atLatest` 為 `captureAnchor` 中同步更新的 state（只在值改變時 set）。
+- [ ] **Step 2：跳至最新**：刪除捲動區內 `.history-control` 的「跳至最新」按鈕（保留「載入較早訊息」）；取代 `.new-message-prompt` 為捲動區外的 `<button className="jump-latest-fab" data-read-occlusion aria-label="跳至最新" hidden={atLatest && newCount === 0} onClick={latest}>↓{newCount > 0 && <span aria-hidden="true">{newCount}</span>}</button>`，另放 `<p className="visually-hidden" role="status">{newCount > 0 ? `${newCount} 則新訊息 · 不代表未讀數` : ''}</p>`。`atLatest` 為 state，初值 `true`；在 `captureAnchor`（捲動）與 `ChatView.tsx:60-64` 的 layout effect 結尾都以 `scrollHeight - clientHeight - scrollTop <= 48` 重新計算，只在值改變時 set（不會捲動的短聊天室也為 true）。
 - [ ] **Step 3：輸入列**：保留 `form.chat-composer[data-read-occlusion]`、`#chat-draft`、label「撰寫訊息」、`.attachment-button` 的 `aria-label`、`.send-button`（可見 ➤，visually-hidden「傳送」）；字數計數 `[...draft].length > 3800` 才顯示。鍵盤處理器不改。
-- [ ] **Step 4：名稱**：以 `const directory = directoryFor(session)` 取代 `ChatView.tsx:47`；`useSyncExternalStore(directory.subscribe, directory.getVersion)`；`detail.members` 每位（含自己）`void directory.ensure(id)`；`names[id]` 改為 `directory.get(id)?.displayName ?? (id === me ? '你' : id)`；`GroupInfoDialog` 的 `names` 同樣來源。
+- [ ] **Step 4：名稱**：以 `const directory = directoryFor(session)` 取代 `ChatView.tsx:47`；`useSyncExternalStore(directory.subscribe, directory.getVersion)`；成員 ID（含自己）排序後以逗號連接成字串，`useEffect` 依該字串對每位 `void directory.ensure(id)`（不在 render 中呼叫）；`names[id]` 改為 `directory.get(id)?.displayName ?? (id === me ? '你' : id)`；`GroupInfoDialog` 的 `names` 同樣來源。
 - [ ] **Step 5：進場動畫**：新增 `const animationBaseline = useRef<string[] | null>(null)` 與 `const shownIntents = useRef<Set<string>>(new Set())`；在 `ChatView.tsx:60-64` 的 layout effect 中，`if (!authorized) { animationBaseline.current = null; return; }` 放在最前；`restoreAnchor()` 之後：
 
 ```ts
@@ -826,7 +1053,7 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches)for(const id of entry
 animationBaseline.current=ids;shownIntents.current=new Set(pending.map(intent=>intent.clientMessageId));
 ```
 
-- [ ] **Step 6：`Chat.css`**：泡泡 token、`group-start`／`group-end` 圓角與間距（不加 transition）、`.date-separator`、`.date-pill`（absolute 於 `.chat-room` 內、位於頂部列下方）、`.jump-latest-fab`、輸入列；聊天室與祖先不加 opacity／scale／translateY 過場。
+- [ ] **Step 6：`Chat.css`**：泡泡 token、`group-start`／`group-end` 圓角與間距（不加 transition）、`.date-separator`、`.date-pill`（absolute 於 `.chat-room` 內、位於頂部列下方）、`.jump-latest-fab`、輸入列；加入 `.jump-latest-fab[hidden], .date-pill[hidden] { display: none !important; }`；聊天室與祖先不加 opacity／scale／translateY／translateX 過場。
 - [ ] **Step 7：Run 三命令；推送後 CI 8／8；本機截圖與 Animations 面板確認。**
 - [ ] **Step 8：Commit** `feat: Telegram-style chat room with read-safe motion`
 
@@ -840,9 +1067,9 @@ animationBaseline.current=ids;shownIntents.current=new Set(pending.map(intent=>i
 
 **潛在失效模式**：超過 49 人或重複 ID；結果不明時另建一群；未完成意圖重新整理後遺失；對話框關閉未卸載；多個「建立群組」按鈕使定位衝突。
 
-**完成條件**：Task 4.1 測試通過；三命令 exit 0；CI 8／8，`group_creation_preserves_original_title_members_and_intent`、新增的 `group_creation_resolved_member_name_before_adding` 與 `group_manage_ignores_stale_previous_route_response` 通過，且後者有一次「修正前失敗」的 CI run 證據；本機在建立請求送出後立刻重新整理，對話框自動開啟並鎖定原名稱與成員（截圖）。
+**完成條件**：Task 4.1 測試通過；三命令 exit 0；CI 8／8，`group_creation_preserves_original_title_members_and_intent`、新增的 `group_creation_resolved_member_name_before_adding` 與 `group_leave_response_after_navigation_does_not_redirect` 通過，且後者有一次「修正前失敗」的 CI run 證據；本機在建立請求送出後立刻重新整理，對話框自動開啟並鎖定原名稱與成員、之後 token 刷新不再自動開啟（截圖）。
 
-**建議提交**：Task 4.1、4.2、4.3 各一個提交。
+**建議提交**：Task 4.1、4.2 各一個提交；Task 4.3 兩個提交（先檢查、後修正）。
 
 ### Task 4.1：成員選取規則
 
@@ -906,19 +1133,33 @@ export function groupPayload(title: string, selected: readonly string[]): GroupC
 
 **Files:** Modify `GroupsPage.tsx`（`CreateGroup`）、`App.tsx`、`ChatList.tsx`、`Shell.css`、`tests/browser/browser_acceptance.py:704-711`
 
-- [ ] **Step 1**：`CreateGroup` 改為受控 `open`／`onClose`／`triggerRef` 的原生 `<dialog aria-label="建立群組">`（`showModal`、`hine-overlay-change`、cleanup 中 `close()` 後還原焦點，觸發元素不存在時聚焦路由標題）；掛在 `App` 外殼；掛載時 `store.read()` 有未完成意圖則自動開啟並鎖定輸入（現行 `GroupsPage.tsx:32-37,62-64`）。
-- [ ] **Step 2**：步驟 1：`usePagedList(session, 'contacts', …)` 列出聯絡人（勾選框 label 為名稱）、「載入下一頁」；已選標籤區 `.selected-members`；「已選 N／49」；達上限停用未勾選項。「以公開 ID 加入」（label 文字即此）＋「加入」按鈕：`session.request<UserSummary>('/users/{id}')` 成功才 `addMember` 並 `directoryFor(session).put(id, data)`，失敗顯示既有 `describeError`。「下一步」進入步驟 2：label「群組名稱」、按鈕「建立群組」。送出沿用現行 `submit`：`store.begin(groupPayload(title, selected))`、`idempotencyKey`、`store.confirm`、owner 檢查、錯誤處理。
+- [ ] **Step 1**：`CreateGroup` 改為受控 `open`／`onClose`／`triggerRef` 的原生 `<dialog aria-label="建立群組">`（`showModal`、`hine-overlay-change`、cleanup 中 `close()` 後還原焦點，觸發元素不存在時聚焦路由標題）；掛在 `App` 外殼；掛載時 `store.read()` 有未完成意圖且模組層級 `autoOpened` 集合沒有此 owner 時，自動開啟並把 owner 加入集合（每次頁面載入、每個 owner 只自動開啟一次；token 刷新造成的外殼重建不再自動開啟）；有意圖時鎖定輸入（現行 `GroupsPage.tsx:32-37,62-64`）。
+- [ ] **Step 2**：步驟 1：`usePagedList(session, 'contacts', …)` 列出聯絡人（勾選框 label 為名稱）、「載入下一頁」；已選標籤區 `.selected-members`；「已選 N／49」；達上限停用未勾選項。「以公開 ID 加入」（label 文字即此）＋「加入」按鈕：**送出前**取得 `const directory = directoryFor(session)`，`session.request<UserSummary>('/users/{id}')` 成功且 owner 未變時才 `addMember` 並 `directory.put(id, data)`（`put` 內再做 owner 檢查），失敗顯示既有 `describeError`。「下一步」進入步驟 2：label「群組名稱」、按鈕「建立群組」。送出沿用現行 `submit`：`store.begin(groupPayload(title, selected))`、`idempotencyKey`、`store.confirm`、owner 檢查、錯誤處理。
 - [ ] **Step 3：入口**：寬版圖示欄加「建立群組」；窄版選單 items 加「建立群組」；清單右下 ✎（`aria-label="建立群組"`，`.chat-list` 內）；移除清單內舊表單。
 - [ ] **Step 4：更新驗收**（`:704-711`；SQL 斷言 `:713-719` 不變，並新增一個 check）：
 
 ```python
 await page_a.locator(".chat-list").get_by_role("button", name="建立群組", exact=True).click()
 dialog = page_a.get_by_role("dialog", name="建立群組")
-await dialog.get_by_label("以公開 ID 加入").fill(ids[1])
-await dialog.get_by_role("button", name="加入", exact=True).click()
+lookup_pattern = f"**/api/v1/users/{ids[1]}"
+lookup_gate = asyncio.Event()
+async def hold_lookup(route):
+    await lookup_gate.wait()
+    await route.continue_()
+await page_a.route(lookup_pattern, hold_lookup)
+try:
+    await dialog.get_by_label("以公開 ID 加入").fill(ids[1])
+    async with page_a.expect_request(lookup_pattern):
+        await dialog.get_by_role("button", name="加入", exact=True).click()
+    absent_before_lookup = await dialog.locator(".selected-members li").count() == 0
+    async with page_a.expect_response(lookup_pattern):
+        lookup_gate.set()
+finally:
+    lookup_gate.set()
+    await page_a.unroute(lookup_pattern, hold_lookup)
 chosen = dialog.locator(".selected-members").get_by_text(names[1], exact=True)
 await chosen.wait_for(state="visible")
-check(test_record, "group_creation_resolved_member_name_before_adding", await chosen.count() == 1)
+check(test_record, "group_creation_resolved_member_name_before_adding", absent_before_lookup and await chosen.count() == 1)
 await dialog.get_by_text("已選 1／49", exact=True).wait_for(state="visible")
 await dialog.get_by_role("button", name="下一步", exact=True).click()
 await dialog.get_by_label("群組名稱").fill(group_title)
@@ -928,45 +1169,65 @@ await dialog.get_by_role("button", name="建立群組", exact=True).click()
 - [ ] **Step 5：Run 三命令；CI 8／8；本機重新整理還原驗證並截圖。**
 - [ ] **Step 6：Commit** `feat: create groups by picking contacts`
 
-### Task 4.3：群組管理頁實例隔離（spec R12）
+### Task 4.3：群組管理頁卸載後不再導覽（spec R12）
 
-**Files:** Modify `tests/browser/browser_acceptance.py`（群組建立 `:719` 之後、群組資訊 `:735` 之前；寬版）、`App.tsx:72`、`GroupsPage.tsx:96-113`
+**Files:** Modify `tests/browser/browser_acceptance.py`（`:779` 群組移除完成之後、`:780` 建立 page_c 之前）、`GroupsPage.tsx:94-113`。**不修改** `App.tsx:72`（App 的路由 key 已含 `path`，`key` 無作用）。
 
-- [ ] **Step 1：先寫回歸檢查**（應用內導覽沿用 `router.ts:18-19` 的 `popstate`）：
+- [ ] **Step 1：先寫回歸檢查**（應用內導覽沿用 `router.ts:18-19` 的 `popstate`；最後一位管理員不能退出，所以先把 Bob 設為管理員）：
 
 ```python
 async def spa_go(page, path):
     await page.evaluate("p => { history.pushState(null, '', p); dispatchEvent(new PopStateEvent('popstate')); }", path)
 
-release = asyncio.Event()
-async def hold(route):
-    await release.wait()
+temp_title = "Leave race " + secrets.token_hex(3)
+await spa_go(page_a, "/chats")
+await page_a.locator(".chat-list").get_by_role("button", name="建立群組", exact=True).click()
+temp_dialog = page_a.get_by_role("dialog", name="建立群組")
+await temp_dialog.get_by_label("以公開 ID 加入").fill(ids[1])
+await temp_dialog.get_by_role("button", name="加入", exact=True).click()
+await temp_dialog.locator(".selected-members").get_by_text(names[1], exact=True).wait_for(state="visible")
+await temp_dialog.get_by_role("button", name="下一步", exact=True).click()
+await temp_dialog.get_by_label("群組名稱").fill(temp_title)
+await temp_dialog.get_by_role("button", name="建立群組", exact=True).click()
+await page_a.wait_for_url(re.compile(r"/chats/[^/]+$"))
+temp_group_id = unquote(page_a.url.rstrip("/").rsplit("/", 1)[-1])
+await spa_go(page_a, f"/groups/{quote(temp_group_id, safe='')}/manage")
+bob_row = page_a.locator(".member-list li", has_text=ids[1])
+await bob_row.get_by_role("button", name="設為管理員", exact=True).click()
+await bob_row.get_by_role("button", name="改為成員", exact=True).wait_for(state="visible")
+is_leave = lambda r: (r.request if hasattr(r, "request") else r).method == "DELETE" and r.url.endswith(f"/members/{ids[0]}")
+leave_gate = asyncio.Event()
+async def hold_leave(route):
+    if route.request.method == "DELETE":
+        await leave_gate.wait()
     await route.continue_()
-stale_pattern = f"**/api/v1/conversations/{direct_conversation_id}"
-await page_a.route(stale_pattern, hold)
+leave_pattern = f"**/members/{ids[0]}"
+await page_a.route(leave_pattern, hold_leave)
 try:
-    async with page_a.expect_request(stale_pattern):
-        await spa_go(page_a, f"/groups/{direct_conversation_id}/manage")
-    await spa_go(page_a, f"/groups/{group_id}/manage")
-    await page_a.locator(".group-page h2").get_by_text(group_title, exact=True).wait_for(state="visible")
-    async with page_a.expect_response(stale_pattern):
-        release.set()
-    await page_a.wait_for_timeout(500)
-    title_kept = await page_a.locator(".group-page h2").get_by_text(group_title, exact=True).is_visible()
-    no_stale_error = await page_a.get_by_text("這不是群組對話。", exact=True).count() == 0
-    check(test_record, "group_manage_ignores_stale_previous_route_response", title_kept and no_stale_error)
+    async with page_a.expect_request(is_leave):
+        await page_a.get_by_role("button", name="退出群組", exact=True).click()
+    await spa_go(page_a, "/contacts")
+    await page_a.wait_for_url(re.compile(r"/contacts$"))
+    async with page_a.expect_response(is_leave) as leave_info:
+        leave_gate.set()
+    leave_status = (await leave_info.value).status
+    await page_a.wait_for_timeout(1000)
+    stayed = page_a.url.endswith("/contacts")
 finally:
-    release.set()
-    await page_a.unroute(stale_pattern, hold)
+    leave_gate.set()
+    await page_a.unroute(leave_pattern, hold_leave)
+async with components.sql() as conn:
+    still_member = await conn.fetchval("SELECT count(*) FROM memberships WHERE conversation_id=$1 AND user_id=$2 AND active", temp_group_id, ids[0])
+check(test_record, "group_leave_response_after_navigation_does_not_redirect", leave_status == 204 and still_member == 0 and stayed)
 ```
 
-`direct_conversation_id`、`group_id` 使用腳本既有變數（實作時以實際名稱替換，不新增 API 呼叫）；結束後以 `spa_go` 回到原本路由，後續步驟起點不變。
+`quote`／`unquote`、`re`、`secrets`、`asyncio` 依腳本既有 import 補齊（只用標準函式庫）；退出群組若有確認步驟，依實際 UI 補上點擊。結束時 page_a 位於 `/contacts`；後續 `:780` 起的步驟不依賴 page_a 的路由（`:793` 登出只用導覽）。
 
-- [ ] **Step 2：只提交檢查並推送**，確認 CI 中此 check 為 false（證明檢查能抓到競態），記錄失敗 run URL。若意外通過，代表檢查無效：停止並重新設計，不進入 Step 3。
-- [ ] **Step 3：修正**：`App.tsx:72` 改為 `<GroupsPage key={route.conversationId} … />`；`GroupsPage` 加 `const alive = useRef(true); useEffect(() => () => { alive.current = false; }, []);`，`mutate` 中 `onNavigate('/chats')`（`:107`）與 `:112` 的導覽前檢查 `alive.current`（`chat.withdraw` 照常執行）。
-- [ ] **Step 4**：管理頁套用新樣式，保留 `.member-list li`、「移除」「前往群組管理」名稱、`data-route-heading`。
+- [ ] **Step 2：只提交檢查並推送**，確認 CI 中此 check 為 false（`GroupsPage.tsx:107` 會把使用者導回 `/chats`），記錄失敗 run URL。若意外通過，代表檢查無效：停止並重新設計，不進入 Step 3。
+- [ ] **Step 3：修正**：`GroupsPage` 加 `const alive = useRef(false); useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);`；`mutate` 中退出成功後照常 `await chat.withdraw(conversationId)`，再 `if (alive.current) onNavigate('/chats')`；`:112` 的撤權導覽同樣先檢查 `alive.current`。
+- [ ] **Step 4**：管理頁套用新樣式，保留 `.member-list li` 內的成員使用者 ID 文字（`:759` 以 `has_text=ids[1]` 篩選）、「移除」「設為管理員」「改為成員」「退出群組」「前往群組管理」名稱、`data-route-heading`。
 - [ ] **Step 5：Run 三命令；推送後 CI 8／8，且此 check 為 true。**
-- [ ] **Step 6：Commit**（Step 1–2 一個：`test: catch stale group management responses`；Step 3–4 一個：`fix: isolate group management pages per conversation`）
+- [ ] **Step 6：Commit**（Step 1–2：`test: catch navigation after leaving an unmounted group page`；Step 3–4：`fix: stop group management from navigating after unmount`）
 
 ---
 
@@ -984,20 +1245,20 @@ finally:
 
 ### Task 5.1：新增行為檢查
 
-插入位置：`browser_acceptance.py` `:790` 之後、`:793`（登出）之前；開始時記錄目前 viewport（390×844），結束時還原。
+插入位置：`browser_acceptance.py` Task 4.3 檢查之後、`:780`（建立 page_c）之前。此時 page_c（與 page_a 同帳號）尚未存在，不會代替 page_a 送出已讀。開始時記錄目前 viewport（390×844），結束時還原。page_a 先以 `spa_go` 進入 `/chats/{direct_id}`（已有 100 則以上訊息，可捲動）；page_b（Bob）也進入同一聊天室並負責送出訊息。
 
 | Check | 操作 | 條件（必須能抓到失敗） |
 |---|---|---|
-| `message_dom_invariants` | page_a 位於群組聊天室 | 所有 `[data-message-id]` 值符合 UUID 正規表示式且不重複；`.message-scroller [data-read-occlusion]` 數量為 0 |
-| `entry_animation_positive_control` | 訊息到達前 `page.evaluate` 安裝 MutationObserver：節點插入後下一個 rAF 記錄其中 `[data-message-id]` 的 `getAnimations().length`；page_c 送 1 則 | 記錄值 ≥1 |
-| `reduced_motion_no_entry_animation` | `page.emulate_media(reduced_motion="reduce")` 後重複上一列 | 記錄值為 0；之後 `emulate_media(reduced_motion="no-preference")` |
-| `closed_menu_does_not_block_reads` | 390 寬度下開啟再以 Esc 關閉 ☰；page_c 送 1 則並保持 page_a 可見 | 關閉後 `[aria-modal="true"],dialog[open]` 皆 `getClientRects().length===0`；SQL 該訊息對 page_a 使用者的回條為 `read` |
+| `message_dom_invariants` | page_a 位於一對一聊天室 | 所有 `[data-message-id]` 值符合 UUID 正規表示式且不重複；`.message-scroller [data-read-occlusion]` 數量為 0 |
+| `entry_animation_positive_control` | page_a 位於最新位置；送出前 `page.evaluate` 安裝 MutationObserver：節點插入後下一個 rAF 記錄其中每個 `[data-message-id]` 的 ID 與 `getAnimations().length`；page_b 送 1 則已知文字，並由 page_a 的 IndexedDB 取得其 message ID | 記錄中**有該 ID**，且其動畫數 ≥1 |
+| `reduced_motion_no_entry_animation` | `page_a.emulate_media(reduced_motion="reduce")` 後重複上一列 | 記錄中**有該 ID**，且其動畫數為 0；之後 `emulate_media(reduced_motion="no-preference")` |
+| `closed_menu_does_not_block_reads` | 390 寬度下 page_a 開啟再以 Esc 關閉 ☰；`page_a.bring_to_front()`；page_b 送 1 則 | 關閉後 `[aria-modal="true"],dialog[open]` 皆 `getClientRects().length===0`；SQL 該訊息對 Alice 的回條在 15 秒內變為 `read` |
 | `menu_escape_returns_focus` | 開啟 ☰ 後按 Esc | `document.activeElement` 的可存取名稱為「開啟選單」 |
-| `group_info_escape_returns_focus` | 開啟群組資訊後按 Esc | `document.activeElement` 的可存取名稱為「群組資訊」 |
-| `ime_composition_enter_does_not_send` | 以 CDP `Input.imeSetComposition` 輸入組字文字後按 Enter，等待 1000ms | IndexedDB intents 數（沿用 `indexed_db_state`）、`.pending-message` 數、`[data-message-id]` 數皆不變；`#chat-draft` 值仍含組字文字；之後 `Input.insertText` 完成組字並 Ctrl+Enter，intents 恰好增加 1 |
-| `layout_767_single_column` / `layout_768_two_columns` | 分別設 767×900、768×900，位於 `/chats/{id}` | 以 `getBoundingClientRect` 與 viewport 交集判定：767 時 `.chat-list` 與 `.chat-room` 恰一個交集面積 >0，另一個帶 `inert`；768 時兩者交集面積皆 >0；兩者 `document.scrollingElement.scrollWidth <= innerWidth` |
-| `new_message_count_while_scrolled_up` | 群組聊天室往上捲到頂；page_c 送 2 則 | 「跳至最新」按鈕可見且顯示 2；點擊後 `scrollHeight-clientHeight-scrollTop<=48` 且按鈕隱藏 |
-| `anchor_restored_after_room_switch` | 往上捲並等 IndexedDB 錨點寫入；切到一對一再切回 | 300ms 後捲動區頂端第一個 `[data-message-id]` 等於儲存的 messageId，offset 差 ≤1px |
+| `group_info_escape_returns_focus` | page_a 進入原群組聊天室，開啟群組資訊後按 Esc | `document.activeElement` 的可存取名稱為「群組資訊」 |
+| `ime_composition_enter_does_not_send` | page_a 回一對一聊天室；以 CDP `Input.imeSetComposition` 輸入組字文字後按 Enter，等待 1000ms | IndexedDB intents 數（沿用 `indexed_db_state`）、`.pending-message` 數、`[data-message-id]` 數皆不變；`#chat-draft` 值仍含組字文字；之後 `Input.insertText` 完成組字並 Ctrl+Enter，intents 恰好增加 1 |
+| `layout_767_single_column` / `layout_768_two_columns` | 分別設 767×900、768×900，位於 `/chats/{direct_id}` | 以 `getBoundingClientRect` 與 viewport 交集判定：767 時 `.chat-list` 與 `.chat-room` 恰一個交集面積 >0，另一個 `getClientRects().length===0`；768 時兩者交集面積皆 >0；兩者 `document.scrollingElement.scrollWidth <= innerWidth` |
+| `new_message_count_while_scrolled_up` | 390 寬度，一對一聊天室往上捲到頂；page_b 送 2 則 | 「跳至最新」按鈕可見且顯示 2；點擊後 `scrollHeight-clientHeight-scrollTop<=48` 且按鈕隱藏 |
+| `anchor_restored_after_room_switch` | 一對一聊天室往上捲並等 IndexedDB 錨點寫入；切到群組再切回 | 300ms 後捲動區頂端第一個 `[data-message-id]` 等於儲存的 messageId，offset 差 ≤1px |
 
 - [ ] **Step 1**：依上表以腳本既有的 `check`、`wait_visible`、`components.sql()`、`indexed_db_state` 實作。
 - [ ] **Step 2**：推送；CI 8／8。
@@ -1046,7 +1307,7 @@ async def perf_sample(page, label, action, repeats=3):
 
 | 情境 | 失效 | 使用者看到 | 資料／狀態風險 | 預防 | 恢復 | 驗證 |
 |---|---|---|---|---|---|---|
-| 非同步回覆亂序 | 舊名稱覆蓋新名稱；舊群組頁覆蓋新頁；舊實例退出群組後把使用者導回清單 | 錯誤名稱或頁面 | `memberIntent` 跨群組沿用冪等鍵 | 每位使用者版本號＋epoch＋owner；`GroupsPage` key＋卸載後不導覽 | 下一次 `ensure`、重新載入 | Task 2.2「newer put」「markAvatarsStale」測試；Task 4.3 CI 回歸檢查（含修正前失敗證據） |
+| 非同步回覆亂序 | 舊名稱覆蓋新名稱；舊群組管理頁退出請求回來後把已離開的使用者導回清單 | 錯誤名稱；突然跳頁 | 無（`chat.withdraw` 照常） | 每位使用者版本號＋epoch＋owner；過期進行中請求不沿用；`GroupsPage` 卸載後不導覽 | 下一次 `ensure` | Task 2.2「newer put」「replaced, not reused」測試；Task 4.3 CI 回歸檢查（含修正前失敗證據） |
 | 快取過期 | 名稱或頭像過舊 | 最長 5 分鐘舊值 | 無 | TTL、開啟聊天室重新驗證、範圍化的頭像過期 | TTL 到期重抓 | Task 2.2 TTL 測試 |
 | Session 切換 | 舊帳號資料顯示在新帳號 | 他人名稱或頭像 | 隱私外洩 | `directoryFor` owner 重設、abort、`accept()`；session epoch 第二道防線 | 新帳號重新取得 | Task 2.2「switching account」測試；CI 換帳號流程 |
 | Token 刷新 | 清單重排、快取被清 | 列順序跳動 | 無 | 鍵表與目錄同 owner 保留 | — | Task 2.3 背景同步前後截圖 |
@@ -1060,8 +1321,13 @@ async def perf_sample(page, label, action, repeats=3):
 | 群組建立結果不明 | 重複建立 | 兩個群組 | 重複資料 | 沿用意圖保存與冪等鍵；自動開啟 | 原意圖重試／核對 | CI 既有群組建立檢查；Phase 4 重新整理還原截圖 |
 | 動畫與已讀競爭 | 透明或位移中被計為已讀 | 錯誤已讀 | 已讀語意 | 只動尾端少量新訊息；`bubbleMeasurable`；聊天室無 opacity 過場；reduced-motion 不播 | — | Task 3.2 測試；CI 動畫正向對照與 reduced-motion |
 | 日期分隔遮擋 | 提早或漏掉已讀 | 已讀不準 | 已讀語意 | 列表分隔無遮擋屬性；浮動膠囊在捲動區外 | — | Task 3.3 測試；CI `message_dom_invariants` |
-| 選單關閉未卸載 | 已讀永久暫停 | 對方看不到已讀 | 回條不送 | 關閉即卸載 | 重新整理 | CI `closed_menu_does_not_block_reads` |
+| 選單關閉未卸載 | 已讀永久暫停 | 對方看不到已讀 | 回條不送 | 關閉即卸載 | 重新整理 | CI `closed_menu_does_not_block_reads`（Bob 送、Alice 讀，無同帳號第二視窗） |
 | 頁面切換的未完成請求 | 卸載後寫入、請求風暴 | 錯誤資料或延遲 | 無 | AbortController、共享 promise、並行 4、`refreshConversation` 每週期一次 | — | Task 2.2 測試；Phase 2 DevTools 截圖 |
+| 名稱查詢持續失敗 | 每次按鍵都重送 `/users/` | 延遲、伺服器負載 | 無 | 失敗 30 秒退避；`ensure` 只在 effect 中依 ID 集合呼叫 | 30 秒後重試 | Task 2.2「back off」測試 |
+| 帳號切換時的延遲寫入 | 甲帳號看到的頭像 ID 寫入乙帳號快取 | 乙看到不該看到的頭像 | 隱私 | 請求前取得快取實例；`put` 檢查 `accept()`；owner 切換時 `reset` | 新 owner 重新取得 | Task 2.2「puts are discarded」「switching account」測試 |
+| 頭像下載風暴或洩漏 | 每次切換聊天室重抓全部頭像；物件 URL 不釋放；跨帳號顯示 | 閃爍、記憶體成長 | 隱私（跨帳號） | 頭像快取共用下載、參照數、閒置 LRU 48、並行 4、owner 切換撤銷；清單在切換對話時不重建（R13） | — | Task 2.2b 測試；Task 2.4 Network 截圖 |
+| 未完成建群組意圖反覆彈出 | token 刷新重建外殼後再次自動開啟模態 | 對話框反覆出現、已讀暫停 | 回條延後 | 每次頁面載入每個 owner 只自動開啟一次 | 使用者關閉 | Phase 4 本機 token 刷新截圖 |
+| 窄版面板滑動 | 滑入中的泡泡被當成可見 | 提早已讀 | 已讀語意 | 窄版不做滑動過場（R14），沿用 `display` 切換 | — | 程式碼審查；CI `layout_767_single_column` |
 
 ## Test Matrix
 
@@ -1070,7 +1336,8 @@ async def perf_sample(page, label, action, repeats=3):
 | Unit | 清單時間 | 00:05、09:05、昨天、週一、10/9、2025/12/31 | 2 |
 | Unit | 預覽 | 你：、名稱：、📷／📄、空白折疊、「—」 | 2 |
 | Unit | 活動時間鍵、撤權記憶、排序 | 只升不降；無效時間忽略；新訊息只移動該對話；owner 隔離；清除 | 2 |
-| Unit | 使用者摘要快取 | 去重、並行 ≤4、reset 中止與結算、失敗不拋、版本號亂序、TTL、owner 切換、未綁定 subscribe | 2 |
+| Unit | 使用者摘要快取 | 去重、並行 ≤4、reset 中止與結算、失敗不拋與 30 秒退避、版本號亂序、過期請求不沿用、`put` owner 檢查、群組成員版本追蹤、TTL、owner 切換、未綁定 subscribe | 2 |
+| Unit | 頭像快取 | 共用下載、釋放後重用、閒置 LRU 撤銷、失敗不快取、並行上限、reset 撤銷並結算 | 2 |
 | Unit | 時間軸 | 分組、跨日、key 穩定 | 3 |
 | Unit | 狀態對應 | 文字與現行相同 | 3 |
 | Unit | 進場判定 | 基準 null、往前加入、pending→persisted、>3 則不播 | 3 |
