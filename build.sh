@@ -25,11 +25,14 @@ unset COMPOSE_FILE COMPOSE_PROFILES COMPOSE_PROJECT_NAME HINE_ENV HINE_SECRET_DI
 usage() {
     cat <<'EOF'
 用法：./build.sh [--production] [stop | status | logs [服務] [--follow]]
+      ./build.sh clean [--yes]
 
   ./build.sh                 本機：安裝前置工具、建置並啟動，完成後開啟 https://localhost:8443
   ./build.sh stop            停止服務（保留資料）
   ./build.sh status          顯示服務狀態與網址
   ./build.sh logs [服務]     顯示最後 200 行記錄；加 --follow 持續顯示
+  ./build.sh clean           列出本機會被清除的資料庫、Docker 容器／資料卷／映像與產生的檔案（不刪除）
+  ./build.sh clean --yes     實際清除上述項目（無法復原；只限本機）
   加上 --production          改為正式機（GCP VM）模式，設定讀取 deploy.env
 
 服務名稱：api、realtime、postgres、redis、caddy
@@ -43,12 +46,14 @@ MODE=local
 COMMAND=up
 SERVICE=
 FOLLOW=0
+YES=0
 for argument in "$@"; do
     case "$argument" in
         --production) MODE=production ;;
         --help|-h) usage; exit 0 ;;
         --follow) FOLLOW=1 ;;
-        stop|status|logs)
+        --yes) YES=1 ;;
+        stop|status|logs|clean)
             [ "$COMMAND" = up ] || usage_error '一次只能指定一個指令'
             COMMAND=$argument ;;
         api|realtime|postgres|redis|caddy)
@@ -60,6 +65,8 @@ done
 if [ "$COMMAND" != logs ] && { [ -n "$SERVICE" ] || [ "$FOLLOW" = 1 ]; }; then
     usage_error '服務名稱與 --follow 只能搭配 logs 使用'
 fi
+[ "$YES" = 0 ] || [ "$COMMAND" = clean ] || usage_error '--yes 只能搭配 clean 使用'
+[ "$MODE:$COMMAND" != production:clean ] || usage_error '正式機不提供 clean：正式機的資料不能用這個指令刪除'
 
 # --- Output and logging --------------------------------------------------------------------
 LOG_FILE=${HINE_BUILD_LOG:-}
@@ -271,13 +278,16 @@ build_frontend() {
 }
 
 # --- Local mode ----------------------------------------------------------------------------
+# Before the first install (or after clean) there is no .env yet; Compose then reads the example instead.
+LOCAL_ENV_FILE="$ROOT/.env"
+# The project name must come from the same file Compose is given, or this script would act on a different project.
 local_project() {
-    name=$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$ROOT/.env" 2>/dev/null | tail -n 1)
-    case "$name" in "") name=hine-dev ;; *[!a-z0-9_-]*) die '.env 的 COMPOSE_PROJECT_NAME 格式不正確' ;; esac
+    name=$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$LOCAL_ENV_FILE" 2>/dev/null | tail -n 1)
+    case "$name" in "") name=hine-dev ;; *[!a-z0-9_-]*) die "$(basename "$LOCAL_ENV_FILE") 的 COMPOSE_PROJECT_NAME 格式不正確" ;; esac
     printf '%s' "$name"
 }
 compose_local() {
-    docker compose --project-directory "$ROOT" --env-file "$ROOT/.env" \
+    docker compose --project-directory "$ROOT" --env-file "$LOCAL_ENV_FILE" \
         -f "$ROOT/docker-compose.yml" -f "$ROOT/infra/docker/compose.local.yml" \
         --profile product --profile realtime --profile local "$@"
 }
@@ -287,7 +297,7 @@ local_up() {
     install_prerequisites
     ensure_docker_access "$@"
     acquire_lock
-    step 2 '產生密鑰與設定（已存在就沿用）' '多半是 .secrets/ 或 .env 的擁有者與目前使用者不同（用 ls -ln .secrets .env 檢查），或密鑰檔被改過。若不需要舊資料：刪除 .env 與 .secrets/，並依手冊 §2.4 清除舊的資料庫 volume，再重跑 ./build.sh'
+    step 2 '產生密鑰與設定（已存在就沿用）' '多半是 .secrets/ 或 .env 的擁有者與目前使用者不同（用 ls -ln .secrets .env 檢查），或密鑰檔被改過。若不需要舊資料：執行 ./build.sh clean 預覽、./build.sh clean --yes 清除後，再重跑 ./build.sh'
     run sh "$SCRIPTS/init-dev.sh"
     step 3 '建置前端' '前端套件下載或建置失敗：確認網路能連到 registry.npmjs.org 後重跑 ./build.sh；仍失敗請把完整記錄檔提供給維護者'
     build_frontend "$LOCAL_URL"
@@ -310,6 +320,56 @@ local_command() {
             [ -z "$SERVICE" ] || set -- "$@" "$SERVICE"
             compose_local logs "$@" ;;
     esac
+}
+
+CLEAN_FILES=".env .secrets .build-logs frontend/app/dist frontend/app/node_modules"
+show_items() {
+    printf '  %s：\n' "$1"
+    if [ -n "$2" ]; then printf '%s\n' "$2" | sed 's/^/    - /'; else printf '    （無）\n'; fi
+}
+# Deletes only this checkout's Compose project (containers, networks, every volume, images it built) and the files
+# build.sh generates. Pulled base images and the build cache are shared machine-wide and stay; deploy.env stays.
+# Compose project names are machine-wide and every checkout defaults to hine-dev, so the project must provably belong
+# to this directory before anything is listed for deletion.
+local_clean() {
+    [ -f "$ROOT/.env" ] || LOCAL_ENV_FILE="$ROOT/.env.example"
+    project=$(local_project)
+    owners=$(docker ps -a --filter "label=com.docker.compose.project=$project" \
+        --format '{{.Label "com.docker.compose.project.working_dir"}}') || die '無法查詢 Docker 容器，未清除任何東西'
+    owners=$(printf '%s\n' "$owners" | sort -u)
+    foreign=$(printf '%s\n' "$owners" | grep -vx -F -e "$ROOT" -e '' || true)
+    [ -z "$foreign" ] || die "Docker 專案 $project 的容器是從另一個資料夾建立的：$foreign
+為了不刪到那邊的資料，這裡不會清除。請到那個資料夾執行 ./build.sh clean，或在這份 .env 改用不同的 COMPOSE_PROJECT_NAME"
+    volumes=$(docker volume ls --filter "label=com.docker.compose.project=$project" --format '{{.Name}}')
+    if [ ! -f "$ROOT/.env" ] && [ -z "$owners" ] && [ -n "$volumes" ]; then
+        die "找到 Docker 專案 $project 的資料卷，但這個資料夾沒有 .env、也沒有容器可以對照，無法確認資料屬於這裡，因此不會清除。
+確定這些資料卷要刪除，請手動執行：docker volume rm $(printf '%s' "$volumes" | tr '\n' ' ')"
+    fi
+    containers=$(compose_local ps -a --format '{{.Name}}' 2>/dev/null || true)
+    networks=$(docker network ls --filter "label=com.docker.compose.project=$project" --format '{{.Name}}')
+    images=$(docker image ls --filter "label=com.docker.compose.project=$project" --format '{{.Repository}}:{{.Tag}}')
+    files=
+    for path in $CLEAN_FILES; do
+        if [ -e "$ROOT/$path" ] || [ -L "$ROOT/$path" ]; then files="$files$path
+"; fi
+    done
+    printf '本機 Docker 專案 %s 將被清除：\n' "$project"
+    show_items '容器' "$containers"
+    show_items '資料卷（資料庫、Redis、本機憑證）' "$volumes"
+    show_items '網路' "$networks"
+    show_items '本專案建置的映像' "$images"
+    show_items '產生的檔案' "${files%
+}"
+    printf '  保留：deploy.env、共用的基礎映像（postgres／redis／caddy）與 Docker 建置快取\n'
+    if [ "$YES" = 0 ]; then
+        printf '\n這只是預覽，沒有刪除任何東西。確定要刪除（無法復原）請執行：./build.sh clean --yes\n'
+        return 0
+    fi
+    printf '\n開始清除…\n'
+    compose_local down -v --remove-orphans --rmi local || die "Docker 專案 $project 清除失敗；請確認 Docker 正常後重新執行 ./build.sh clean --yes"
+    for path in $CLEAN_FILES; do rm -rf "${ROOT:?}/$path"; done
+    printf '\n已清除。重新安裝請執行：./build.sh\n'
+    printf '瀏覽器也請清除 https://localhost:8443 的網站資料（網址列左側圖示 →「網站設定」→「刪除資料」），否則可能因舊的裝置資料無法登入。\n'
 }
 
 # --- Production mode -----------------------------------------------------------------------
@@ -502,6 +562,10 @@ production_command() {
 case "$MODE:$COMMAND" in
     local:up) start_log; local_up "$@" ;;
     production:up) start_log; production_up "$@" ;;
+    local:clean)
+        require_docker_session "$@"
+        acquire_lock
+        local_clean ;;
     local:*)
         require_docker_session "$@"
         [ "$COMMAND" != stop ] || acquire_lock

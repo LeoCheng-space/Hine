@@ -20,17 +20,27 @@ SHIMS = {
 printf 'docker %s\n' "$*" >> "$FAKE_LOG"
 case "$1" in
   info) [ "${FAKE_DOCKER_INFO:-ok}" = ok ] ;;
-  ps) [ -z "${FAKE_DOCKER_PS:-}" ] || printf '%s\n' "$FAKE_DOCKER_PS" ;;
+  ps) case "$*" in
+        *working_dir*) [ -z "${FAKE_OWNER_DIRS:-}" ] || printf '%s\n' "$FAKE_OWNER_DIRS" ;;
+        *) [ -z "${FAKE_DOCKER_PS:-}" ] || printf '%s\n' "$FAKE_DOCKER_PS" ;;
+      esac ;;
   network)
     case "$2" in
       ls) [ -z "${FAKE_NETWORK_IDS:-}" ] || printf '%s\n' "$FAKE_NETWORK_IDS" ;;
       inspect) cat "$FAKE_NETWORKS_JSON" ;;
     esac ;;
-  volume) [ "${FAKE_VOLUME_EXISTS:-0}" = 1 ] ;;
+  volume)
+    case "$2" in
+      ls) [ -z "${FAKE_VOLUMES:-}" ] || printf '%s\n' "$FAKE_VOLUMES" ;;
+      rm) exit 0 ;;
+      *) [ "${FAKE_VOLUME_EXISTS:-0}" = 1 ] ;;
+    esac ;;
+  image) [ -z "${FAKE_IMAGES:-}" ] || printf '%s\n' "$FAKE_IMAGES" ;;
   compose)
     case "$2" in
       version) printf '%s\n' "${FAKE_COMPOSE_VERSION:-2.29.1}" ;;
-      *) exit "${FAKE_COMPOSE_STATUS:-0}" ;;
+      *) case " $* " in *" ps "*) [ -z "${FAKE_CONTAINERS:-}" ] || printf '%s\n' "$FAKE_CONTAINERS" ;; esac
+         exit "${FAKE_COMPOSE_STATUS:-0}" ;;
     esac ;;
 esac
 ''',
@@ -90,6 +100,10 @@ if [ "$(basename "$0")" = backup-postgres.sh ]; then : > "$2"; fi
 '''
 DEPLOY = "HINE_DOMAIN={domain}\nACME_EMAIL=ops@example.org\nHINE_EXPECTED_IP=34.80.10.20\n"
 ANSWERS = "34.80.10.20 STREAM {domain}\\n34.80.10.20 DGRAM\\n"
+CLEAN_TARGETS = (".env", ".secrets/postgres_password", ".build-logs/old.log", "frontend/app/dist/index.html",
+                 "frontend/app/node_modules/react/index.js")
+CLEAN_DOCKER_STATE = {"FAKE_CONTAINERS": "hine-dev-api-1\nhine-dev-postgres-1", "FAKE_NETWORK_IDS": "hine-dev_edge",
+                      "FAKE_VOLUMES": "hine-dev_postgres_data\nhine-dev_redis_data", "FAKE_IMAGES": "hine-dev-api:latest"}
 
 
 class BuildScriptTests(unittest.TestCase):
@@ -204,6 +218,89 @@ class BuildScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("請先執行 ./build.sh", result.stderr)
         self.assertFalse(any(line.startswith(("sudo", "sg")) for line in self.calls()))
+
+    # clean ---------------------------------------------------------------------------------------
+    def local_files(self):
+        for path in CLEAN_TARGETS:
+            target = self.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("COMPOSE_PROJECT_NAME=hine-dev\n" if path == ".env" else "x")
+        (self.root / "deploy.env").write_text(DEPLOY.format(domain="hine.example.org"))
+
+    def test_clean_without_yes_only_lists_what_would_be_deleted(self):
+        self.local_files()
+        result = self.build("clean", **CLEAN_DOCKER_STATE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for item in ("hine-dev", "hine-dev-api-1", "hine-dev_postgres_data", "hine-dev_edge", "hine-dev-api:latest",
+                     ".secrets", "frontend/app/node_modules", "./build.sh clean --yes"):
+            self.assertIn(item, result.stdout)
+        for path in CLEAN_TARGETS:
+            self.assertTrue((self.root / path).exists(), path)
+        self.assertFalse(any(" down " in line for line in self.calls()))
+
+    def test_clean_with_yes_removes_this_project_and_generated_files_only(self):
+        self.local_files()
+        result = self.build("clean", "--yes", FAKE_OWNER_DIRS=self.root, **CLEAN_DOCKER_STATE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        down = next(line for line in self.calls() if " down " in line)
+        self.assertIn("compose.local.yml", down)
+        self.assertIn("--profile local down -v --remove-orphans --rmi local", down)
+        for path in (".env", ".secrets", ".build-logs", "frontend/app/dist", "frontend/app/node_modules"):
+            self.assertFalse((self.root / path).exists(), path)
+        self.assertTrue((self.root / "deploy.env").exists())
+        self.assertTrue((self.root / "infra/scripts/init-dev.sh").exists())
+        self.assertIn("https://localhost:8443", result.stdout)
+        self.assertIn("網站資料", result.stdout)
+        self.assertFalse((self.root / ".build.lock").exists())
+        self.assertFalse(any("builder prune" in line or "system prune" in line for line in self.calls()))
+        # Only Compose's own `down -v` deletes volumes; nothing is removed by project label alone.
+        self.assertFalse(any(line.startswith("docker volume rm") for line in self.calls()))
+
+    def test_clean_without_env_uses_the_project_compose_would_use(self):
+        example = self.root / ".env.example"
+        example.write_text(example.read_text().replace("COMPOSE_PROJECT_NAME=hine-dev", "COMPOSE_PROJECT_NAME=hine-other"))
+        result = self.build("clean", "--yes")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        down = next(line for line in self.calls() if " down " in line)
+        self.assertIn(".env.example", down)
+        self.assertIn("hine-other", result.stdout)
+        self.assertFalse(any("label=com.docker.compose.project=hine-dev" in line for line in self.calls()))
+
+    def test_clean_refuses_a_project_created_from_another_checkout(self):
+        self.local_files()
+        for arguments in (("clean",), ("clean", "--yes")):
+            with self.subTest(arguments=arguments):
+                self.log.write_text("")
+                result = self.build(*arguments, FAKE_OWNER_DIRS="/home/someone/other-checkout", **CLEAN_DOCKER_STATE)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("/home/someone/other-checkout", result.stderr)
+                self.assertFalse(any(" down " in line for line in self.calls()))
+        for path in CLEAN_TARGETS:
+            self.assertTrue((self.root / path).exists(), path)
+
+    def test_clean_without_env_refuses_volumes_it_cannot_attribute(self):
+        result = self.build("clean", "--yes", FAKE_VOLUMES="hine-dev_postgres_data")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("無法確認", result.stderr)
+        self.assertFalse(any(" down " in line for line in self.calls()))
+
+    def test_clean_is_local_only_and_yes_requires_clean(self):
+        for arguments, fragment in ((("--production", "clean"), "正式機"), (("--yes",), "--yes"),
+                                    (("status", "--yes"), "--yes"), (("clean", "api"), "logs")):
+            with self.subTest(arguments=arguments):
+                result = self.build(*arguments)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(fragment, result.stderr)
+        self.assertEqual(self.calls(), [])
+
+    def test_clean_waits_for_no_other_build(self):
+        self.local_files()
+        (self.root / ".build.lock").mkdir()
+        result = self.build("clean", "--yes", **CLEAN_DOCKER_STATE)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("已有另一個 build.sh 在執行", result.stderr)
+        self.assertTrue((self.root / ".secrets/postgres_password").exists())
+        self.assertFalse(any(" down " in line for line in self.calls()))
 
     # Local mode --------------------------------------------------------------------------------
     def test_local_run_initializes_builds_with_local_origin_and_waits(self):
