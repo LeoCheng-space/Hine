@@ -1011,12 +1011,22 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                 await bob_says(text)
                 await page_a.locator("[data-message-id]").filter(has_text=text).wait_for(state="attached", timeout=30000)
             fab = page_a.get_by_role("button", name="跳至最新", exact=True)
-            await page_a.locator(".jump-latest-fab .fab-count").filter(has_text="2").wait_for(state="visible", timeout=10000)
-            fab_counted = await fab.is_visible()
-            await fab.click()
-            await page_a.wait_for_function("() => { const s = document.querySelector('.message-scroller'); return s.scrollHeight - s.clientHeight - s.scrollTop <= 48; }", timeout=10000)
-            await page_a.locator(".jump-latest-fab").wait_for(state="hidden", timeout=10000)
-            check(test_record, "new_message_count_while_scrolled_up", fab_counted)
+            fab_count = page_a.locator(".jump-latest-fab .fab-count")
+            at_latest_js = "() => { const s = document.querySelector('.message-scroller'); return s.scrollHeight - s.clientHeight - s.scrollTop <= 48; }"
+            # Waits here must not raise: the check records the observed count instead of a runner error.
+            with contextlib.suppress(PlaywrightError):
+                await fab_count.filter(has_text="2").wait_for(state="visible", timeout=10000)
+            fab_count_text = (await fab_count.text_content()) if await fab_count.count() else None
+            test_record["counts"]["new_message_fab_count"] = int(fab_count_text) if fab_count_text and fab_count_text.isdigit() else -1
+            fab_counted = fab_count_text == "2" and await fab.is_visible()
+            fab_cleared = False
+            if fab_counted:
+                await fab.click()
+                with contextlib.suppress(PlaywrightError):
+                    await page_a.wait_for_function(at_latest_js, timeout=10000)
+                    await page_a.locator(".jump-latest-fab").wait_for(state="hidden", timeout=10000)
+                fab_cleared = await page_a.evaluate(at_latest_js) and not await fab.is_visible()
+            check(test_record, "new_message_count_while_scrolled_up", fab_counted and fab_cleared)
 
             await page_a.evaluate("() => { const s = document.querySelector('.message-scroller'); s.scrollTop = Math.max(0, s.scrollHeight / 3); s.dispatchEvent(new Event('scroll')); }")
             saved_anchor, previous_anchor = None, False
