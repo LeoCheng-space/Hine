@@ -2,31 +2,21 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppMenu, type AppMenuItem } from './AppMenu';
 import { Icon } from './icons';
 import { AccountPage } from './AccountPages';
-import { ContactsPage, usePagedList } from './ContactsPage';
-import { CreateGroup, GroupsPage } from './GroupsPage';
+import { ChatList } from './ChatList';
+import { ContactsPage } from './ContactsPage';
+import { GroupsPage } from './GroupsPage';
 import { ProfilePage } from './ProfilePage';
 import { Chat } from './ChatView';
 import { describeError, ownerPartition } from './api';
 import { parseRoute, type BrowserRouter } from './router';
 import type { SessionController } from './session';
 import type { ChatController } from './chat';
-import type { ConversationDetail, ConversationSummary } from './types';
+import type { ConversationDetail } from './types';
 import './Shell.css';
 
 const NARROW_QUERY = '(width < 768px)';
 function subscribeNarrow(listener: () => void): () => void { const query = matchMedia(NARROW_QUERY); query.addEventListener('change', listener); return () => query.removeEventListener('change', listener); }
 function narrowSnapshot(): boolean { return matchMedia(NARROW_QUERY).matches; }
-function ChatList({ session, path, onNavigate }: { session: SessionController; path: string; onNavigate: (path: string) => void }) {
-  const list = usePagedList<ConversationSummary>(session, 'conversations', item => item.id), [filter, setFilter] = useState('');
-  useEffect(() => { void list.load(true); }, [path, list.load]);
-  useEffect(() => {
-    const changed = () => { void list.load(true); };
-    window.addEventListener('hine-conversations-changed', changed);
-    return () => window.removeEventListener('hine-conversations-changed', changed);
-  }, [list.load]);
-  const items = list.items.filter(item => (item.title ?? '').toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
-  return <aside className="list-panel chat-list"><header className="panel-header"><p className="eyebrow">STAY CONNECTED</p><h1 tabIndex={-1} data-route-heading={path === '/chats' ? '' : undefined}>聊天</h1><p className="muted">每段關係，從一句話開始。</p></header><CreateGroup session={session} onCreated={id => onNavigate(`/chats/${encodeURIComponent(id)}`)} /><label htmlFor="chat-filter">篩選已載入的對話標題</label><input id="chat-filter" type="search" value={filter} onChange={event => setFilter(event.target.value)} /><p className="small muted">僅篩選已載入項目。一對一對話沒有標題。</p>{list.error && <p role="alert" className="notice error">{list.error}</p>}<ul className="item-list">{items.map(item => <li key={item.id}><button className={`list-item ${path === `/chats/${encodeURIComponent(item.id)}` ? 'selected' : ''}`} onClick={() => onNavigate(`/chats/${encodeURIComponent(item.id)}`)}><span className="avatar" aria-hidden="true">{item.type === 'group' ? '群' : '聊'}</span><span className="item-copy"><strong>{item.title ?? '一對一對話'}</strong><span className="small muted identifier">{item.id}</span></span>{item.unread_count > 0 && <span className="unread" aria-label={`${item.unread_count} 則伺服器查詢未讀`}>{item.unread_count}</span>}</button></li>)}</ul>{list.busy && <p role="status">載入對話…</p>}{!items.length && !list.busy && <div className="empty-state"><strong>{filter ? '沒有符合的已載入對話' : '還沒有對話'}</strong><p>選擇聯絡人開始聊天，或建立您的群組。</p><button onClick={() => onNavigate('/contacts')}>前往聯絡人</button></div>}<div className="actions"><button disabled={list.busy} onClick={() => { void list.load(true); }}>重新整理</button>{list.cursor && <button disabled={list.busy} onClick={() => { void list.load(); }}>載入下一頁</button>}</div></aside>;
-}
 export function App({ session, chat, router }: { session: SessionController; chat: ChatController; router: BrowserRouter }) {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot), chatSnapshot = useSyncExternalStore(chat.subscribe, chat.getSnapshot), path = useSyncExternalStore(router.subscribe, router.getSnapshot);
   const route = parseRoute(path), requested = useRef<string | null>(route && !['root', 'login', 'register'].includes(route.kind) ? path : null);
@@ -78,7 +68,7 @@ export function App({ session, chat, router }: { session: SessionController; cha
   else if (route.kind === 'contacts') content = <ContactsPage session={session} chat={chat} onNavigate={router.navigate} />;
   else if (route.kind === 'profile') content = <ProfilePage session={session} />;
   else if (route.kind === 'group') content = <GroupsPage session={session} chat={chat} conversationId={route.conversationId} onNavigate={router.navigate} />;
-  else content = <section className={`split-page chats-page ${route.kind === 'chat' ? 'detail-selected' : ''}`}><ChatList session={session} path={path} onNavigate={router.navigate} /><div className="detail-panel chat-detail">{route.kind === 'chat' && <button className="narrow-back text-button" onClick={() => router.navigate('/chats')}>← 返回聊天清單</button>}<Chat session={session} chat={chat} conversationId={route.kind === 'chat' ? route.conversationId : null} onNavigate={router.navigate} /></div></section>;
+  else content = <section className={`split-page chats-page ${route.kind === 'chat' ? 'detail-selected' : ''}`}><ChatList session={session} chat={chat} path={path} onNavigate={router.navigate} /><div className="detail-panel chat-detail">{route.kind === 'chat' && <button className="narrow-back text-button" onClick={() => router.navigate('/chats')}>← 返回聊天清單</button>}<Chat session={session} chat={chat} conversationId={route.kind === 'chat' ? route.conversationId : null} onNavigate={router.navigate} /></div></section>;
   const navItems: AppMenuItem[] = [
     { label: '聊天', icon: 'chat', active: route.kind === 'chats' || route.kind === 'chat' || route.kind === 'group', onSelect: () => router.navigate('/chats') },
     { label: '聯絡人', icon: 'contacts', active: route.kind === 'contacts', onSelect: () => router.navigate('/contacts') },

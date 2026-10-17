@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ApiError, describeError, ownerPartition } from './api';
 import { downloadAttachment } from './attachment-transfer';
 import { avatarCacheFor } from './avatar-cache';
+import { directoryFor } from './user-directory';
 import type { SessionController } from './session';
 import type { ChatController } from './chat';
 import type { ContactView, ConversationCreateResult, Page, UserSummary, DownloadGrant } from './types';
@@ -164,13 +165,14 @@ export function ContactsPage({ session, chat, onNavigate }: { session: SessionCo
     finally { if (ownerActive()) lifetime.apply(version, () => setBusy(false)); }
   }
   async function action(kind: 'add' | 'remove' | 'chat') {
-    if (!selected || busy) return; const version = lifetime.begin(); setBusy(true); setError(null); setNotice(null);
+    if (!selected || busy) return; const version = lifetime.begin(), directory = directoryFor(session); setBusy(true); setError(null); setNotice(null);
     try {
       if (kind === 'chat') {
         const result = await session.request<ConversationCreateResult>('/conversations/direct', { method: 'POST', json: { peer_user_id: selected.id } });
         if (ownerActive()) lifetime.apply(version, () => onNavigate(`/chats/${encodeURIComponent(result.data.id)}`));
       } else {
         await session.request<void | ContactView>(kind === 'add' ? '/contacts' : `/contacts/${encodeURIComponent(selected.id)}`, { method: kind === 'add' ? 'POST' : 'DELETE', ...(kind === 'add' ? { json: { user_id: selected.id } } : {}) });
+        directory.markAvatarsStale([selected.id]);
         await list.load(true); if (ownerActive()) lifetime.apply(version, () => setNotice(kind === 'add' ? '已加入聯絡人。' : '已移除聯絡人，聊天歷史不受影響。'));
       }
     } catch (error) { if (ownerActive()) lifetime.apply(version, () => setError(describeError(error))); }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ApiError, describeError, isRecord, ownerPartition } from './api';
+import { directoryFor } from './user-directory';
 import type { SessionController } from './session';
 import type { ChatController } from './chat';
 import type { ConversationCreateResult, ConversationDetail, ConversationMutationResult, MemberMutationResult } from './types';
@@ -99,12 +100,13 @@ export function GroupsPage({ session, chat, conversationId, onNavigate }: { sess
   useEffect(() => { void load(); }, [conversationId]);
   const me = session.getSnapshot().context.user_id, isAdmin = detail?.members.some(member => member.user_id === me && member.role === 'admin') === true;
   async function mutate(operation: 'title' | 'add' | 'role' | 'remove', userId?: string, role?: 'admin' | 'member') {
-    setBusy(true); setError(null); setNotice(null);
+    setBusy(true); setError(null); setNotice(null); const directory = directoryFor(session), target = operation === 'add' ? newMember : userId;
     try {
       if (operation === 'title') await session.request<ConversationMutationResult>(path, { method: 'PATCH', json: { title } });
       if (operation === 'add') { const id = newMember; memberIntent.current[id] ??= crypto.randomUUID(); await session.request<MemberMutationResult>(`${path}/members`, { method: 'POST', json: { user_id: id }, idempotencyKey: memberIntent.current[id] }); delete memberIntent.current[id]; setNewMember(''); }
       if (operation === 'role' && userId) await session.request<MemberMutationResult>(`${path}/members/${encodeURIComponent(userId)}`, { method: 'PATCH', json: { role } });
       if (operation === 'remove' && userId) { await session.request<void>(`${path}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }); if (userId === me) { await chat.withdraw(conversationId); onNavigate('/chats'); return; } }
+      if ((operation === 'add' || operation === 'remove') && target) directory.markAvatarsStale([target, ...(detail?.members.map(member => member.user_id) ?? [])]);
       await load(); setNotice('群組資料已更新。');
     } catch (error) { setError(describeError(error)); } finally { setBusy(false); }
   }

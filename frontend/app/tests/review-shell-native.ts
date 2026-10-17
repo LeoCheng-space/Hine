@@ -123,11 +123,12 @@ function mountShell(session: SessionController, chat: ChatController): MountedSh
   return { router, dispose(): void { root.unmount(); router.dispose(); host.remove(); } };
 }
 function row(id: string): HTMLButtonElement | null {
-  return [...document.querySelectorAll<HTMLButtonElement>('.chat-list .list-item')].find(button => button.querySelector('.identifier')?.textContent === id) ?? null;
+  return [...document.querySelectorAll<HTMLButtonElement>('.chat-list .list-item')].find(button => button.dataset.conversationId === id) ?? null;
 }
 function verifySummary(summary: ConversationSummary): void {
   const button = row(summary.id); assert(button, 'Actual A11 summary is absent from the rendered list.');
-  assert(button.querySelector('strong')?.textContent === (summary.title ?? '一對一對話'), 'Rendered title disagrees with actual A11.');
+  const title = button.querySelector('strong')?.textContent ?? '';
+  assert(summary.type === 'group' ? title === summary.title : title.length > 0, 'Rendered title disagrees with actual A11.');
   const unread = button.querySelector('.unread');
   assert(summary.unread_count > 0 ? unread?.textContent === String(summary.unread_count) && unread.getAttribute('aria-label') === `${summary.unread_count} 則伺服器查詢未讀` : unread === null, 'The list invented a client-side unread count instead of displaying A11.');
 }
@@ -225,7 +226,7 @@ export async function runNativeChatListPaging(session: SessionController): Promi
     assert(new URL(next.path, location.origin).searchParams.get('cursor') === first.result.meta.next_cursor, 'The list substituted a SyncCursor or stale cursor for the actual A11 continuation.');
     const expected = [...first.result.data.items.filter(item => !next.result.data.items.some(incoming => incoming.id === item.id)), ...next.result.data.items];
     expected.forEach(verifySummary);
-    const rendered = [...document.querySelectorAll('.chat-list .identifier')].map(element => element.textContent);
+    const rendered = [...document.querySelectorAll<HTMLElement>('.chat-list [data-conversation-id]')].map(element => element.dataset.conversationId);
     assert(rendered.length === expected.length && new Set(rendered).size === rendered.length, 'A11 page merge duplicated or discarded a loaded conversation.');
     const beforeRefresh = observation.observations.length;
     window.dispatchEvent(new Event('hine-conversations-changed'));
