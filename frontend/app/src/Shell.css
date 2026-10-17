@@ -176,12 +176,17 @@ form > button.primary { margin-top: 24px; }
 .create-group-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .create-group-header h2 { margin: 0; font-size: 1.05rem; }
 .create-group-dialog > .notice { margin: 12px 18px 0; }
-.selected-members { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 18px 0; padding: 0; list-style: none; }
+.create-group-body { padding: 0 18px 12px; }
+.create-group-body > p { margin: 6px 0 0; }
+.create-group-members { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.create-group-members h3 { margin: 0; font-size: .95rem; }
+.create-group-members > p { margin: 4px 0 10px; }
+.selected-members { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
 .selected-members:empty { display: none; }
 .selected-members li { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 12px; border-radius: 16px; background: var(--brand-50); color: var(--brand-700); font-size: .85rem; }
 .selected-members button { min-height: 28px; padding: 0 6px; }
-.selected-count { margin: 8px 18px 0; }
-.create-group-step { padding: 10px 18px 18px; }
+.create-group-members .selected-count { margin: 0 0 10px; }
+.create-group-actions { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface); }
 .contact-picker { max-height: 320px; margin: 10px 0 0; padding: 0; overflow-y: auto; list-style: none; }
 .contact-option { display: flex; align-items: center; gap: 12px; margin: 0; padding: 8px 6px; border-radius: 10px; font-weight: 500; cursor: pointer; }
 .contact-option:hover { background: #f0f4f1; }
