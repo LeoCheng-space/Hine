@@ -74,7 +74,10 @@ start_log() {
     : > "$LOG_FILE"
     chmod 600 "$LOG_FILE"
 }
+STEP_HINT=
+# step NUMBER TITLE HINT: the hint is printed with the log tail if anything in this step fails.
 step() {
+    STEP_HINT=${3:-}
     printf '[%s/%s] %s\n' "$1" "$STEP_TOTAL" "$2"
     printf '\n== [%s/%s] %s\n' "$1" "$STEP_TOTAL" "$2" >> "$LOG_FILE"
 }
@@ -85,6 +88,8 @@ fail_with_log() {
         tail -n 30 "$LOG_FILE" >&2
         printf -- '--- 完整記錄：%s\n' "$LOG_FILE" >&2
     fi
+    [ -z "$STEP_HINT" ] || printf '\n建議解法：%s\n' "$STEP_HINT" >&2
+    printf '更多疑難排解：docs/deployment/one-click.md 第 4 節\n' >&2
     exit 1
 }
 run() {
@@ -206,8 +211,13 @@ ensure_docker_access() {
     command -v sg >/dev/null 2>&1 || die '找不到 sg 指令；請登出再登入讓 docker 群組生效後重新執行'
     printf '  以 docker 群組重新執行（本次不需登出）\n'
     # Every argument already passed the allowlist above; only the path needs quoting.
-    command_line="HINE_BUILD_REEXEC=1 HINE_BUILD_LOG=$(shell_quote "$LOG_FILE") sh $(shell_quote "$ROOT/build.sh")"
-    for argument in "$@"; do command_line="$command_line $argument"; done
+    # sg makes docker the primary group. Switch straight back to the user's own primary group so files keep their
+    # normal owner group (and existing .secrets stay valid); docker remains a supplementary group.
+    primary_group=$(id -gn "$user")
+    case "$primary_group" in ""|*[!A-Za-z0-9._-]*) die "無法判斷使用者 $user 的主要群組；請登出再登入後重新執行" ;; esac
+    inner="HINE_BUILD_REEXEC=1 HINE_BUILD_LOG=$(shell_quote "$LOG_FILE") sh $(shell_quote "$ROOT/build.sh")"
+    for argument in "$@"; do inner="$inner $argument"; done
+    command_line="sg $primary_group -c $(shell_quote "$inner")"
     printf '+ sg docker -c %s\n' "$command_line" >> "$LOG_FILE"
     exec sg docker -c "$command_line"
 }
@@ -261,15 +271,15 @@ compose_local() {
 }
 local_up() {
     STEP_TOTAL=5
-    step 1 '檢查並安裝前置工具'
+    step 1 '檢查並安裝前置工具' '確認網路能連到 download.docker.com 與 github.com、這個帳號可以使用 sudo；從上面記錄找出失敗的套件或下載後重跑 ./build.sh'
     install_prerequisites
     ensure_docker_access "$@"
     acquire_lock
-    step 2 '產生密鑰與設定（已存在就沿用）'
+    step 2 '產生密鑰與設定（已存在就沿用）' '多半是 .secrets/ 或 .env 的擁有者與目前使用者不同（用 ls -ln .secrets .env 檢查），或密鑰檔被改過。若不需要舊資料：刪除 .env 與 .secrets/，並依手冊 §2.4 清除舊的資料庫 volume，再重跑 ./build.sh'
     run sh "$SCRIPTS/init-dev.sh"
-    step 3 '建置前端'
+    step 3 '建置前端' '前端套件下載或建置失敗：確認網路能連到 registry.npmjs.org 後重跑 ./build.sh；仍失敗請把完整記錄檔提供給維護者'
     build_frontend "$LOCAL_URL"
-    step 4 '啟動服務並等待健康檢查'
+    step 4 '啟動服務並等待健康檢查' '用 ./build.sh status 找出沒有變成 healthy 的服務，再用 ./build.sh logs 服務名稱 看原因；資料庫密碼不符、映像下載失敗、連接埠衝突的處理見手冊第 4 節'
     check_port "$LOCAL_PORT" "$(local_project)"
     run compose_local up -d --build --wait --wait-timeout 180
     step 5 '完成'
@@ -428,7 +438,7 @@ write_active_env() {
 }
 production_up() {
     STEP_TOTAL=8
-    step 1 '檢查並安裝前置工具'
+    step 1 '檢查並安裝前置工具' '確認網路能連到 download.docker.com 與 github.com、這個帳號可以使用 sudo；從上面記錄找出失敗的套件或下載後重跑 ./build.sh --production'
     install_prerequisites
     ensure_docker_access "$@"
     acquire_lock
@@ -436,13 +446,13 @@ production_up() {
     load_deploy_env
     step 3 '部署前檢查（連接埠、DNS、子網路）'
     production_prechecks
-    step 4 "建立 $PRODUCTION_HOME 目錄"
+    step 4 "建立 $PRODUCTION_HOME 目錄" "需要 sudo 權限建立 $PRODUCTION_HOME；確認可以執行 sudo 後重跑"
     prepare_production_home
-    step 5 '產生正式機密鑰（已存在就沿用）'
+    step 5 '產生正式機密鑰（已存在就沿用）' "多半是 $PRODUCTION_HOME/secrets 的擁有者與目前使用者不同，或密鑰檔被改過；正式機密鑰不可隨意刪除重建（資料庫是用它們初始化的），請先比對 ls -ln $PRODUCTION_HOME/secrets"
     prepare_production_secrets
-    step 6 '建置並發布前端'
+    step 6 '建置並發布前端' "前端建置或發布失敗：確認網路能連到 registry.npmjs.org，且 $PRODUCTION_HOME/releases 可寫入，然後重跑"
     publish_frontend
-    step 7 '啟動服務（升級時先備份資料庫）'
+    step 7 '啟動服務（升級時先備份資料庫）' "從記錄找出是 preflight、migrate、啟動或公開探測失敗；用 ./build.sh --production status 與 logs 查看。上線版本不會改變（active.env 只在成功後更新），升級前的資料庫備份在 $PRODUCTION_HOME/backups/"
     export_production_env
     start_production
     step 8 '記錄目前版本'

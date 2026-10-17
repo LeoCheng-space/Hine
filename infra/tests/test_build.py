@@ -173,6 +173,10 @@ class BuildScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("已切換到 docker 群組", result.stderr)
         self.assertTrue(any(line.startswith("sudo usermod -aG docker ") for line in self.calls()))
+        # sg makes docker the primary group; switching back keeps created files owned by the user's own group
+        # (otherwise existing .secrets owned by user:user are rejected), while docker stays supplementary.
+        primary = subprocess.run([shutil.which("id"), "-gn"], text=True, capture_output=True, check=True).stdout.strip()
+        self.assertTrue(any(line.startswith(f"sg docker -c sg {primary} -c ") for line in self.calls()), self.log.read_text())
         self.assertNotIn("lock-present", self.calls())
         command = self.sg_command.read_text()
         quoted = "'" + str(self.root).replace("'", "'\\''") + "/build.sh'"
@@ -337,6 +341,8 @@ class BuildScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("記錄檔最後 30 行", result.stderr)
         self.assertIn("stub failure detail", result.stderr)
+        self.assertIn("建議解法：", result.stderr)
+        self.assertIn("backups", result.stderr)
         self.assertEqual((self.srv / "active.env").read_text(), previous)
         self.assertFalse((self.root / ".build.lock").exists())
 
