@@ -41,17 +41,17 @@ export function ChatList({ session, chat, path, onNavigate, onCreateGroup }: { s
   const [visible, setVisible] = useState<ReadonlySet<string>>(() => new Set()), listRef = useRef<HTMLUListElement>(null);
 
   const peers = useMemo(() => {
-    const result: Record<string, string> = {};
+    const result = new Map<string, string>();
     for (const item of list.items) {
       if (item.type !== 'direct') continue;
       const peer = snapshot.messages[item.id]?.find(message => message.sender_id !== me)?.sender_id ?? snapshot.details[item.id]?.members.find(member => member.user_id !== me)?.user_id;
-      if (peer) result[item.id] = peer;
+      if (peer) result.set(item.id, peer);
     }
     return result;
   }, [list.items, snapshot.messages, snapshot.details, me]);
 
   const rows = useMemo(() => sortConversations(list.items.filter(item => !denied.has(item.id)), book).map(item => {
-    const last = snapshot.messages[item.id]?.at(-1), peer = peers[item.id];
+    const last = snapshot.messages[item.id]?.at(-1), peer = peers.get(item.id);
     const title = item.type === 'group' ? item.title ?? '群組' : peer ? directory.get(peer)?.displayName ?? peer : '一對一對話';
     return { item, last, peer, title };
   }), [list.items, snapshot.messages, snapshot.denied, peers, book, denied, directory, directoryVersion]);

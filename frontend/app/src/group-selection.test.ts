@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { GROUP_OTHER_MEMBER_LIMIT, addMember, groupPayload, removeMember } from './group-selection';
+import { GROUP_OTHER_MEMBER_LIMIT, addMember, removeMember } from './group-selection';
 
 test('adding ignores self and duplicates and keeps insertion order', () => {
   let selected: string[] = [];
@@ -21,7 +21,4 @@ test('adding returns a new array so React state updates', () => {
   const { selected } = addMember(before, 'b', 'me');
   expect(selected).not.toBe(before);
   expect(before).toEqual(['a']);
-});
-test('payload keeps the exact title and selected ids', () => {
-  expect(groupPayload(' 讀書會 ', ['a', 'b'])).toEqual({ title: ' 讀書會 ', member_ids: ['a', 'b'] });
 });

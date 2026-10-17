@@ -122,7 +122,6 @@ form > button.primary { margin-top: 24px; }
 .chat-search { min-height: 40px; padding: 8px 16px; border: 1px solid transparent; border-radius: 20px; background: #eef2ef; }
 .chat-search:focus { background: var(--surface); border-color: var(--brand-500); }
 .list-hint { grid-column: 1 / -1; margin: 0 4px; }
-.chat-list .group-create { margin: 10px 12px 0; }
 .chat-list .item-list { margin: 6px 0 0; padding: 0 6px; }
 .chat-list .item-list > li { margin: 0; }
 .chat-list .list-item { min-height: 70px; gap: 12px; padding: 8px 10px; border: 0; border-radius: 12px; transition: background-color var(--motion-fast) var(--ease-out); }

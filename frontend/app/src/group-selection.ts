@@ -1,5 +1,3 @@
-import type { GroupCreatePayload } from './GroupsPage';
-
 /** A group holds at most 50 members including the creator. */
 export const GROUP_OTHER_MEMBER_LIMIT = 49;
 export type AddResult = 'added' | 'duplicate' | 'self' | 'full';
@@ -12,4 +10,3 @@ export function addMember(selected: readonly string[], id: string, self: string)
   return { selected: [...selected, id], result: 'added' };
 }
 export function removeMember(selected: readonly string[], id: string): string[] { return selected.filter(item => item !== id); }
-export function groupPayload(title: string, selected: readonly string[]): GroupCreatePayload { return { title, member_ids: [...selected] }; }
