@@ -621,6 +621,11 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             restored_intent = await indexeddb_intent(page_a, direct_id, uncertain_text)
             uncertain_m1 = str(uncertain_rows[0]["message_id"])
             uncertain_dom_count = await page_a.locator(f"[data-message-id='{uncertain_m1}']").count()
+            # Diagnostics only (the check below is unchanged): which component failed if it ever does.
+            test_record["counts"]["genuine_reload_replay_rows"] = len(replay_rows)
+            test_record["counts"]["genuine_reload_dom_count"] = uncertain_dom_count
+            test_record["counts"]["genuine_reload_intent_found"] = int(restored_intent is not None)
+            test_record["counts"]["genuine_reload_intent_persisted_same_m1"] = int(restored_intent is not None and restored_intent["status"] == "persisted" and restored_intent["messageId"] == uncertain_m1)
             check(test_record, "genuine_reload_replays_same_unconfirmed_c1_to_same_single_m1",
                   len(replay_rows) == 1 and str(replay_rows[0]["message_id"]) == uncertain_m1
                   and str(replay_rows[0]["client_message_id"]) == uncertain_c1
