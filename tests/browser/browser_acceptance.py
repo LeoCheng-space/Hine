@@ -276,6 +276,10 @@ async def main_nav(page):
     return page.get_by_role("navigation", name="主要導覽")
 
 
+async def spa_go(page, path: str) -> None:
+    await page.evaluate("p => { history.pushState(null, '', p); dispatchEvent(new PopStateEvent('popstate')); }", path)
+
+
 async def public_id(page) -> str:
     await page.bring_to_front()
     await page.get_by_role("navigation", name="主要導覽").get_by_role("button", name="個人檔案").click()
@@ -812,6 +816,55 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                 final_members = await conn.fetchval("SELECT count(*) FROM memberships WHERE conversation_id=$1 AND active", group_id)
             check(test_record, "real_group_removal_persisted_in_sql", final_members == 1)
             test_record["counts"]["group_members_after_ui_removal"] = int(final_members)
+            # A leave request whose response arrives after the user navigated away must not
+            # drag them back to /chats (GroupsPage navigated after unmount).
+            temp_title = "Leave race " + secrets.token_hex(3)
+            await spa_go(page_a, "/chats")
+            await page_a.locator(".chat-list").get_by_role("button", name="建立群組", exact=True).click()
+            temp_dialog = page_a.get_by_role("dialog", name="建立群組")
+            await temp_dialog.get_by_label("以公開 ID 加入").fill(ids[1])
+            await temp_dialog.get_by_role("button", name="加入", exact=True).click()
+            await temp_dialog.locator(".selected-members").get_by_text(names[1], exact=True).wait_for(state="visible")
+            await temp_dialog.get_by_role("button", name="下一步", exact=True).click()
+            await temp_dialog.get_by_label("群組名稱").fill(temp_title)
+            await temp_dialog.get_by_role("button", name="建立群組", exact=True).click()
+            await page_a.get_by_role("heading", name=temp_title).wait_for(state="visible", timeout=20000)
+            temp_group_id = page_a.url.rstrip("/").rsplit("/", 1)[-1]
+            await spa_go(page_a, "/groups/" + temp_group_id + "/manage")
+            bob_row = page_a.locator(".member-list li", has_text=ids[1])
+            await bob_row.get_by_role("button", name="設為管理員", exact=True).click()
+            await bob_row.get_by_role("button", name="改為成員", exact=True).wait_for(state="visible", timeout=15000)
+            leave_suffix = "/members/" + quote(ids[0], safe="")
+            leave_gate = asyncio.Event()
+
+            def is_leave(item) -> bool:
+                request = item.request if hasattr(item, "request") else item
+                return request.method == "DELETE" and item.url.endswith(leave_suffix)
+
+            async def hold_leave(route):
+                if route.request.method == "DELETE":
+                    await leave_gate.wait()
+                await route.continue_()
+
+            await page_a.route("**" + leave_suffix, hold_leave)
+            try:
+                async with page_a.expect_request(is_leave):
+                    await page_a.get_by_role("button", name="退出群組", exact=True).click()
+                await spa_go(page_a, "/contacts")
+                await page_a.wait_for_url(re.compile(r"/contacts$"))
+                async with page_a.expect_response(is_leave) as leave_info:
+                    leave_gate.set()
+                leave_status = (await leave_info.value).status
+                await page_a.wait_for_timeout(1000)
+                stayed_on_contacts = page_a.url.endswith("/contacts")
+            finally:
+                leave_gate.set()
+                await page_a.unroute("**" + leave_suffix, hold_leave)
+            async with components.sql() as conn:
+                still_member = await conn.fetchval(
+                    "SELECT count(*) FROM memberships WHERE conversation_id=$1 AND user_id=$2 AND active", temp_group_id, ids[0])
+            check(test_record, "group_leave_response_after_navigation_does_not_redirect",
+                  leave_status == 204 and still_member == 0 and stayed_on_contacts)
             context_c = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
             contexts.append(context_c)
             page_c = await context_c.new_page()
