@@ -399,6 +399,14 @@ test('failures resolve quietly, are not cached and back off before retrying', as
   advance(30_001); void directory.ensure('u'); await flush();
   expect(calls.length).toBe(2);
 });
+test('a request cancelled by a token refresh is retried without backoff', async () => {
+  const { directory, calls } = harness();
+  const first = directory.ensure('u'); await flush();
+  calls[0].done.reject(Object.assign(new Error('refresh'), { code: 'UNAUTHENTICATED' }));
+  await first;
+  void directory.ensure('u'); await flush();
+  expect(calls.length).toBe(2);
+});
 test('a newer put is not overwritten by an older in-flight response', async () => {
   const { directory, calls } = harness();
   const first = directory.ensure('me'); await flush();
@@ -536,7 +544,7 @@ export class UserDirectory {
         this.deps.fetchSummary(userId, signal).then(summary => {
           if (epoch !== this.epoch || this.versionOf(userId) !== version || !this.deps.accept()) return;
           this.failedAt.delete(userId); this.store(userId, summary);
-        }, () => { if (epoch === this.epoch) this.failedAt.set(userId, this.deps.now()); })
+        }, error => { if (epoch === this.epoch && !signal.aborted && !isCancellation(error)) this.failedAt.set(userId, this.deps.now()); })
           .finally(() => { this.running--; resolve(); this.pump(); });
       };
       this.queue.push({ run, cancel: resolve });
@@ -580,7 +588,9 @@ export function directoryFor(session: SessionController): UserDirectory {
 }
 ```
 
-- [ ] **Step 4：Run** 同 Step 2。Expected：13 pass。
+- [ ] **Step 4：Run** 同 Step 2。Expected：13 pass（12 個情境＋token 刷新取消）。
+
+`isCancellation` 置於 `user-directory.ts` 模組層級：`const isCancellation = (error: unknown): boolean => error instanceof Error && ((error as { code?: unknown }).code === 'UNAUTHENTICATED' || error.name === 'AbortError');`（`session.ts:203` 在 token 刷新後以 `UNAUTHENTICATED` 拒絕進行中的請求，設計 §6.4 規定視為取消）。
 - [ ] **Step 5：Commit** `feat: add owner-scoped user summary cache`
 
 ### Task 2.2b：頭像位元組快取（`avatar-cache.ts`）
@@ -588,13 +598,13 @@ export function directoryFor(session: SessionController): UserDirectory {
 **Files:** Create `frontend/app/src/avatar-cache.ts`、`frontend/app/src/avatar-cache.test.ts`；Modify `frontend/app/src/ContactsPage.tsx:95-119`（`Avatar` 改用快取；匯出名稱與 props 不變）
 
 **Interfaces:**
-- Produces: `interface AvatarDeps { load(attachmentId: string, signal: AbortSignal): Promise<Blob>; createURL(blob: Blob): string; revokeURL(url: string): void; accept(): boolean }`；`class AvatarCache`：`acquire(attachmentId): Promise<string | null>`（永不 reject；失敗回 null 且不快取）、`release(attachmentId)`、`reset()`（中止下載、撤銷全部 URL、所有未完成的 `acquire` 以 null 結算）；`avatarCacheFor(session, load): AvatarCache`（owner 改變時 `reset` 舊實例；`load` 由呼叫端注入，避免 `avatar-cache.ts` 反向 import `ContactsPage.tsx`）。
+- Produces: `interface AvatarDeps { load(attachmentId: string, signal: AbortSignal): Promise<Blob>; createURL(blob: Blob): string; revokeURL(url: string): void; accept(): boolean }`；`interface AvatarHandle { url: Promise<string | null>; release(): void }`；`class AvatarCache`：`acquire(attachmentId): AvatarHandle`（`url` 永不 reject；失敗為 null 且不快取；`release` 只作用於該 handle 取得的項目、可重複呼叫）、`reset()`（中止下載、撤銷全部 URL、所有未完成的 `url` 以 null 結算）；`avatarCacheFor(session, load): AvatarCache`（owner 改變時 `reset` 舊實例；`load` 由呼叫端注入，避免 `avatar-cache.ts` 反向 import `ContactsPage.tsx`）。
 
 - [ ] **Step 1：寫失敗測試**
 
 ```ts
 import { expect, test } from 'bun:test';
-import { AvatarCache } from './avatar-cache';
+import { AvatarCache, type AvatarHandle } from './avatar-cache';
 
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (error: unknown) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 function harness(options: { idleLimit?: number; concurrency?: number } = {}) {
@@ -611,29 +621,40 @@ test('concurrent acquires share one download and one object URL', async () => {
   const a = cache.acquire('p'), b = cache.acquire('p'); await flush();
   expect(loads.length).toBe(1);
   loads[0].done.resolve(blob());
-  expect(await a).toBe('blob:1'); expect(await b).toBe('blob:1');
+  expect(await a.url).toBe('blob:1'); expect(await b.url).toBe('blob:1');
 });
 test('a released avatar is reused without downloading again', async () => {
   const { cache, loads } = harness();
-  const first = cache.acquire('p'); await flush(); loads[0].done.resolve(blob()); await first;
-  cache.release('p');
-  expect(await cache.acquire('p')).toBe('blob:1');
+  const first = cache.acquire('p'); await flush(); loads[0].done.resolve(blob()); await first.url;
+  first.release();
+  expect(await cache.acquire('p').url).toBe('blob:1');
   expect(loads.length).toBe(1);
 });
 test('idle avatars beyond the limit are revoked oldest first; in-use ones are kept', async () => {
   const { cache, loads, revoked } = harness({ idleLimit: 1 });
-  for (const id of ['a', 'b', 'c']) { const done = cache.acquire(id); await flush(); loads.at(-1)!.done.resolve(blob()); await done; }
-  cache.release('a'); cache.release('b');
+  const handles: AvatarHandle[] = [];
+  for (const id of ['a', 'b', 'c']) { const handle = cache.acquire(id); await flush(); loads.at(-1)!.done.resolve(blob()); await handle.url; handles.push(handle); }
+  handles[0].release(); handles[1].release();
   expect(revoked).toEqual(['blob:1']);
-  expect(await cache.acquire('c')).toBe('blob:3');
+  expect(await cache.acquire('c').url).toBe('blob:3');
 });
 test('failures are not cached and resolve to null', async () => {
   const { cache, loads } = harness();
   const first = cache.acquire('p'); await flush(); loads[0].done.reject(new Error('expired'));
-  expect(await first).toBeNull();
-  cache.release('p');
+  expect(await first.url).toBeNull();
+  first.release();
   void cache.acquire('p'); await flush();
   expect(loads.length).toBe(2);
+});
+test('a stale handle from a failed download cannot release a newer entry', async () => {
+  const { cache, loads, revoked } = harness({ idleLimit: 0 });
+  const first = cache.acquire('p'); await flush(); loads[0].done.reject(new Error('expired'));
+  expect(await first.url).toBeNull();
+  const second = cache.acquire('p'); await flush();
+  first.release(); first.release();
+  loads[1].done.resolve(blob());
+  expect(await second.url).toBe('blob:1');
+  expect(revoked).toEqual([]);
 });
 test('no more than the configured number of downloads run at once', async () => {
   const { cache, loads } = harness({ concurrency: 2 });
@@ -644,13 +665,14 @@ test('no more than the configured number of downloads run at once', async () => 
 });
 test('reset aborts downloads, revokes every URL and settles pending acquires with null', async () => {
   const { cache, loads, revoked } = harness();
-  const held = cache.acquire('a'); await flush(); loads[0].done.resolve(blob()); await held;
+  const held = cache.acquire('a'); await flush(); loads[0].done.resolve(blob()); await held.url;
   const pending = cache.acquire('b'); await flush();
   cache.reset();
   expect(loads[1].signal.aborted).toBe(true);
-  expect(await pending).toBeNull();
+  expect(await pending.url).toBeNull();
   expect(revoked).toEqual(['blob:1']);
   loads[1].done.resolve(blob()); await flush();
+  held.release();
   expect(revoked.length).toBe(1);
 });
 ```
@@ -663,6 +685,7 @@ import { ownerPartition } from './api';
 import type { SessionController } from './session';
 
 export interface AvatarDeps { load(attachmentId: string, signal: AbortSignal): Promise<Blob>; createURL(blob: Blob): string; revokeURL(url: string): void; accept(): boolean }
+export interface AvatarHandle { url: Promise<string | null>; release(): void }
 interface Entry { refs: number; url: string | null; promise: Promise<string | null>; settle(value: string | null): void }
 
 export class AvatarCache {
@@ -675,9 +698,14 @@ export class AvatarCache {
   private readonly idleLimit: number;
   private readonly limit: number;
   constructor(private readonly deps: AvatarDeps, options: { idleLimit?: number; concurrency?: number } = {}) { this.idleLimit = options.idleLimit ?? 48; this.limit = options.concurrency ?? 4; }
-  acquire(attachmentId: string): Promise<string | null> {
-    const existing = this.entries.get(attachmentId);
-    if (existing) { existing.refs++; this.idle = this.idle.filter(id => id !== attachmentId); return existing.promise; }
+  acquire(attachmentId: string): AvatarHandle {
+    let entry = this.entries.get(attachmentId);
+    if (entry) { entry.refs++; this.idle = this.idle.filter(id => id !== attachmentId); }
+    else entry = this.start(attachmentId);
+    const owned = entry; let released = false;
+    return { url: owned.promise, release: () => { if (released) return; released = true; this.release(attachmentId, owned); } };
+  }
+  private start(attachmentId: string): Entry {
     const epoch = this.epoch, signal = this.abort.signal;
     let settle!: (value: string | null) => void;
     const entry: Entry = { refs: 1, url: null, promise: new Promise<string | null>(resolve => { settle = resolve; }), settle: value => settle(value) };
@@ -692,10 +720,10 @@ export class AvatarCache {
         .finally(() => { this.running--; this.pump(); });
     } });
     this.pump();
-    return entry.promise;
+    return entry;
   }
-  release(attachmentId: string): void {
-    const entry = this.entries.get(attachmentId); if (!entry || entry.refs === 0) return;
+  private release(attachmentId: string, entry: Entry): void {
+    if (this.entries.get(attachmentId) !== entry || entry.refs === 0) return;
     entry.refs--; if (entry.refs > 0) return;
     if (entry.url === null) { this.entries.delete(attachmentId); return; }
     this.idle.push(attachmentId);
@@ -744,12 +772,13 @@ function loadAvatar(session: SessionController) {
 useEffect(() => {
   if (!attachmentId || session.getSnapshot().context.state !== 'authenticated') { setUrl(null); setFailed(false); return; }
   const cache = avatarCacheFor(session, loadAvatar(session)); let active = true; setUrl(null); setFailed(false);
-  void cache.acquire(attachmentId).then(value => { if (!active) return; if (value) setUrl(value); else setFailed(true); });
-  return () => { active = false; cache.release(attachmentId); };
+  const handle = cache.acquire(attachmentId);
+  void handle.url.then(value => { if (!active) return; if (value) setUrl(value); else setFailed(true); });
+  return () => { active = false; handle.release(); };
 }, [session, attachmentId]);
 ```
 
-- [ ] **Step 5：Run** Step 2 與三命令。Expected：6 pass；既有測試全數通過。
+- [ ] **Step 5：Run** Step 2 與三命令。Expected：7 pass；既有測試全數通過。
 - [ ] **Step 6：Commit** `feat: share owner-scoped avatar downloads`
 
 ### Task 2.3：`ChatList.tsx`
@@ -1171,7 +1200,7 @@ await dialog.get_by_role("button", name="建立群組", exact=True).click()
 
 ### Task 4.3：群組管理頁卸載後不再導覽（spec R12）
 
-**Files:** Modify `tests/browser/browser_acceptance.py`（`:779` 群組移除完成之後、`:780` 建立 page_c 之前）、`GroupsPage.tsx:94-113`。**不修改** `App.tsx:72`（App 的路由 key 已含 `path`，`key` 無作用）。
+**Files:** Modify `tests/browser/browser_acceptance.py`（群組移除完成的 `final_members` 檢查之後、`context_c = await browser.new_context(` 那一行之前；以程式碼為錨點，不依賴行號）、`GroupsPage.tsx:94-113`。**不修改** `App.tsx:72`（App 的路由 key 已含 `path`，`key` 無作用）。
 
 - [ ] **Step 1：先寫回歸檢查**（應用內導覽沿用 `router.ts:18-19` 的 `popstate`；最後一位管理員不能退出，所以先把 Bob 設為管理員）：
 
@@ -1195,13 +1224,14 @@ await spa_go(page_a, f"/groups/{quote(temp_group_id, safe='')}/manage")
 bob_row = page_a.locator(".member-list li", has_text=ids[1])
 await bob_row.get_by_role("button", name="設為管理員", exact=True).click()
 await bob_row.get_by_role("button", name="改為成員", exact=True).wait_for(state="visible")
-is_leave = lambda r: (r.request if hasattr(r, "request") else r).method == "DELETE" and r.url.endswith(f"/members/{ids[0]}")
+leave_suffix = f"/members/{quote(ids[0], safe='')}"
+is_leave = lambda r: (r.request if hasattr(r, "request") else r).method == "DELETE" and r.url.endswith(leave_suffix)
 leave_gate = asyncio.Event()
 async def hold_leave(route):
     if route.request.method == "DELETE":
         await leave_gate.wait()
     await route.continue_()
-leave_pattern = f"**/members/{ids[0]}"
+leave_pattern = f"**{leave_suffix}"
 await page_a.route(leave_pattern, hold_leave)
 try:
     async with page_a.expect_request(is_leave):
@@ -1221,7 +1251,7 @@ async with components.sql() as conn:
 check(test_record, "group_leave_response_after_navigation_does_not_redirect", leave_status == 204 and still_member == 0 and stayed)
 ```
 
-`quote`／`unquote`、`re`、`secrets`、`asyncio` 依腳本既有 import 補齊（只用標準函式庫）；退出群組若有確認步驟，依實際 UI 補上點擊。結束時 page_a 位於 `/contacts`；後續 `:780` 起的步驟不依賴 page_a 的路由（`:793` 登出只用導覽）。
+`quote`／`unquote`、`re`、`secrets`、`asyncio` 依腳本既有 import 補齊（只用標準函式庫）；退出群組目前沒有確認步驟（審查已核對）。結束時 page_a 位於 `/contacts`；後續建立 page_c 起的步驟不依賴 page_a 的路由（登出只用導覽）。
 
 - [ ] **Step 2：只提交檢查並推送**，確認 CI 中此 check 為 false（`GroupsPage.tsx:107` 會把使用者導回 `/chats`），記錄失敗 run URL。若意外通過，代表檢查無效：停止並重新設計，不進入 Step 3。
 - [ ] **Step 3：修正**：`GroupsPage` 加 `const alive = useRef(false); useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);`；`mutate` 中退出成功後照常 `await chat.withdraw(conversationId)`，再 `if (alive.current) onNavigate('/chats')`；`:112` 的撤權導覽同樣先檢查 `alive.current`。
@@ -1245,7 +1275,7 @@ check(test_record, "group_leave_response_after_navigation_does_not_redirect", le
 
 ### Task 5.1：新增行為檢查
 
-插入位置：`browser_acceptance.py` Task 4.3 檢查之後、`:780`（建立 page_c）之前。此時 page_c（與 page_a 同帳號）尚未存在，不會代替 page_a 送出已讀。開始時記錄目前 viewport（390×844），結束時還原。page_a 先以 `spa_go` 進入 `/chats/{direct_id}`（已有 100 則以上訊息，可捲動）；page_b（Bob）也進入同一聊天室並負責送出訊息。
+插入位置：`browser_acceptance.py` Task 4.3 檢查之後、`context_c = await browser.new_context(` 那一行之前（以程式碼為錨點）。此時 page_c（與 page_a 同帳號）尚未存在，不會代替 page_a 送出已讀。開始時記錄目前 viewport（390×844），結束時還原。page_a 先以 `spa_go` 進入 `/chats/{direct_id}`（已有 100 則以上訊息，可捲動）；page_b（Bob）也進入同一聊天室並負責送出訊息。
 
 | Check | 操作 | 條件（必須能抓到失敗） |
 |---|---|---|
