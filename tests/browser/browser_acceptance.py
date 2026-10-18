@@ -89,11 +89,14 @@ class AcceptanceFailure(Exception):
 
 
 def _failure_sites(error: BaseException) -> list[dict]:
+    """Frames of this runner and of the shared product Components it drives, innermost last."""
+    owned = {__file__: "browser", str(FAULTS): "faults"}
     sites = []
     trace = error.__traceback__
     while trace is not None:
-        if trace.tb_frame.f_code.co_filename == __file__:
-            sites.append({"function": trace.tb_frame.f_code.co_name, "line": trace.tb_lineno})
+        source = owned.get(trace.tb_frame.f_code.co_filename)
+        if source is not None:
+            sites.append({"file": source, "function": trace.tb_frame.f_code.co_name, "line": trace.tb_lineno})
         trace = trace.tb_next
     return sites
 
@@ -188,6 +191,19 @@ async def web_build_provenance(bun: str, destination: Path) -> tuple[str, dict[s
     return version, source_hashes, asset_hashes, executable_hash
 
 
+async def devtools_port(port_file: Path, child) -> int | None:
+    """Chrome creat()s DevToolsActivePort and writes "<port>\\n<browser path>" afterwards, so an
+    existing file can still be empty; only a file with both lines is ready. None: child exited."""
+    while True:
+        if child.returncode is not None:
+            return None
+        with contextlib.suppress(FileNotFoundError):
+            lines = port_file.read_text().splitlines()
+            if len(lines) >= 2 and lines[0].isdigit():
+                return int(lines[0])
+        await asyncio.sleep(0.02)
+
+
 async def _native_recipient(playwright, managed_browser, args, components, private, evidence):
     executable = args.browser_executable or {
         "chrome": "/opt/google/chrome/chrome",
@@ -215,16 +231,12 @@ async def _native_recipient(playwright, managed_browser, args, components, priva
         f"--user-data-dir={profile}", "--remote-debugging-port=0",
         "--remote-debugging-address=127.0.0.1", "--ignore-certificate-errors", "about:blank",
         env=dict(os.environ))
-    port_file = profile / "DevToolsActivePort"
     async with asyncio.timeout(20):
-        while not port_file.is_file():
-            if child.returncode is not None:
-                failure_code, diagnostic = _native_startup_diagnostic(
-                    components, args.browser, child)
-                evidence["diagnostics"]["native_browser_startup"] = diagnostic
-                raise PrerequisiteFailure(failure_code)
-            await asyncio.sleep(0.02)
-    port = int(port_file.read_text().splitlines()[0])
+        port = await devtools_port(profile / "DevToolsActivePort", child)
+    if port is None:
+        failure_code, diagnostic = _native_startup_diagnostic(components, args.browser, child)
+        evidence["diagnostics"]["native_browser_startup"] = diagnostic
+        raise PrerequisiteFailure(failure_code)
     # Public no_defaults applies to the real default context, unlike a second
     # CDP session which cannot undo Playwright's own forced-visible session.
     native = await playwright.chromium.connect_over_cdp(
@@ -612,6 +624,16 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                   and uncertain_intent["status"] == "unknown" and uncertain_intent["messageId"] is None
                   and uncertain_intent["payload"] == {"type": "text", "text": uncertain_text})
             uncertain_c1 = uncertain_intent["clientMessageId"]
+            uncertain_m1 = str(uncertain_rows[0]["message_id"])
+            # Record the most M1 bubbles ever rendered at once across the whole reload. After the
+            # socket reconnects the open room is re-authorized and briefly unmounted (0 bubbles), so
+            # an instantaneous count can sample that gap; a duplicate shows up as a maximum above 1.
+            await page_a.add_init_script(script="""(id => {
+              window.__hineReloadM1Max = 0;
+              const count = () => { window.__hineReloadM1Max = Math.max(window.__hineReloadM1Max,
+                document.querySelectorAll(`[data-message-id="${id}"]`).length); };
+              new MutationObserver(count).observe(document, {childList: true, subtree: true});
+            })(""" + json.dumps(uncertain_m1) + ")")
             await page_a.reload(wait_until="domcontentloaded")
             await page_a.wait_for_function("() => document.querySelector('.chat-room') !== null", timeout=45000)
             await page_a.wait_for_function(
@@ -623,17 +645,25 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                     "SELECT message_id,client_message_id,payload->>'text' AS text FROM messages WHERE client_message_id=$1",
                     uncertain_c1)
             restored_intent = await indexeddb_intent(page_a, direct_id, uncertain_text)
-            uncertain_m1 = str(uncertain_rows[0]["message_id"])
-            uncertain_dom_count = await page_a.locator(f"[data-message-id='{uncertain_m1}']").count()
-            # Diagnostics only (the check below is unchanged): which component failed if it ever does.
+            try:
+                await page_a.wait_for_function(
+                    "id => document.querySelectorAll(`[data-message-id=\"${id}\"]`).length === 1",
+                    arg=uncertain_m1, timeout=15000)
+                uncertain_dom_settled = True
+            except PlaywrightError:
+                uncertain_dom_settled = False
+            uncertain_dom_max = await page_a.evaluate("() => window.__hineReloadM1Max")
+            # Diagnostics only: which component failed if the check below ever does.
             test_record["counts"]["genuine_reload_replay_rows"] = len(replay_rows)
-            test_record["counts"]["genuine_reload_dom_count"] = uncertain_dom_count
+            test_record["counts"]["genuine_reload_dom_settled_single"] = int(uncertain_dom_settled)
+            test_record["counts"]["genuine_reload_dom_max"] = uncertain_dom_max
             test_record["counts"]["genuine_reload_intent_found"] = int(restored_intent is not None)
             test_record["counts"]["genuine_reload_intent_persisted_same_m1"] = int(restored_intent is not None and restored_intent["status"] == "persisted" and restored_intent["messageId"] == uncertain_m1)
             check(test_record, "genuine_reload_replays_same_unconfirmed_c1_to_same_single_m1",
                   len(replay_rows) == 1 and str(replay_rows[0]["message_id"]) == uncertain_m1
                   and str(replay_rows[0]["client_message_id"]) == uncertain_c1
-                  and replay_rows[0]["text"] == uncertain_text and uncertain_dom_count == 1
+                  and replay_rows[0]["text"] == uncertain_text
+                  and uncertain_dom_settled and uncertain_dom_max == 1
                   and restored_intent is not None
                   and restored_intent["clientMessageId"] == uncertain_c1
                   and restored_intent["messageId"] == uncertain_m1
@@ -1310,6 +1340,8 @@ def main() -> int:
         code = 1
     except Exception as failure:  # noqa: BLE001 - sanitize arbitrary product/browser exceptions at the evidence boundary.
         evidence["failure_code"] = "REAL_PRODUCT_OR_BROWSER_RUNNER_ERROR"
+        # Class name and owned frames only; never the message, which may carry SQL or secrets.
+        evidence["failure_type"] = type(failure).__name__
         evidence["failure_sites"] = _failure_sites(failure)
         record["status"] = "FAIL" if record["checks"] else "NOT_EXERCISED"
         code = 1 if record["checks"] else 2
