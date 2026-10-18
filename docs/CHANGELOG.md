@@ -1,5 +1,13 @@
 # HINE 文件變更紀錄
 
+## 2026-10-18 — 修正三個 CI 偶發失敗（Fixes #14、#15、#16）
+
+- #16 與兩次瀏覽器啟動失敗（`run_browser:428`）同一根因：`Components.start_tls` 只等 Caddy 寫出根憑證並開始監聽，就送出唯一一次 HTTPS 請求；Caddy 2.6.2 此時可能還在簽發 `localhost` 憑證，握手收到 `TLSV1_ALERT_INTERNAL_ERROR`。改為在原有 25 秒時限內只對此 TLS alert 重試；憑證不受信任、HTTP 非 200、Caddy 結束仍立即失敗。
+- #15：Chrome 先建立空的 `DevToolsActivePort` 再寫入內容，原本檔案一出現就解析而 `IndexError`。改為讀到「連接埠＋瀏覽器路徑」兩行才算就緒，Chrome 結束仍走原診斷分支。
+- #14（只改測試）：重新連線後開啟中的聊天室會重新授權並短暫卸載，原本瞬間計數可能取到 0。改為全程以 MutationObserver 記錄同時出現的 M1 最大數量，等畫面穩定為 1 個後判定，重複（最大值大於 1）仍判失敗；SQL 與 IndexedDB 條件不變。
+- 診斷：fault drill 的 `REAL_PRODUCT_OR_RUNNER_ERROR`／逾時記錄 runner 內的失敗位置與例外類別名稱（不含訊息）；瀏覽器驗收的失敗位置也涵蓋共用的 `product_fault_drill.py`。
+- 新增 `infra/tests/test_acceptance_startup.py`（5 項）：修正前空檔與 TLS alert 案例重現 CI 的 `IndexError`／`ClientConnectorSSLError`，修正後通過；python-behavior 改為一併安裝 `tests/browser/requirements.txt` 以載入瀏覽器 runner。
+
 ## 2026-10-18 — 建立群組可直接建立，成員改為選填（Fixes #21）
 
 - 建立群組由兩步驟改為單頁：最上方是「群組名稱」，下方「成員（選填）」區塊保留公開 ID 查詢與聯絡人勾選，底部固定「建立群組」。不選成員即可建立只有自己（管理員）的群組，之後在群組管理頁新增成員。

@@ -555,6 +555,20 @@ class Link:
             await self.runner.cleanup()
 
 
+async def verified_tls_status(http, url, caddy):
+    """Caddy listens and writes its internal root CA before the localhost leaf certificate is
+    issued; a handshake in that window gets a TLS internal_error alert. Retry only that alert:
+    an untrusted certificate or any HTTP answer still fails at once."""
+    while True:
+        if caddy.returncode is not None:
+            raise DrillFailure("OWNED_CADDY_EXITED")
+        try:
+            async with http.get(url) as reply:
+                return reply.status
+        except aiohttp.ClientConnectorSSLError:
+            await asyncio.sleep(0.05)
+
+
 class Components:
     def __init__(self, args, access_ttl_seconds=900):
         self.args = args
@@ -839,13 +853,13 @@ class Components:
                 if self.caddy_process.returncode is not None:
                     raise DrillFailure("OWNED_CADDY_EXITED")
                 await asyncio.sleep(0.1)
-        tls = ssl.create_default_context(cafile=str(root))
-        self.http = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=tls),
-            timeout=aiohttp.ClientTimeout(total=12), trust_env=False,
-            cookie_jar=aiohttp.DummyCookieJar())
-        async with self.http.get(self.origin + "/") as reply:
-            if reply.status != 200:
-                raise DrillFailure("OWNED_TLS_VERIFIED_REQUEST_FAILED")
+            tls = ssl.create_default_context(cafile=str(root))
+            self.http = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=tls),
+                timeout=aiohttp.ClientTimeout(total=12), trust_env=False,
+                cookie_jar=aiohttp.DummyCookieJar())
+            status = await verified_tls_status(self.http, self.origin + "/", self.caddy_process)
+        if status != 200:
+            raise DrillFailure("OWNED_TLS_VERIFIED_REQUEST_FAILED")
 
     async def http_request(self, method, path, session=None, body=None, cookie=None):
         headers = {"Origin": self.origin}
@@ -1128,6 +1142,17 @@ async def prerequisites(args, evidence):
         "runner_asyncpg": importlib.metadata.version("asyncpg"), "tools": tools}
 
 
+def failure_sites(error):
+    """Function and line of this runner's own frames, innermost last."""
+    sites = []
+    trace = error.__traceback__
+    while trace is not None:
+        if trace.tb_frame.f_code.co_filename == __file__:
+            sites.append({"function": trace.tb_frame.f_code.co_name, "line": trace.tb_lineno})
+        trace = trace.tb_next
+    return sites
+
+
 async def execute(args, evidence):
     await prerequisites(args, evidence)
     functions = (api_crash, ba_crash, pg_outage, redis_outage, lost_logout,
@@ -1151,13 +1176,17 @@ async def execute(args, evidence):
             record["status"] = "FAIL"
             record["failure_code"] = str(failure)
             failed = True
-        except TimeoutError:
+        except TimeoutError as failure:
             record["status"] = "FAIL"
             record["failure_code"] = "BOUNDED_OBSERVATION_OR_CLEANUP_TIMEOUT"
+            record["failure_sites"] = failure_sites(failure)
             failed = True
-        except Exception:  # noqa: BLE001 - Quarantine private service/SQL exception details at evidence boundary.
+        except Exception as failure:  # noqa: BLE001 - Quarantine private service/SQL exception details at evidence boundary.
             record["status"] = "FAIL"
             record["failure_code"] = "REAL_PRODUCT_OR_RUNNER_ERROR"
+            # Class name and runner-file frames only; never the message, which may carry SQL or secrets.
+            record["failure_type"] = type(failure).__name__
+            record["failure_sites"] = failure_sites(failure)
             failed = True
         finally:
             record["timings_ms"]["scenario_setup_fault_verification_cleanup"] = milliseconds(started)
