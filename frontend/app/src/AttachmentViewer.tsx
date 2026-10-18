@@ -6,7 +6,10 @@ import { downloadAttachment } from './attachment-transfer';
 interface AttachmentMetadata {filename:string;content_type:string;size_bytes:number}
 export function AttachmentRecovery({transfer,onRetry}:{transfer:AttachmentSendState|null;onRetry:()=>void}) {
  if(!transfer)return null;
- return <div className="chat-notice notice" data-read-occlusion role="status" aria-label="附件傳送狀態"><p>{transfer.phase==='uploading'?'正在上傳與核驗附件；未就緒不會傳送訊息。':transfer.phase==='ready'?'附件已完成核驗，尚未加入傳送佇列。':'原附件上傳嘗試尚未完成，請核對原嘗試。'}</p>{transfer.error&&<p>{transfer.error}</p>}{transfer.retryable&&transfer.phase!=='uploading'&&<button type="button" onClick={onRetry}>{transfer.phase==='ready'?'傳送已核驗附件':'核對原上傳嘗試'}</button>}</div>;
+ // "原上傳嘗試" only exists once A20 issued a grant; a refusal before that (e.g. storage not configured) is a fresh upload.
+ const status=transfer.phase==='uploading'?'正在上傳與核驗附件；未就緒不會傳送訊息。':transfer.phase==='ready'?'附件已完成核驗，尚未加入傳送佇列。':transfer.attemptCreated?'原附件上傳嘗試尚未完成，請核對原嘗試。':null;
+ const action=transfer.phase==='ready'?'傳送已核驗附件':transfer.attemptCreated?'核對原上傳嘗試':'重新上傳';
+ return <div className="chat-notice notice" data-read-occlusion role="status" aria-label="附件傳送狀態">{status&&<p>{status}</p>}{transfer.error&&<p>{transfer.error}</p>}{transfer.retryable&&transfer.phase!=='uploading'&&<button type="button" onClick={onRetry}>{action}</button>}</div>;
 }
 
 async function attachmentBytes(session:SessionController,id:string):Promise<{grant:DownloadGrant;blob:Blob}> {
