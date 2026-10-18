@@ -76,7 +76,7 @@ export interface ChatSnapshot {
 }
 interface PendingRequest {event:string;expected:string;epoch:number;conversation?:string;payload:Record<string,unknown>;resolve:(frame:WireEvent)=>void;reject:(error:Error)=>void;timer:number}
 interface Binding {user:string;device:string;generation:number;token:string;expires:string}
-export interface AttachmentSendState {phase:'uploading'|'waiting'|'ready';error:string|null;retryable:boolean}
+export interface AttachmentSendState {phase:'uploading'|'waiting'|'ready';error:string|null;retryable:boolean;attemptCreated:boolean}
 interface AttachmentOperation {userId:string;deviceId:string;conversationId:string;task:()=>Promise<AttachmentView>;ready:AttachmentView|null;running:Promise<void>|null;blocked:boolean;state:AttachmentSendState}
 interface SocketScope {socket:WebSocket;queue:ReceiveQueue}
 interface SelfJoinWork {epoch:number;ticket:ConversationTicket;work:Promise<void>}
@@ -425,7 +425,7 @@ export class ChatController {
  async transferAttachment(conversationId:string,task:()=>Promise<AttachmentView>):Promise<void> {
   const context=this.session.getSnapshot().context;if(context.state!=='authenticated'||!this.valid()||this.state.denied.includes(conversationId))throw new ChatFault('UNAUTHENTICATED');
   const key=JSON.stringify([context.user_id,context.device_id,conversationId]),previous=this.attachmentOperations.get(key);if(previous?.running)return previous.running;
-  const operation:AttachmentOperation={userId:context.user_id,deviceId:context.device_id,conversationId,task,ready:null,running:null,blocked:false,state:{phase:'uploading',error:null,retryable:false}};
+  const operation:AttachmentOperation={userId:context.user_id,deviceId:context.device_id,conversationId,task,ready:null,running:null,blocked:false,state:{phase:'uploading',error:null,retryable:false,attemptCreated:false}};
   this.attachmentOperations.set(key,operation);await this.runAttachment(operation,key);
  }
  async retryAttachment(conversationId:string):Promise<void> {
@@ -435,7 +435,7 @@ export class ChatController {
  private runAttachment(operation:AttachmentOperation,key:string):Promise<void> {
   if(operation.running)return operation.running;
   const run=async():Promise<void>=>{
-   operation.state={phase:'uploading',error:null,retryable:false};this.publish();
+   operation.state={phase:'uploading',error:null,retryable:false,attemptCreated:operation.state.attemptCreated};this.publish();
    try{
     if(!operation.ready){const ready=await operation.task();if(ready.state!=='ready')throw new AttachmentTransferError('UPLOAD_NOT_READY',false);operation.ready=ready;}
     const context=this.session.getSnapshot().context;if(context.state!=='authenticated'||context.user_id!==operation.userId||context.device_id!==operation.deviceId||!this.valid())throw new ChatFault('UNAUTHENTICATED');
@@ -448,14 +448,14 @@ export class ChatController {
    }catch(error){
     if(error instanceof AttachmentTransferError&&error.retry)operation.task=error.retry;
     const permanent=operation.blocked||error instanceof StorageFault||error instanceof Error&&'code' in error&&['FORBIDDEN','NOT_FOUND','INVALID_ARGUMENT','UPLOAD_EXPIRED','CONFLICT'].includes(String(error.code));
-    operation.state={phase:operation.ready?'ready':'waiting',error:error instanceof AttachmentTransferError?error.message:'附件尚未傳送；原上傳嘗試或已核驗附件已保留。',retryable:!permanent&&(operation.ready!==null||error instanceof AttachmentTransferError&&error.retry!==null)};this.publish();throw error;
+    operation.state={phase:operation.ready?'ready':'waiting',error:error instanceof AttachmentTransferError?error.message:'附件尚未傳送；原上傳嘗試或已核驗附件已保留。',retryable:!permanent&&(operation.ready!==null||error instanceof AttachmentTransferError&&error.retry!==null),attemptCreated:operation.ready!==null||error instanceof AttachmentTransferError&&error.attemptCreated};this.publish();throw error;
    }
   };
   const promise=run();operation.running=promise;void promise.finally(()=>{if(operation.running===promise)operation.running=null;}).catch(()=>{});return promise;
  }
  private blockAttachments(conversationId:string):void {
   const binding=this.binding;if(!binding)return;
-  let changed=false;for(const operation of this.attachmentOperations.values())if(operation.conversationId===conversationId&&operation.userId===binding.user&&operation.deviceId===binding.device&&!operation.blocked){operation.blocked=true;operation.state={phase:'waiting',error:'對話權限已變更，舊附件傳送意圖已停止。',retryable:false};changed=true;}
+  let changed=false;for(const operation of this.attachmentOperations.values())if(operation.conversationId===conversationId&&operation.userId===binding.user&&operation.deviceId===binding.device&&!operation.blocked){operation.blocked=true;operation.state={phase:'waiting',error:'對話權限已變更，舊附件傳送意圖已停止。',retryable:false,attemptCreated:operation.state.attemptCreated};changed=true;}
   if(changed)this.publish();
  }
  async retryIntent(c1:string):Promise<void> {const intent=this.state.intents[c1];if(!intent||intent.status==='persisted'||this.state.denied.includes(intent.conversationId)||intent.retryAt!==null&&intent.retryAt>Date.now())return;this.manualIntentRetries.add(c1);await this.commit(state=>{const value=state.intents[c1];value.status='unknown';value.autoRetryStopped=false;if(value.error!=='MEMBERSHIP_RECHECK_REQUIRED')value.error=null;});void this.flush();}

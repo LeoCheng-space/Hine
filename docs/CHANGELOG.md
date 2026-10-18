@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-18 — 聊天室附件失敗訊息依實際狀態顯示（Fixes #28）
+
+- 伺服器尚未建立上傳嘗試就拒絕時（例如本機未設定儲存服務，A20 回 `DEPENDENCY_UNAVAILABLE`），附件狀態區只顯示原因一次，按鈕為「重新上傳」，不再出現「原附件上傳嘗試尚未完成」與「核對原上傳嘗試」。已建立上傳嘗試（結果不明）與已核驗未送出的情況維持原行為。
+- 聊天室頂部通知不再重複附件狀態區已顯示的錯誤；只有附件狀態不存在時才顯示頂部通知。`AttachmentSendState` 新增 `attemptCreated`（取自 `AttachmentTransferError.attemptCreated`）。只改前端，A20／A21 與重試流程不變。
+- [one-click 手冊](deployment/one-click.md#2-本機快速開始)註明本機預設未設定 GCS，附件與頭像上傳會顯示儲存服務無法使用；是否讓本機模式支援 GCS 尚待決定。
+
 ## 2026-10-18 — 修正三個 CI 偶發失敗（Fixes #14、#15、#16）
 
 - #16 與兩次瀏覽器啟動失敗（`run_browser:428`）同一根因：`Components.start_tls` 只等 Caddy 寫出根憑證並開始監聽，就送出唯一一次 HTTPS 請求；Caddy 2.6.2 此時可能還在簽發 `localhost` 憑證，握手收到 `TLSV1_ALERT_INTERNAL_ERROR`。改為在原有 25 秒時限內只對此 TLS alert 重試；憑證不受信任、HTTP 非 200、Caddy 結束仍立即失敗。
