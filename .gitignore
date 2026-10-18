@@ -45,3 +45,6 @@ docker-compose.override.yml
 # Temporary files
 *.tmp
 *.swp
+
+# Local-only design specs and implementation plans (not versioned)
+docs/superpowers/

@@ -21,7 +21,7 @@
 
 ## 2026-10-17 — Web UI 改版（Telegram 風格、保留 HINE 品牌），feature branch 五階段完成
 
-- 只改前端；REST／WSS 契約、PostgreSQL schema、Redis、JWT／Session、IndexedDB 格式、已讀／未讀／同步語意與 `ChatController` 公開 API 不變。Web Lock、原意圖重試、群組建立冪等保留。設計 v2.3：`docs/superpowers/specs/2026-10-17-ui-refresh-design.md`。
+- 只改前端；REST／WSS 契約、PostgreSQL schema、Redis、JWT／Session、IndexedDB 格式、已讀／未讀／同步語意與 `ChatController` 公開 API 不變。Web Lock、原意圖重試、群組建立冪等保留。設計 v2.3（設計與實作計畫為本機文件，不納入版本庫）。
 - 外殼：寬版常駐圖示欄（`navigation "主要導覽"`）、窄版頂部列＋☰ 原生 dialog 選單；路由切換焦點移至 `data-route-heading`。斷點 CSS／JS 一律 `(max-width: 767.98px)`（見 [web-rwd](ui/web-rwd.md#rwd-ui-refresh-2026-10-17)）。
 - 聊天清單：頭像、預覽、時間；只在已載入項目內依各對話伺服器 `created_at` 排序（`order_key` 不得跨對話比較，C11）。完整伺服器端排序由 [Issue #11](https://github.com/LeoCheng-space/Hine/issues/11) 追蹤。切換對話時清單不重掛載。
 - 聊天室：泡泡分組、日期分隔／捲動時日期膠囊、狀態圖示、「跳至最新」＋本機新訊息數、新訊息進場動畫（reduced-motion 不播放；動畫中泡泡不計入已讀計時）。
