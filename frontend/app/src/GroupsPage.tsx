@@ -30,12 +30,12 @@ export class GroupCreationIntentStore {
   confirm(key: string): void { if (this.read()?.key === key) (this.storage ?? localStorage).removeItem(this.storageKey); }
 }
 const ADD_RESULT_MESSAGE = { self: '您會自動成為群組成員與管理員。', duplicate: '這位成員已在名單中。', full: `群組最多 50 人，包含您自己；已選 ${GROUP_OTHER_MEMBER_LIMIT} 位。` } as const;
-/** Two-step native dialog: pick members (contacts or a verified public ID), then name the group. Keeps the original creation intent and idempotency key across failures and reloads. */
+/** One-page native dialog: the group name, then optional members (contacts or a verified public ID). Keeps the original creation intent and idempotency key across failures and reloads. */
 export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: { session: SessionController; open: boolean; onClose: () => void; triggerRef: RefObject<HTMLElement | null>; onCreated: (id: string) => void }) {
   const context = session.getSnapshot().context, owner = ownerPartition(context.user_id, context.device_id), me = context.user_id ?? '';
   const store = useMemo(() => new GroupCreationIntentStore(owner), [owner]);
   const dialog = useRef<HTMLDialogElement>(null), active = useRef(false);
-  const [step, setStep] = useState<'members' | 'title'>('members'), [title, setTitle] = useState(''), [selected, setSelected] = useState<string[]>([]), [lookupId, setLookupId] = useState('');
+  const [title, setTitle] = useState(''), [selected, setSelected] = useState<string[]>([]), [lookupId, setLookupId] = useState('');
   const [busy, setBusy] = useState(false), [lookupBusy, setLookupBusy] = useState(false), [error, setError] = useState<string | null>(null), [pending, setPending] = useState<GroupCreateIntent | null>(null);
   const contacts = usePagedList<ContactView>(session, 'contacts', item => item.user.id);
   const directory = directoryFor(session);
@@ -44,7 +44,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
     if (!open) return;
     try {
       const unresolved = store.read();
-      if (unresolved) { setPending(unresolved); setTitle(unresolved.payload.title); setSelected([...unresolved.payload.member_ids]); setStep('title'); }
+      if (unresolved) { setPending(unresolved); setTitle(unresolved.payload.title); setSelected([...unresolved.payload.member_ids]); }
     } catch (error) { session.failStorage(error); }
   }, [open, store, session]);
   useEffect(() => {
@@ -58,11 +58,13 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
       else document.querySelector<HTMLElement>('[data-route-heading]')?.focus();
     };
   }, [open, triggerRef]);
-  // Focus follows the rendered step: a recovered intent switches to the title step after mount, and 下一步／上一步 remove the focused button.
+  // Focus the name on open; a recovered intent locks the name after mount, so focus moves to its retry action.
+  // Only these two targets are considered: while a request is busy neither is enabled and focus stays put.
+  const pendingKey = pending?.key;
   useEffect(() => {
     const element = dialog.current; if (!open || !element) return;
-    (element.querySelector<HTMLElement>('.create-group-step input:not(:disabled), .create-group-step button:not(:disabled)') ?? element.querySelector<HTMLElement>('button:not(:disabled)'))?.focus();
-  }, [open, step]);
+    (element.querySelector<HTMLElement>('#group-title:not(:disabled)') ?? element.querySelector<HTMLElement>('.create-group-actions button:not(:disabled)'))?.focus();
+  }, [open, pendingKey]);
   const nameOf = (id: string): string => contacts.items.find(item => item.user.id === id)?.user.display_name ?? directory.get(id)?.displayName ?? id;
   function toggle(id: string, checked: boolean) {
     setError(null);
@@ -85,7 +87,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy) return; setError(null);
-    if (!title) { setError('請輸入群組名稱。'); event.currentTarget.querySelector<HTMLInputElement>('#group-title')?.focus(); return; }
+    if (!title) { setError('請輸入群組名稱。'); dialog.current?.querySelector<HTMLInputElement>('#group-title')?.focus(); return; }
     let intent: GroupCreateIntent;
     try { intent = store.begin({ title, member_ids: [...selected] }); setPending(intent); } catch (error) { session.failStorage(error); return; }
     setBusy(true);
@@ -94,13 +96,13 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
       try { store.confirm(intent.key); } catch (error) { session.failStorage(error); return; }
       const current = session.getSnapshot().context;
       if (!active.current || current.state !== 'authenticated' || ownerPartition(current.user_id, current.device_id) !== owner) return;
-      setPending(null); setStep('members'); setTitle(''); setSelected([]); onCreated(result.data.id);
+      setPending(null); setTitle(''); setSelected([]); onCreated(result.data.id);
     } catch (error) { if (active.current) setError(describeError(error)); }
     finally { if (active.current) setBusy(false); }
   }
   function resolveIntent() {
     if (!pending || !window.confirm('確認您已核對原建立操作的結果，並要結束此意圖？這不會刪除任何已建立的群組。')) return;
-    try { store.confirm(pending.key); setPending(null); setStep('members'); setTitle(''); setSelected([]); setError(null); } catch (error) { session.failStorage(error); }
+    try { store.confirm(pending.key); setPending(null); setTitle(''); setSelected([]); setError(null); } catch (error) { session.failStorage(error); }
   }
   if (!open) return null;
   // A public-ID lookup computes the next selection from the list it started with, so the selection stays fixed until it settles.
@@ -109,33 +111,32 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
     <header className="create-group-header"><h2 id="create-group-title">建立群組</h2><button type="button" className="text-button" onClick={onClose} disabled={busy}>關閉</button></header>
     {pending && <p className="notice" role="status">原建立意圖已保留。重試會核對相同群組，不會另建一個；請先確認結果再修改內容。</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
-    <ul className="selected-members" aria-label="已選成員">{selected.map(id => <li key={id}><span>{nameOf(id)}</span>{!locked && <button type="button" className="text-button" aria-label={`移除 ${nameOf(id)}`} disabled={lookupBusy} onClick={() => setSelected(current => removeMember(current, id))}>×</button>}</li>)}</ul>
-    <p className="small muted selected-count">已選 {selected.length}／{GROUP_OTHER_MEMBER_LIMIT}</p>
-    {step === 'members'
-      ? <div className="create-group-step">
-          <form className="input-action" onSubmit={event => { event.preventDefault(); void addById(); }}>
-            <label className="visually-hidden" htmlFor="group-member-id">以公開 ID 加入</label>
-            <input id="group-member-id" placeholder="以公開 ID 加入" value={lookupId} onChange={event => setLookupId(event.target.value)} disabled={locked} />
-            <button type="submit" disabled={locked || lookupBusy || !lookupId.trim()}>{lookupBusy ? '查詢中…' : '加入'}</button>
-          </form>
-          <ul className="contact-picker" aria-label="聯絡人">{contacts.items.map(item => { const checked = selected.includes(item.user.id); return <li key={item.user.id}><label className="contact-option">
-            <input type="checkbox" checked={checked} disabled={selectionLocked || (!checked && selected.length >= GROUP_OTHER_MEMBER_LIMIT)} onChange={event => toggle(item.user.id, event.target.checked)} />
-            <span aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /></span><span>{item.user.display_name}</span>
-          </label></li>; })}</ul>
-          {contacts.busy && <p role="status" className="small muted">載入聯絡人…</p>}
-          {!contacts.busy && !contacts.items.length && <p className="small muted">還沒有聯絡人，可直接以公開 ID 加入。</p>}
-          {contacts.cursor && <button type="button" className="text-button" disabled={contacts.busy} onClick={() => { void contacts.load(); }}>載入下一頁</button>}
-          <div className="actions"><button type="button" className="primary" disabled={lookupBusy} onClick={() => { setError(null); setStep('title'); }}>下一步</button></div>
-        </div>
-      : <form className="create-group-step" onSubmit={submit}>
-          <label htmlFor="group-title">群組名稱</label><input id="group-title" value={title} onChange={event => setTitle(event.target.value)} disabled={locked} />
-          <p className="small muted">您會自動加入並成為管理員。新成員只能查看加入之後的訊息。</p>
-          <div className="actions">
-            {!pending && <button type="button" disabled={busy} onClick={() => setStep('members')}>上一步</button>}
-            <button className="primary" type="submit" disabled={busy}>{busy ? '核對建立結果…' : pending ? '以原意圖重試 / 核對' : '建立群組'}</button>
-            {pending && <button type="button" disabled={busy} onClick={resolveIntent}>已核對結果，結束原意圖</button>}
-          </div>
-        </form>}
+    <div className="create-group-body">
+      <label htmlFor="group-title">群組名稱</label><input id="group-title" form="create-group-form" value={title} onChange={event => setTitle(event.target.value)} disabled={locked} />
+      <p className="small muted">您會自動加入並成為管理員。</p>
+      <section className="create-group-members" aria-labelledby="create-group-members-title">
+        <h3 id="create-group-members-title">成員（選填）</h3>
+        <p className="small muted">可以略過，建立後在群組管理頁新增。新成員只能查看加入之後的訊息。</p>
+        <ul className="selected-members" aria-label="已選成員">{selected.map(id => <li key={id}><span>{nameOf(id)}</span>{!locked && <button type="button" className="text-button" aria-label={`移除 ${nameOf(id)}`} disabled={lookupBusy} onClick={() => setSelected(current => removeMember(current, id))}>×</button>}</li>)}</ul>
+        <p className="small muted selected-count">已選 {selected.length}／{GROUP_OTHER_MEMBER_LIMIT}</p>
+        <form className="input-action" onSubmit={event => { event.preventDefault(); void addById(); }}>
+          <label className="visually-hidden" htmlFor="group-member-id">以公開 ID 加入</label>
+          <input id="group-member-id" placeholder="以公開 ID 加入" value={lookupId} onChange={event => setLookupId(event.target.value)} disabled={locked} />
+          <button type="submit" disabled={locked || lookupBusy || !lookupId.trim()}>{lookupBusy ? '查詢中…' : '加入'}</button>
+        </form>
+        <ul className="contact-picker" aria-label="聯絡人">{contacts.items.map(item => { const checked = selected.includes(item.user.id); return <li key={item.user.id}><label className="contact-option">
+          <input type="checkbox" checked={checked} disabled={selectionLocked || (!checked && selected.length >= GROUP_OTHER_MEMBER_LIMIT)} onChange={event => toggle(item.user.id, event.target.checked)} />
+          <span aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /></span><span>{item.user.display_name}</span>
+        </label></li>; })}</ul>
+        {contacts.busy && <p role="status" className="small muted">載入聯絡人…</p>}
+        {!contacts.busy && !contacts.items.length && <p className="small muted">還沒有聯絡人。可以輸入公開 ID 加入，或直接建立群組。</p>}
+        {contacts.cursor && <button type="button" className="text-button" disabled={contacts.busy} onClick={() => { void contacts.load(); }}>載入下一頁</button>}
+      </section>
+    </div>
+    <form id="create-group-form" className="create-group-actions" onSubmit={submit}>
+      {pending && <button type="button" disabled={busy} onClick={resolveIntent}>已核對結果，結束原意圖</button>}
+      <button className="primary" type="submit" disabled={busy || lookupBusy}>{busy ? '核對建立結果…' : pending ? '以原意圖重試 / 核對' : '建立群組'}</button>
+    </form>
   </dialog>;
 }
 export function GroupInfoDialog({ detail, names, onClose, onManage, returnFocus }: { detail: ConversationDetail; names: Record<string, string>; onClose: () => void; onManage: () => void; returnFocus: () => void }) {

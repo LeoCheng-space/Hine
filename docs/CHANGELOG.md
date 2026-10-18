@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-18 — 建立群組可直接建立，成員改為選填（Fixes #21）
+
+- 建立群組由兩步驟改為單頁：最上方是「群組名稱」，下方「成員（選填）」區塊保留公開 ID 查詢與聯絡人勾選，底部固定「建立群組」。不選成員即可建立只有自己（管理員）的群組，之後在群組管理頁新增成員。
+- 只改前端；A14 契約、成員上限 49、公開 ID 查詢、原建立意圖與 Idempotency-Key 重試流程不變。公開 ID 查詢進行中時「建立群組」停用，避免查詢結果被遺漏。
+- Browser acceptance 新增 `group_creation_title_is_on_first_screen` 與 `group_creation_without_members_creates_creator_only_admin_group`（SQL 確認成員只有建立者且為 admin）；既有兩處建立群組步驟移除「下一步」點擊，其餘 check 不變。
+
 ## 2026-10-18 — 資料庫重建後舊裝置導致無法登入（Fixes #18）
 
 - 問題：`./build.sh clean` 重建資料庫後，瀏覽器 `localStorage` 仍保存舊的 `device_id`；重新註冊同一電子郵件、輸入正確密碼登入時，A02 回 `UNAUTHENTICATED`，畫面顯示兩次「電子郵件或密碼不正確。」。

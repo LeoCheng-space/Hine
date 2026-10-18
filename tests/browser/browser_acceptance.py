@@ -746,7 +746,6 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             await chosen.wait_for(state="visible")
             check(test_record, "group_creation_resolved_member_name_before_adding", absent_before_lookup and await chosen.count() == 1)
             await create_dialog.get_by_text("已選 1／49", exact=True).wait_for(state="visible")
-            await create_dialog.get_by_role("button", name="下一步", exact=True).click()
             await create_dialog.get_by_label("群組名稱").fill(group_title)
             await create_dialog.get_by_role("button", name="建立群組", exact=True).click()
             await page_a.wait_for_url(re.compile(r"/chats/[^/]+$"), timeout=20000)
@@ -867,7 +866,6 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             await temp_dialog.get_by_label("以公開 ID 加入").fill(ids[1])
             await temp_dialog.get_by_role("button", name="加入", exact=True).click()
             await temp_dialog.locator(".selected-members").get_by_text(names[1], exact=True).wait_for(state="visible")
-            await temp_dialog.get_by_role("button", name="下一步", exact=True).click()
             await temp_dialog.get_by_label("群組名稱").fill(temp_title)
             await temp_dialog.get_by_role("button", name="建立群組", exact=True).click()
             await page_a.get_by_role("heading", name=temp_title).wait_for(state="visible", timeout=20000)
@@ -907,6 +905,22 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                     "SELECT count(*) FROM memberships WHERE conversation_id=$1 AND user_id=$2 AND active", temp_group_id, ids[0])
             check(test_record, "group_leave_response_after_navigation_does_not_redirect",
                   leave_status == 204 and still_member == 0 and stayed_on_contacts)
+
+            # Issue #21: the name is on the first screen and a group needs no other member.
+            solo_title = "Solo group " + secrets.token_hex(3)
+            await spa_go(page_a, "/chats")
+            await page_a.locator(".chat-list").get_by_role("button", name="建立群組", exact=True).click()
+            solo_dialog = page_a.get_by_role("dialog", name="建立群組")
+            await solo_dialog.wait_for(state="visible")
+            check(test_record, "group_creation_title_is_on_first_screen", await solo_dialog.get_by_label("群組名稱").is_visible())
+            await solo_dialog.get_by_label("群組名稱").fill(solo_title)
+            await solo_dialog.get_by_role("button", name="建立群組", exact=True).click()
+            await page_a.get_by_role("heading", name=solo_title).wait_for(state="visible", timeout=20000)
+            solo_group_id = page_a.url.rstrip("/").rsplit("/", 1)[-1]
+            async with components.sql() as conn:
+                solo_members = await conn.fetch("SELECT user_id, role FROM memberships WHERE conversation_id=$1 AND active", solo_group_id)
+            check(test_record, "group_creation_without_members_creates_creator_only_admin_group",
+                  [(row["user_id"], row["role"]) for row in solo_members] == [(ids[0], "admin")])
 
             # --- UI refresh behaviour (design §11). Bob (page_b) sends in the direct room and
             # Alice (page_a) observes; page_c (also Alice) does not exist yet, so no second
