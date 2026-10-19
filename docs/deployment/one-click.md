@@ -39,7 +39,7 @@ HINE 已啟動：https://localhost:8443
 
 完成後用瀏覽器開 **https://localhost:8443**。
 
-**附件與頭像在本機預設無法使用**：本機沒有設定附件儲存服務（GCS），傳送圖片／PDF 或更換頭像時會顯示「附件儲存服務目前無法使用…」，這是預期行為；文字訊息與其他功能不受影響。要啟用必須準備真實的私有 GCS bucket 與具簽章權限的憑證，見[部署手冊 §3](README.md#3-optional-real-gcs-attachments)；目前 `./build.sh` 本機模式沒有啟用 GCS 的選項。
+**附件與頭像在本機預設無法使用**：本機沒有設定附件儲存服務（GCS），傳送圖片／PDF 或更換頭像時會顯示「附件儲存服務目前無法使用…」，這是預期行為；文字訊息與其他功能不受影響。要在本機啟用，見 [§2.6](#26-本機啟用附件與頭像gcs)；完成訊息與 `./build.sh status` 的「附件儲存」一行會顯示目前狀態。
 
 ### 2.1 第一次開啟的憑證警告
 
@@ -107,6 +107,43 @@ docker compose --project-directory . --env-file .env -f docker-compose.yml -f in
 - **只清屬於這個資料夾的專案**：Docker 的專案名稱是整台電腦共用的，每份 clone 預設都叫 `hine-dev`。若同名專案的容器是從**另一個資料夾**建立的，`clean` 會拒絕並指出那個資料夾；若這個資料夾沒有 `.env`、也沒有容器可以對照，卻找到同名資料卷，也會拒絕。
 - **剩下的風險**：兩份 clone 都用 `hine-dev`、而且容器已經被移除時，`clean` 無法分辨資料卷屬於哪一份。同一台電腦有多份 clone 時，請在各自的 `.env` 設定不同的 `COMPOSE_PROJECT_NAME`。
 - 清除後瀏覽器仍保存舊資料庫核發的裝置 ID；重新註冊同一個電子郵件後第一次登入時，伺服器回覆裝置不認得，前端會自動忘掉舊裝置並重新登入一次，不需要手動清除網站資料。若仍看到「電子郵件或密碼不正確。」，代表密碼確實不符或帳號尚未在新資料庫註冊。
+
+### 2.6 本機啟用附件與頭像（GCS）
+
+附件與頭像存放在 Google Cloud Storage，本機也必須連到**真實的私有 bucket**；沒有假的本機儲存。`build.sh` 不會建立或修改任何雲端資源，以下 1–3 步需要你自己在 GCP 完成（需要有權限的 GCP 專案與 `gcloud`）。
+
+1. **建立私有 bucket**（名稱全球唯一）：
+   ```sh
+   gcloud storage buckets create gs://你的-bucket --location=asia-east1 \
+     --uniform-bucket-level-access --public-access-prevention
+   ```
+2. **建立服務帳號、授權並下載金鑰**（金鑰放在 repo **以外**的位置，權限 600）：
+   ```sh
+   gcloud iam service-accounts create hine-local-storage
+   gcloud storage buckets add-iam-policy-binding gs://你的-bucket \
+     --member=serviceAccount:hine-local-storage@你的專案.iam.gserviceaccount.com --role=roles/storage.objectAdmin
+   mkdir -p ~/.config/hine && gcloud iam service-accounts keys create ~/.config/hine/gcs-key.json \
+     --iam-account=hine-local-storage@你的專案.iam.gserviceaccount.com
+   chmod 600 ~/.config/hine/gcs-key.json
+   ```
+   服務帳號金鑰本身就能簽發上傳／下載網址，不需要另外的 IAM 簽章權限。若組織政策禁止建立金鑰，本機模式目前無法啟用附件。
+3. **設定 bucket 的 CORS**：瀏覽器會從 `https://localhost:8443` 直接對 `storage.googleapis.com` 上傳（PUT）與下載（GET），沒有 CORS 設定會被瀏覽器擋下。建立 `cors.json`：
+   ```json
+   [{"origin": ["https://localhost:8443"], "method": ["PUT", "GET"],
+     "responseHeader": ["Content-Type", "Cache-Control", "x-goog-if-generation-match"], "maxAgeSeconds": 3600}]
+   ```
+   再套用：`gcloud storage buckets update gs://你的-bucket --cors-file=cors.json`
+4. **填入 `.env`**（同一個檔案、兩個都要填；`GCS_PROJECT` 可留空，會使用金鑰裡的專案）：
+   ```sh
+   GCS_BUCKET=你的-bucket
+   GCS_CREDENTIALS_FILE=/home/你/.config/hine/gcs-key.json
+   ```
+   舊的 `.env` 若沒有 `GCS_CREDENTIALS_FILE` 這一行，直接加上即可。
+5. **重跑 `./build.sh`**：完成訊息會顯示「附件儲存：已啟用 GCS（bucket 你的-bucket）」。`build.sh` 會加上 `infra/docker/compose.gcs.yml`，把金鑰以唯讀 secret 掛進 API 容器；`stop`／`status`／`logs`／`clean` 都使用同一組設定。
+
+`build.sh` 會先檢查設定，有誤時停止並說明怎麼改：只填了其中一個、`GCS_CREDENTIALS_FILE` 不是絕對路徑、檔案不存在、是符號連結、是空的或讀不到。要停用附件，把這兩個值清空後重跑 `./build.sh`。
+
+注意：`./build.sh clean --yes` 會刪除 `.env`，重新安裝後要再填一次這兩個值；金鑰檔放在 repo 以外，不會被刪除。
 
 ## 3. 正式機部署（GCP Compute Engine VM）
 

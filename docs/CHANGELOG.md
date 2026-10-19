@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-18 — `./build.sh` 本機模式可啟用 GCS 附件（Refs #28）
+
+- 本機 `.env` 的 `GCS_BUCKET` 與 `GCS_CREDENTIALS_FILE`（服務帳號金鑰檔的絕對路徑）都有效時，本機 Compose 加上既有的 `infra/docker/compose.gcs.yml`，金鑰以 secret 掛進 API；`up`／`stop`／`status`／`logs`／`clean` 使用同一組設定。`.env.example` 新增 `GCS_CREDENTIALS_FILE`，既有 `.env` 不會被改寫。
+- 設定檢查比照正式機 `common.sh`：只填一個、非絕對路徑、檔案不存在、符號連結、空檔或無法讀取時，`./build.sh` 在建置前停止並說明修正方式；`status` 顯示「附件儲存：設定有誤（…）」。完成訊息與 `status` 新增「附件儲存」一行（已啟用 GCS／未設定／設定有誤）。
+- [one-click 手冊 §2.6](deployment/one-click.md#26-本機啟用附件與頭像gcs)：建立私有 bucket、服務帳號與金鑰、bucket CORS（允許 `https://localhost:8443` 的 PUT／GET）與 `.env` 填寫方式。`build.sh` 仍不建立或修改任何雲端資源。
+- 驗證：`infra/tests/test_build.py` 新增 3 項（啟用時每個本機指令都帶 overlay、未設定時不帶、六種錯誤設定在啟動前停止）；隔離 checkout 以 `docker compose config` 確認金鑰掛進 API 且 `GOOGLE_APPLICATION_CREDENTIALS`／`GCS_BUCKET` 正確。未以真實 bucket 端對端上傳（沒有可用的 GCS 專案）。
+
 ## 2026-10-18 — 聊天室附件失敗訊息依實際狀態顯示（Fixes #28）
 
 - 伺服器尚未建立上傳嘗試就拒絕時（例如本機未設定儲存服務，A20 回 `DEPENDENCY_UNAVAILABLE`），附件狀態區只顯示原因一次，按鈕為「重新上傳」，不再出現「原附件上傳嘗試尚未完成」與「核對原上傳嘗試」。已建立上傳嘗試（結果不明）與已核驗未送出的情況維持原行為。

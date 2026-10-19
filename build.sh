@@ -286,10 +286,58 @@ local_project() {
     case "$name" in "") name=hine-dev ;; *[!a-z0-9_-]*) die "$(basename "$LOCAL_ENV_FILE") 的 COMPOSE_PROJECT_NAME 格式不正確" ;; esac
     printf '%s' "$name"
 }
+# A value as Compose reads it from the same file: the last assignment wins and surrounding quotes are not part of it.
+local_env_value() {
+    value=$(sed -n "s/^$1=//p" "$LOCAL_ENV_FILE" 2>/dev/null | tail -n 1)
+    case "$value" in \"*\") value=${value#\"}; value=${value%\"} ;; \'*\') value=${value#\'}; value=${value%\'} ;; esac
+    printf '%s' "$value"
+}
+# Attachments and avatars need a real private bucket and a signing credential file, checked like production
+# (infra/scripts/common.sh). Prints what is wrong and how to fix it; prints nothing when both are unset or valid.
+local_gcs_problem() {
+    gcs_bucket=$(local_env_value GCS_BUCKET)
+    gcs_credentials=$(local_env_value GCS_CREDENTIALS_FILE)
+    if [ -z "$gcs_bucket$gcs_credentials" ]; then
+        return 0
+    elif [ -z "$gcs_credentials" ]; then
+        printf '.env 已設定 GCS_BUCKET，但缺少 GCS_CREDENTIALS_FILE：請填入服務帳號金鑰檔的絕對路徑；不使用附件就把 GCS_BUCKET 清空'
+    elif [ -z "$gcs_bucket" ]; then
+        printf '.env 已設定 GCS_CREDENTIALS_FILE，但缺少 GCS_BUCKET：請填入私有 bucket 名稱；不使用附件就把 GCS_CREDENTIALS_FILE 清空'
+    else
+        case "$gcs_credentials" in
+            /*) ;;
+            *) printf '.env 的 GCS_CREDENTIALS_FILE 必須是絕對路徑（例如 /home/你/keys/hine-gcs.json）：%s' "$gcs_credentials"; return 0 ;;
+        esac
+        if [ -L "$gcs_credentials" ]; then
+            printf '.env 的 GCS_CREDENTIALS_FILE 不可以是符號連結：%s；請改填實際檔案的路徑' "$gcs_credentials"
+        elif [ ! -f "$gcs_credentials" ]; then
+            printf '找不到 GCS 金鑰檔：%s；請確認 .env 的 GCS_CREDENTIALS_FILE 路徑正確' "$gcs_credentials"
+        elif [ ! -s "$gcs_credentials" ]; then
+            printf 'GCS 金鑰檔是空的：%s；請重新下載服務帳號金鑰，並更新 .env 的 GCS_CREDENTIALS_FILE' "$gcs_credentials"
+        elif [ ! -r "$gcs_credentials" ]; then
+            printf '目前使用者無法讀取 GCS 金鑰檔：%s；請確認擁有者是你、權限為 600（chmod 600），或修正 .env 的 GCS_CREDENTIALS_FILE' "$gcs_credentials"
+        fi
+    fi
+}
+local_storage_line() {
+    problem=$(local_gcs_problem)
+    if [ -n "$problem" ]; then
+        printf '附件儲存：設定有誤（%s）\n' "$problem"
+    elif [ -n "$(local_env_value GCS_BUCKET)" ]; then
+        printf '附件儲存：已啟用 GCS（bucket %s）\n' "$(local_env_value GCS_BUCKET)"
+    else
+        printf '附件儲存：未設定（附件與頭像無法上傳；啟用方式見 docs/deployment/one-click.md §2.6）\n'
+    fi
+}
+# Every local command uses the same file set, so stop/status/logs/clean address the containers `up` created.
 compose_local() {
+    if [ -n "$(local_env_value GCS_BUCKET)" ] && [ -z "$(local_gcs_problem)" ]; then
+        set -- -f "$ROOT/infra/docker/compose.gcs.yml" --profile product --profile realtime --profile local "$@"
+    else
+        set -- --profile product --profile realtime --profile local "$@"
+    fi
     docker compose --project-directory "$ROOT" --env-file "$LOCAL_ENV_FILE" \
-        -f "$ROOT/docker-compose.yml" -f "$ROOT/infra/docker/compose.local.yml" \
-        --profile product --profile realtime --profile local "$@"
+        -f "$ROOT/docker-compose.yml" -f "$ROOT/infra/docker/compose.local.yml" "$@"
 }
 local_up() {
     STEP_TOTAL=5
@@ -299,6 +347,8 @@ local_up() {
     acquire_lock
     step 2 '產生密鑰與設定（已存在就沿用）' '多半是 .secrets/ 或 .env 的擁有者與目前使用者不同（用 ls -ln .secrets .env 檢查），或密鑰檔被改過。若不需要舊資料：執行 ./build.sh clean 預覽、./build.sh clean --yes 清除後，再重跑 ./build.sh'
     run sh "$SCRIPTS/init-dev.sh"
+    problem=$(local_gcs_problem)
+    [ -z "$problem" ] || die "$problem"
     step 3 '建置前端' '前端套件下載或建置失敗：確認網路能連到 registry.npmjs.org 後重跑 ./build.sh；仍失敗請把完整記錄檔提供給維護者'
     build_frontend "$LOCAL_URL"
     step 4 '啟動服務並等待健康檢查' '用 ./build.sh status 找出沒有變成 healthy 的服務，再用 ./build.sh logs 服務名稱 看原因；資料庫密碼不符、映像下載失敗、連接埠衝突的處理見手冊第 4 節'
@@ -308,12 +358,13 @@ local_up() {
     printf '\nHINE 已啟動：%s\n' "$LOCAL_URL"
     printf '第一次開啟時瀏覽器會顯示憑證警告，請按「進階」→「繼續前往 localhost」。\n'
     printf '停止：./build.sh stop　狀態：./build.sh status　記錄：./build.sh logs\n'
+    local_storage_line
 }
 local_command() {
     [ -f "$ROOT/.env" ] || die '尚未建置；請先執行 ./build.sh'
     case "$COMMAND" in
         stop) compose_local stop ;;
-        status) compose_local ps; printf '網址：%s\n' "$LOCAL_URL" ;;
+        status) compose_local ps; printf '網址：%s\n' "$LOCAL_URL"; local_storage_line ;;
         logs)
             set -- --tail 200
             [ "$FOLLOW" = 0 ] || set -- "$@" --follow

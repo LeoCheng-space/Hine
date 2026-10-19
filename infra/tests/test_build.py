@@ -3,6 +3,7 @@
 No Docker daemon, sudo, package manager or network access is used.
 """
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -328,6 +329,70 @@ class BuildScriptTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1)
                 self.assertIn(fragment, result.stderr)
                 self.assertFalse(any(" up -d " in line for line in self.calls()))
+
+    def set_local_env(self, **values):
+        env = self.root / ".env"
+        text = env.read_text()
+        for key, value in values.items():
+            text, count = re.subn(rf"(?m)^{key}=.*$", f"{key}={value}", text)
+            if not count:
+                text += f"{key}={value}\n"
+        env.write_text(text)
+
+    def credential(self, name="gcs-key.json", content='{"type": "service_account"}\n'):
+        path = Path(self.temp.name) / name
+        path.write_text(content)
+        path.chmod(0o600)
+        return path
+
+    def test_local_gcs_settings_add_the_storage_overlay_to_every_compose_command(self):
+        self.assertEqual(self.build().returncode, 0)
+        self.set_local_env(GCS_BUCKET="hine-local-bucket", GCS_CREDENTIALS_FILE=self.credential())
+        for arguments in ((), ("status",), ("stop",)):
+            with self.subTest(arguments=arguments):
+                self.log.write_text("")
+                result = self.build(*arguments)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                composes = [line for line in self.calls() if line.startswith("docker compose --project-directory")]
+                self.assertTrue(composes)
+                self.assertTrue(all("compose.local.yml -f " in line and line.count("compose.gcs.yml") == 1 for line in composes), composes)
+                if arguments != ("stop",):
+                    self.assertIn("附件儲存：已啟用 GCS（bucket hine-local-bucket）", result.stdout)
+
+    def test_local_without_gcs_reports_uploads_unavailable_and_adds_no_overlay(self):
+        for arguments in ((), ("status",)):
+            with self.subTest(arguments=arguments):
+                result = self.build(*arguments)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("附件儲存：未設定（附件與頭像無法上傳", result.stdout)
+                self.assertFalse(any("compose.gcs.yml" in line for line in self.calls()))
+
+    def test_local_gcs_misconfiguration_stops_before_starting_and_names_the_fix(self):
+        self.assertEqual(self.build().returncode, 0)
+        key = self.credential()
+        empty = self.credential("empty.json", "")
+        link = Path(self.temp.name) / "link.json"
+        link.symlink_to(key)
+        cases = (
+            ({"GCS_BUCKET": "hine-local-bucket", "GCS_CREDENTIALS_FILE": ""}, "缺少 GCS_CREDENTIALS_FILE"),
+            ({"GCS_BUCKET": "", "GCS_CREDENTIALS_FILE": key}, "缺少 GCS_BUCKET"),
+            ({"GCS_BUCKET": "hine-local-bucket", "GCS_CREDENTIALS_FILE": "keys/gcs.json"}, "必須是絕對路徑"),
+            ({"GCS_BUCKET": "hine-local-bucket", "GCS_CREDENTIALS_FILE": key.with_name("missing.json")}, "找不到 GCS 金鑰檔"),
+            ({"GCS_BUCKET": "hine-local-bucket", "GCS_CREDENTIALS_FILE": link}, "不可以是符號連結"),
+            ({"GCS_BUCKET": "hine-local-bucket", "GCS_CREDENTIALS_FILE": empty}, "金鑰檔是空的"),
+        )
+        for values, fragment in cases:
+            with self.subTest(fragment=fragment):
+                self.set_local_env(**values)
+                self.log.write_text("")
+                result = self.build()
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn(fragment, result.stderr)
+                self.assertIn(".env", result.stderr)
+                self.assertFalse(any(" up -d " in line for line in self.calls()))
+                status = self.build("status")
+                self.assertEqual(status.returncode, 0, status.stderr)
+                self.assertIn("附件儲存：設定有誤", status.stdout)
 
     # Prerequisites -----------------------------------------------------------------------------
     def test_debian_installs_docker_from_the_official_repository_in_order(self):
