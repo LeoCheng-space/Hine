@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-19 — 正式機文件補上 GCS bucket CORS 步驟（Fixes #32）
+
+- [one-click 手冊 §3.1 第 6 點](deployment/one-click.md#31-vm-準備清單buildsh-不會幫你做)與[部署手冊 §3](deployment/README.md#3-optional-real-gcs-attachments)補上正式 bucket 的 CORS：瀏覽器從正式網址直接對 `storage.googleapis.com` 上傳（PUT）與下載（GET），origin 必須是 `https://` 加上 `HINE_DOMAIN`，並允許 `Content-Type`、`Cache-Control`、`x-goog-if-generation-match`；附 CORS JSON、`gcloud` 套用與確認指令，建議正式與本機使用不同 bucket。
+- 相同規則以 `https://localhost:8443` 在本機實測可用（#7、#30）；正式網址尚未實際部署驗證。只改文件。
+
 ## 2026-10-19 — `main` 啟用分支保護
 
 - GitHub `main` 已啟用 Branch Protection，取代 2026-10-04「暫緩」決議：只能經 PR 合併；必須通過 8 個 CI 檢查（`repository-structure`、`python-behavior`、`product-integration`、`compose-data-services`、`Browser acceptance (chrome)`、`Browser acceptance (msedge)`、`product-fault-acceptance`、`container-product-acceptance`）；禁止 force-push 與刪除；管理員同樣適用。不強制其他成員核准，不要求分支先更新到最新 `main`。

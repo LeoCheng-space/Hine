@@ -156,7 +156,19 @@ docker compose --project-directory . --env-file .env -f docker-compose.yml -f in
 3. **防火牆**：只開放 TCP 80、443（所有來源）與 22（只限你的來源 IP）。**絕對不要**開放 5432、6379、8080、8081。
 4. **DNS**：在網域服務商把網域（例如 `hine.run.place`）的 **A 紀錄**指向第 2 步的 IP，並**刪除 AAAA 紀錄**。用 `getent ahosts 你的網域` 確認只出現這個 IP。
 5. **80／443 不能被占用**：既有的 `hine-web` VM 上跑著 Nginx 占用 80／443；在那台機器部署前必須先停用 Nginx，或改用新的 VM。
-6. **選用：GCS**：要開放附件與頭像上傳時，先建立私有 bucket、服務帳號與簽章權限，把金鑰檔放在 VM 上的絕對路徑（例如 `/srv/hine/gcs/credentials.json`，權限 0600）。詳見 [部署手冊 §3](README.md#3-optional-real-gcs-attachments)。
+6. **選用：GCS**：要開放附件與頭像上傳時：
+   - 建立**正式專用**的私有 bucket、服務帳號與簽章權限，把金鑰檔放在 VM 上的絕對路徑（例如 `/srv/hine/gcs/credentials.json`，權限 0600）。建議不要和本機測試（§2.6）共用 bucket。詳見 [部署手冊 §3](README.md#3-optional-real-gcs-attachments)。
+   - **設定 bucket CORS**：瀏覽器會從正式網址直接對 `storage.googleapis.com` 上傳（PUT）與下載（GET），沒有 CORS 設定會被瀏覽器擋下，附件與頭像都會失敗。origin 必須與 `deploy.env` 的 `HINE_DOMAIN` 完全一致（加 `https://`、不加結尾斜線與連接埠）。建立 `cors.json`：
+     ```json
+     [{"origin": ["https://hine.run.place"], "method": ["PUT", "GET"],
+       "responseHeader": ["Content-Type", "Cache-Control", "x-goog-if-generation-match"], "maxAgeSeconds": 3600}]
+     ```
+     套用並確認：
+     ```sh
+     gcloud storage buckets update gs://你的正式-bucket --cors-file=cors.json
+     gcloud storage buckets describe gs://你的正式-bucket --format="default(cors_config)"
+     ```
+     若刻意與本機共用同一個 bucket，`origin` 要同時列出 `https://localhost:8443`；之後改了 `HINE_DOMAIN`，也要同步更新 CORS。
 
 ### 3.2 第一次部署
 
