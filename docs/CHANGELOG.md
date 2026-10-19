@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-19 — `main` 啟用分支保護
+
+- GitHub `main` 已啟用 Branch Protection，取代 2026-10-04「暫緩」決議：只能經 PR 合併；必須通過 8 個 CI 檢查（`repository-structure`、`python-behavior`、`product-integration`、`compose-data-services`、`Browser acceptance (chrome)`、`Browser acceptance (msedge)`、`product-fault-acceptance`、`container-product-acceptance`）；禁止 force-push 與刪除；管理員同樣適用。不強制其他成員核准，不要求分支先更新到最新 `main`。
+- 同步 [README](../README.md)、[協作指南](../CONTRIBUTING.md) 與[決議登錄](decisions.md)；CI 偶發失敗時重跑失敗 job，不繞過保護。
+
 ## 2026-10-18 — `./build.sh` 本機模式可啟用 GCS 附件（Refs #28）
 
 - 本機 `.env` 的 `GCS_BUCKET` 與 `GCS_CREDENTIALS_FILE`（服務帳號金鑰檔的絕對路徑）都有效時，本機 Compose 加上既有的 `infra/docker/compose.gcs.yml`，金鑰以 secret 掛進 API；`up`／`stop`／`status`／`logs`／`clean` 使用同一組設定。`.env.example` 新增 `GCS_CREDENTIALS_FILE`，既有 `.env` 不會被改寫。
