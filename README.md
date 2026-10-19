@@ -97,4 +97,4 @@ Hine/
 
 程式碼／測試工具／本機元件證據、瀏覽器呈現證據、正式政策核准與雲端／VM／GCS／實體裝置驗收是不同層級。當前本機產品證據與明確未達外部 gate 由 [CHANGELOG](docs/CHANGELOG.md) 及[驗收矩陣](docs/testing/acceptance-matrix.md)列示；不得以程式存在、fixture、協定負載或文件決議冒稱遠端 CI、雲端部署、Chrome／Edge／Android 全面驗收或團隊簽核。Title 1–80 字元仍是候選，未批准為全域政策。
 
-學校作業階段暫緩 main 強制分支保護；一般功能分支／PR／Review／適用 CI 流程仍保留，見[協作指南](CONTRIBUTING.md)。
+`main` 已啟用分支保護（2026-10-19）：只能經 PR 合併，且必須通過 8 個 CI 檢查，禁止 force-push 與刪除；規則與協作流程見[協作指南](CONTRIBUTING.md)。

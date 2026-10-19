@@ -3,7 +3,7 @@
 
 此流程刻意保持簡單，方便仍在學習 Git 的組員使用。
 
-**2026-10-04 PM 決議：** 學校作業階段暫緩 GitHub `main` Branch Protection／Rulesets，不將啟用強制分支保護列為目前交付前置條件。下列功能分支、PR、其他成員 Review 與適用 CI 的協作流程仍保留，由團隊遵守；不宣稱 GitHub 已強制執行。
+**2026-10-19 起 `main` 已啟用 GitHub Branch Protection（取代 2026-10-04「暫緩」決議）：** 只能透過 PR 合併；必須通過 8 個 CI 檢查（`repository-structure`、`python-behavior`、`product-integration`、`compose-data-services`、`Browser acceptance (chrome)`、`Browser acceptance (msedge)`、`product-fault-acceptance`、`container-product-acceptance`）；禁止 force-push 與刪除 `main`；管理員同樣適用。PR 不強制需要其他成員核准，也不要求先把分支更新到最新 `main`，但下列 Review 與協作流程仍由團隊遵守。CI 偶發失敗時重跑失敗的 job，不繞過保護。
 
 <a id="daily-workflow"></a>
 ## 日常工作流程
