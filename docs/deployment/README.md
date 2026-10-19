@@ -66,6 +66,20 @@ sh infra/scripts/stack.sh config
 
 The path must be absolute and refer to a nonempty, non-symlink file. The overlay mounts it as `GOOGLE_APPLICATION_CREDENTIALS`; without a key file, Google SDK ADC must be provided by the runtime. The API uses the official Cloud Storage SDK, signs V4 create-only upload grants and pins verification/download/deletion to object generations. `GCS_SIGNING_SERVICE_ACCOUNT` selects IAM Credentials signing and requires actual IAM sign-blob permission for that service account; otherwise signing uses credentials that implement signing. Do not enable until the real identity can sign and the real private bucket is configured. Bucket lifecycle, retention, IAM, and backups remain operator responsibilities.
 
+Browsers upload (`PUT` with `Content-Type`, `Cache-Control` and `x-goog-if-generation-match`) and download (`GET`) directly against `storage.googleapis.com`, so the bucket also needs a CORS rule for the public web origin. Without it signing succeeds but the browser blocks every transfer. The origin must be exactly `https://` plus `HINE_DOMAIN` (no trailing slash or port); add `https://localhost:8443` only if the same bucket intentionally also serves local `./build.sh` (a separate bucket is recommended). Example `cors.json`:
+
+```json
+[{"origin": ["https://hine.run.place"], "method": ["PUT", "GET"],
+  "responseHeader": ["Content-Type", "Cache-Control", "x-goog-if-generation-match"], "maxAgeSeconds": 3600}]
+```
+
+```sh
+gcloud storage buckets update gs://your-private-bucket --cors-file=cors.json
+gcloud storage buckets describe gs://your-private-bucket --format="default(cors_config)"
+```
+
+Update the rule whenever `HINE_DOMAIN` changes. The same rule with origin `https://localhost:8443` was verified end to end for local mode (`one-click.md` section 2.6); the production origin has not been exercised yet.
+
 Abandoned object cleanup runs automatically in the API process every 60 seconds. The implementation entry point is `await hine_api.attachments.cleanup_abandoned(runtime, limit=100)` (limit 1–100); there is no standalone cleanup CLI. It closes eligible database rows only after their signed PUT and 24-hour completion/reconciliation horizon, then deletes pinned object generations outside database locks. A successful provider lookup confirming absence also marks the attempt `cleaned_at`, so later sweeps do not repeatedly inspect it; the return count retains its existing generation-delete meaning. Provider failures remain retryable and never reopen a row or authorize deletion of replacement generations.
 
 ## 4. PostgreSQL backup and restore
