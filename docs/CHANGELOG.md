@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-21 — 新增 HINE 資安風險評估（#34；Refs #8）
+
+- 新增 [資安風險評估](security/risk-assessment.md) 並連入[文件導覽](README.md)：依 main `5c9d5e2` 靜態閱讀，整理 11 項現有功能風險、既有控制、改善責任與候選驗證，另列 5 項未來語音／視訊風險。
+- 區分實作／設定缺口、待驗證情境及殘餘風險；不把文件、測試存在或本機證據視為正式安全驗收。風險優先級與新增判準待團隊共同確認。
+- 納入 #34 審閱：附件來源精確連至 MIME、大小／設定傳入點及固定版本／雜湊核驗；SEC-01 補註冊回應可推知帳號存在及信箱所有權問題，關聯 #8；SEC-02 補 BA 尚未讀取 PUBLIC_ORIGIN 的設定前提；SEC-07 明列 A02／A03 的 no-store 驗證；SEC-08 區分 wrapper／舊 .env／直接 Compose 的 UID 配置與密鑰可讀性，避免把無權讀檔的啟動失敗當成額外存取權。
+- 僅修改文件與 PR 說明；沒有實作通話、改動 A01／認證／WSS／資料庫／部署設定，亦未關閉 #8。文件結構、引用來源與導覽經靜態檢查；本輪未執行產品、滲透、CVE 掃描或正式環境測試，CI 依修訂提交的實際結果判定。
+
 ## 2026-10-19 — 正式機文件補上 GCS bucket CORS 步驟（Fixes #32）
 
 - [one-click 手冊 §3.1 第 6 點](deployment/one-click.md#31-vm-準備清單buildsh-不會幫你做)與[部署手冊 §3](deployment/README.md#3-optional-real-gcs-attachments)補上正式 bucket 的 CORS：瀏覽器從正式網址直接對 `storage.googleapis.com` 上傳（PUT）與下載（GET），origin 必須是 `https://` 加上 `HINE_DOMAIN`，並允許 `Content-Type`、`Cache-Control`、`x-goog-if-generation-match`；附 CORS JSON、`gcloud` 套用與確認指令，建議正式與本機使用不同 bucket。
