@@ -37,6 +37,7 @@
 - [響應式網頁介面](ui/web-rwd.md#web-rwd)
 - [REQ-01–REQ-22 驗收](testing/acceptance-matrix.md#req-01)
 - [BA 專用失效分析、故障演練證據與殘餘風險](testing/backend-a-failure-analysis.md)
+- [資安風險評估：現有功能與未來通話風險](security/risk-assessment.md)（初步靜態評估草稿，含改善與驗證追蹤）
 - [決議紀錄](decisions.md)
 - [文件變更紀錄](CHANGELOG.md)
 
