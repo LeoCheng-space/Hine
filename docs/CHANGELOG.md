@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-22 — 規劃 PHP CVE-2026-109618／109619 風險評估與部署應變（#34）
+
+- 新增 [PHP CVE 應變計畫](security/php-cve-2026-response-plan.md)，由[資安風險評估](security/risk-assessment.md)及[文件導覽](README.md)連入。核對 PHP 官方公告與第一個修補版本，區分 OOM 清理與跨 request 全域狀態風險，不把部分臨時措施當成完整修補。
+- 依 HINE main `5c9d5e2` 的 Python／aiohttp、Caddy 與 GCS 流程記錄「未見 PHP 直接依賴」；正式 VM、同機／內嵌服務與實際映像未盤點，保持 UNKNOWN，不宣告整體不受影響。
+- 規劃資產欄位、條件式優先處置、建議時程／角色、修補與 worker 替換、回歸／監控、入侵疑慮及結案證據；一般資源耗盡與供應鏈風險仍依 SEC-09／11 追蹤。
+- 僅新增／整合文件與來源檢查。未登入 VM、改動 PHP／Python／代理設定、部署修補、執行掃描／漏洞利用或驗收；時限與處置建議待團隊審閱。
+
 ## 2026-10-21 — 新增 HINE 資安風險評估（#34；Refs #8）
 
 - 新增 [資安風險評估](security/risk-assessment.md) 並連入[文件導覽](README.md)：依 main `5c9d5e2` 靜態閱讀，整理 11 項現有功能風險、既有控制、改善責任與候選驗證，另列 5 項未來語音／視訊風險。
