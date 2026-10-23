@@ -10,7 +10,14 @@ from uuid import uuid4
 
 import aiohttp
 from aiohttp import web
-from test_realtime_boundaries import TestAuthority, error, frame, serve, timestamp
+from test_realtime_boundaries import (
+    ORIGIN,
+    TestAuthority,
+    error,
+    frame,
+    serve,
+    timestamp,
+)
 
 
 class AddonAuthority(TestAuthority):
@@ -177,7 +184,7 @@ class AddonHarness(unittest.IsolatedAsyncioTestCase):
         self.authority = self.authority_type()
         runner, self.bb_url = await serve(self.authority.app())
         self.addAsyncCleanup(runner.cleanup)
-        self.env = {'HINE_ENV': 'test', 'API_INTERNAL_URL': self.bb_url,
+        self.env = {'HINE_ENV': 'test', 'PUBLIC_ORIGIN': ORIGIN, 'API_INTERNAL_URL': self.bb_url,
                     'INTERNAL_CALLER_TOKEN_SECRET_REF': str(path / 'outbound'),
                     'INTERNAL_ALLOWED_CALLERS': json.dumps({'api': str(path / 'inbound')}),
                     'REDIS_URL': os.environ.get('HINE_TEST_REDIS_URL', 'redis://127.0.0.1:6397/0'),
@@ -195,7 +202,7 @@ class AddonHarness(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(.02)
 
     async def auth(self, token):
-        ws = await self.client.ws_connect(self.url + '/ws/v1')
+        ws = await self.client.ws_connect(self.url + '/ws/v1', headers={'Origin': ORIGIN})
         self.addAsyncCleanup(ws.close)
         await ws.send_json(frame('auth.authenticate', {'access_token': token, 'device_id': token.replace('access', 'device')}))
         accepted = await ws.receive_json(timeout=3)

@@ -588,7 +588,11 @@ class Client:
                 future.set_exception(ProtocolFailure(code))
 
     async def connect(self):
-        self.ws = await self.http.ws_connect(self.url, autoping=True, max_msg_size=2 * 1024 * 1024)
+        # BA accepts only its public browser origin (SEC-02); the SPA is served from the same host as /ws/v1.
+        target = urlsplit(self.url)
+        origin = ("https://" if target.scheme == "wss" else "http://") + target.netloc
+        self.ws = await self.http.ws_connect(self.url, headers={"Origin": origin}, autoping=True,
+                                             max_msg_size=2 * 1024 * 1024)
         self.reader = asyncio.create_task(self.read())
         reply = await self.request("auth.authenticate", {"access_token": self.session["access_token"],
                                    "device_id": self.session["device_id"]}, "auth.accepted")

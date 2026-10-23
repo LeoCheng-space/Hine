@@ -28,6 +28,9 @@ def timestamp(seconds=0):
 def frame(event, payload, **extra):
     return {"event": event, "event_id": str(uuid4()), "timestamp": timestamp(), "payload": payload, **extra}
 
+# Browsers always send Origin on a WebSocket upgrade; BA accepts only the configured public origin (SEC-02).
+ORIGIN = "https://hine.test"
+
 
 def error(code, layer=None, retryable=False, delay=None):
     details = {} if layer is None else {"auth_layer": layer}
@@ -224,7 +227,7 @@ class RealtimeBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.redis_url = os.environ.get("HINE_TEST_REDIS_URL", "redis://127.0.0.1:6379/0")
         self.prefix = "hine-test:" + str(uuid4())
         self.env = {
-            "HINE_ENV": "test",
+            "HINE_ENV": "test", "PUBLIC_ORIGIN": ORIGIN,
             "API_INTERNAL_URL": self.bb_url,
             "INTERNAL_CALLER_TOKEN_SECRET_REF": str(self.secret_dir / "outbound"),
             "INTERNAL_ALLOWED_CALLERS": json.dumps({"api": str(self.secret_dir / "inbound")}),
@@ -263,7 +266,7 @@ class RealtimeBoundaryTests(unittest.IsolatedAsyncioTestCase):
         return url
 
     async def auth(self, token="access-a"):
-        ws = await self.client.ws_connect(self.url + "/ws/v1")
+        ws = await self.client.ws_connect(self.url + "/ws/v1", headers={"Origin": ORIGIN})
         self.addAsyncCleanup(ws.close)
         request = frame("auth.authenticate", {"access_token": token, "device_id": token.replace("access", "device")}, sender_id="client-forged-user", subject_id="client-forged-subject")
         await ws.send_json(request)
@@ -332,6 +335,31 @@ class RealtimeBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reply["payload"]["code"], "DEPENDENCY_UNAVAILABLE")
         self.assertEqual(reply["correlation_id"], request["event_id"])
         self.assertIn((await ws.receive(timeout=2)).type, {aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED})
+
+    async def test_websocket_upgrade_requires_exactly_one_matching_public_origin(self):
+        from hine_realtime.server import RUNTIME
+        from multidict import CIMultiDict
+        await self.start()
+        refused = ({}, {"Origin": "https://evil.example"}, {"Origin": "null"}, {"Origin": ORIGIN + "/"},
+                   {"Origin": ORIGIN.replace("https:", "http:")}, CIMultiDict([("Origin", ORIGIN), ("Origin", "https://evil.example")]))
+        for headers in refused:
+            with self.subTest(headers=list(headers.items())):
+                with self.assertRaises(aiohttp.WSServerHandshakeError) as raised:
+                    await self.client.ws_connect(self.url + "/ws/v1", headers=headers)
+                self.assertEqual(raised.exception.status, 403)
+                self.assertEqual(len(self.app[RUNTIME].connections), 0)
+        _, _, accepted = await self.auth()
+        self.assertEqual(accepted["event"], "auth.accepted")
+
+    async def test_public_origin_must_be_a_bare_https_origin(self):
+        from hine_realtime.config import Settings
+        self.assertTrue(Settings.from_env(self.env).valid)
+        for value in (None, "", "http://hine.test", "https://hine.test/app", "https://user@hine.test", "https://hine.test?x=1", "https://"):
+            with self.subTest(value=value):
+                environment = {key: item for key, item in self.env.items() if key != "PUBLIC_ORIGIN"}
+                if value is not None:
+                    environment["PUBLIC_ORIGIN"] = value
+                self.assertFalse(Settings.from_env(environment).valid)
 
     async def test_no_ack_or_fanout_before_commit_and_c1_is_sender_only(self):
         await self.start()
@@ -429,7 +457,7 @@ class RealtimeBoundaryTests(unittest.IsolatedAsyncioTestCase):
         other, _, _ = await self.auth("access-a2")
         self.authority.validate_release = asyncio.Event()
         self.authority.validate_entered.clear()
-        ws = await self.client.ws_connect(self.url + "/ws/v1")
+        ws = await self.client.ws_connect(self.url + "/ws/v1", headers={"Origin": ORIGIN})
         self.addAsyncCleanup(ws.close)
         request = frame("auth.authenticate", {"access_token": "access-a", "device_id": "device-a"})
         await ws.send_json(request)
