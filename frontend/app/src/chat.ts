@@ -338,18 +338,24 @@ export class ChatController {
   this.publish({currentConversation:opening.id});if(this.historyCursors[opening.id]===undefined)await this.loadHistory(opening.id);
  }
  async openChat(conversationId:string):Promise<void> {
-  const id=entity(conversationId),epoch=this.epoch,opening:RouteOpening={id,epoch,join:this.selfJoins.get(id)};this.pendingOpening=opening;this.currentRoute=id;this.publish({currentConversation:null,error:null});
-  let joined:SelfJoinWork|undefined;
+  // Re-verifying the room already on screen (the route opened before the WSS reconciled, or after a reconnect) keeps
+  // it mounted: blanking it discarded what the user was typing and could strand a message sent meanwhile (#13).
+  // Authority is still rechecked below; a denial withdraws the room and any other failure hides it as before.
+  const id=entity(conversationId),epoch=this.epoch,opening:RouteOpening={id,epoch,join:this.selfJoins.get(id)},reopening=this.snapshot.currentConversation===id&&this.currentRoute===id;
+  this.pendingOpening=opening;this.currentRoute=id;this.publish(reopening?{error:null}:{currentConversation:null,error:null});
+  let joined:SelfJoinWork|undefined,activated=false;
   try{
    if(!this.valid(epoch)||!this.repository)return;if(this.syncing)await this.syncing;if(!this.currentOpening(opening))return;
    if(!opening.join)await this.fetchDetail(id,epoch,true);
-   joined=opening.join;await this.activateOpening(opening,joined);
+   joined=opening.join;await this.activateOpening(opening,joined);activated=true;
   }catch(error){
    const joining=opening.join;
    // A cancelled old read is replaced only by this route's current authorized self-join.
    if(joined||!(error instanceof RepositoryCancelled)||!this.currentOpening(opening)||!joining||joining.epoch!==epoch||!this.authority.isCurrent(id,joining.ticket))throw error;
-   await this.activateOpening(opening,joining);
-  }finally{if(this.pendingOpening===opening)this.pendingOpening=null;}
+   await this.activateOpening(opening,joining);activated=true;
+  }finally{
+   if(this.pendingOpening===opening){this.pendingOpening=null;if(reopening&&!activated&&this.snapshot.currentConversation===id)this.publish({currentConversation:null});}
+  }
  }
  closeChat():void {this.pendingOpening=null;this.currentRoute=null;this.publish({currentConversation:null});}
  async withdraw(conversationId:string):Promise<void> {if(this.pendingOpening?.id===conversationId)this.pendingOpening=null;this.invalidateConversation(conversationId);this.observedDenied.add(conversationId);++this.revocationVersion;this.liveDuringBootstrap=null;this.blockAttachments(conversationId);this.publish();await this.commit(state=>withdrawConversation(state,conversationId));if(this.currentRoute===conversationId){this.currentRoute=null;this.publish({currentConversation:null,error:'你已無法存取這個群組。'});}window.dispatchEvent(new Event('hine-conversations-changed'));}

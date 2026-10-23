@@ -812,9 +812,37 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             group_message = "browser-group-" + secrets.token_hex(8)
             await send_text(page_a, group_message)
             await wait_message(page_a, group_message)
+            # Issue #13: after a full-page deep link the room opens before the WSS has reconciled, then reopens
+            # after reconciliation. The reopen must not tear the composer down (typed text was lost) or strand a
+            # message sent in that window. Count composer removals after it first appears.
+            await page_b.add_init_script(script="""(() => {
+              window.__hineComposerDetached = 0;
+              let present = false;
+              new MutationObserver(() => {
+                const now = document.querySelector('.chat-composer textarea') !== null;
+                if (present && !now) window.__hineComposerDetached += 1;
+                present = now;
+              }).observe(document, {childList: true, subtree: true});
+            })()""")
             await page_b.goto(origin + "/chats/" + quote(group_id, safe=""), wait_until="domcontentloaded")
             await page_b.bring_to_front()
+            deep_link_message = "browser-deep-link-immediate-" + secrets.token_hex(8)
+            await page_b.locator(".chat-composer textarea").wait_for(state="visible", timeout=45000)
+            await send_text(page_b, deep_link_message)
             await wait_message(page_b, group_message, timeout=45000)
+            try:
+                await wait_message(page_b, deep_link_message, timeout=20000)
+                deep_link_rendered = True
+            except PlaywrightError:
+                deep_link_rendered = False
+            check(test_record, "deep_link_reopen_after_reconcile_keeps_the_composer_mounted",
+                  await page_b.evaluate("() => window.__hineComposerDetached") == 0)
+            check(test_record, "deep_link_send_needs_no_membership_recheck",
+                  await page_b.get_by_text("先前成員資格", exact=False).count() == 0)
+            async with components.sql() as conn:
+                deep_link_rows = await conn.fetchval(
+                    "SELECT count(*) FROM messages WHERE conversation_id=$1 AND payload->>'text'=$2", group_id, deep_link_message)
+            check(test_record, "deep_link_immediate_group_send_persisted_once", deep_link_rendered and deep_link_rows == 1)
             check(test_record, "group_recipient_dom_and_indexeddb_message_persisted", await indexeddb_persisted_message(page_b, group_id, group_message))
             async with components.sql() as conn:
                 group_message_row = await conn.fetchrow(
