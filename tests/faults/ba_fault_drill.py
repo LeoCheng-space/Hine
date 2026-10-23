@@ -153,7 +153,7 @@ async def prerequisites(args, evidence):
         raise PrerequisiteFailure("SOURCE_OR_TEST_FIXTURE_MISSING")
     try:
         global aiohttp, web, Redis, RedisError, Retry, NoBackoff
-        global AddonAuthority, error, frame, timestamp
+        global AddonAuthority, ORIGIN, error, frame, timestamp
         import aiohttp
         from aiohttp import web
         from redis.asyncio import Redis
@@ -163,7 +163,7 @@ async def prerequisites(args, evidence):
         sys.dont_write_bytecode = True
         sys.path.insert(0, str(FIXTURES))
         from receipt_sync_support import AddonAuthority
-        from test_realtime_boundaries import error, frame, timestamp
+        from test_realtime_boundaries import ORIGIN, error, frame, timestamp
     except ImportError:
         raise PrerequisiteFailure("RUNNER_DEPENDENCY_MISSING") from None
     selected = await command_output(
@@ -490,7 +490,7 @@ class Components:
                      f"dir {self.directory}\nsave \"\"\nappendonly no\ndaemonize no\nloglevel warning\n")
         self.env = child_environment()
         self.env.update({
-            "HINE_ENV": "test", "REALTIME_HOST": "127.0.0.1", "REALTIME_PORT": str(self.ba_port),
+            "HINE_ENV": "test", "PUBLIC_ORIGIN": ORIGIN, "REALTIME_HOST": "127.0.0.1", "REALTIME_PORT": str(self.ba_port),
             "API_INTERNAL_URL": self.link.url,
             "INTERNAL_CALLER_TOKEN_SECRET_REF": str(self.directory / "outbound"),
             "INTERNAL_ALLOWED_CALLERS": json.dumps({"api": str(self.directory / "inbound")}),
@@ -583,7 +583,8 @@ class Components:
         return False
 
     async def auth(self, token="access-a"):
-        ws = await self.client.ws_connect(self.url + "/ws/v1", timeout=aiohttp.ClientWSTimeout(ws_close=2))
+        ws = await self.client.ws_connect(self.url + "/ws/v1", headers={"Origin": ORIGIN},
+                                          timeout=aiohttp.ClientWSTimeout(ws_close=2))
         peer = Peer(ws)
         self.peers.append(peer)
         request, response = await peer.request("auth.authenticate", {

@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — WebSocket 只接受 HINE 自己的網頁來源（SEC-02）
+
+- BA 讀取並驗證 `PUBLIC_ORIGIN`（缺少或格式不符即不就緒）；`/ws/v1` 升級請求必須帶恰好一個與它相同的 `Origin`，否則在升級前回 403 `FORBIDDEN`。依決議，沒有 Origin 的非瀏覽器用戶端一律拒絕。
+- 共同介面：[契約](contracts/interface-contract.md) W 登錄表新增連線前提，`PUBLIC_ORIGIN` 使用端加入 BA。Compose 原本就傳入此值；Web 前端不需修改。
+- 壓測／驗收協定工具改帶與 `ws_url` 同主機的頁面 Origin；BA 測試、故障演練與整合測試的設定同步加入 `PUBLIC_ORIGIN`。更新[資安風險評估 SEC-02](security/risk-assessment.md)。
+
 ## 2026-10-23 — API 回應禁止快取與瀏覽器安全標頭（SEC-07）
 
 - API 對所有 `/api/v1` 回應（含錯誤與 204）加上 `Cache-Control: no-store`，特別是回傳 access_token 的 A02 login／A03 refresh；回應欄位與狀態碼不變。

@@ -531,6 +531,10 @@ class Runtime:
 
 async def websocket(request):
     runtime = request.app[RUNTIME]
+    # Cross-site WebSocket defense (SEC-02): browsers always send Origin, so a missing, foreign or repeated Origin is
+    # refused before the upgrade. An unconfigured BA still upgrades and then fails closed with DEPENDENCY_UNAVAILABLE.
+    if runtime.settings.valid and request.headers.getall("Origin", []) != [runtime.settings.public_origin]:
+        return rest_error(Fault("FORBIDDEN", False))
     if len(runtime.connections) + runtime.pending_handshakes >= runtime.settings.max_connections:
         return rest_error(Fault("DEPENDENCY_UNAVAILABLE"))
     ws = web.WebSocketResponse(max_msg_size=runtime.settings.max_frame_bytes, compress=False, heartbeat=None, timeout=0.5, writer_limit=65536)
