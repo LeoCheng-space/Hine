@@ -43,6 +43,7 @@ form > button.primary { margin-top: 24px; }
 .notice.error { color: #902b37; background: #fff2f3; border-color: #edc7cd; }
 .notice.success { color: #1b6558; background: #eaf5ee; }
 .field-error { color: var(--danger); font-size: .83rem; margin: 7px 0; }
+.field-hint { color: var(--muted); font-size: .8rem; line-height: 1.5; margin: 6px 0; }
 .brand-mark { display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; flex-shrink: 0; color: white; font-size: 1.45rem; font-weight: 800; border-radius: 14px 14px 14px 4px; background: var(--brand-700); }
 .brand-lockup { display: flex; align-items: center; gap: 14px; margin-bottom: 32px; }
 .brand-lockup strong { font-size: 1.2rem; letter-spacing: .2em; }

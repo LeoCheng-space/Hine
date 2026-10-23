@@ -579,7 +579,8 @@ class Components:
         self.pg_process = self.api_process = self.ba_process = self.redis_process = None
         self.sockets = []
         self.database = "product_" + secrets.token_hex(8)
-        self.password = secrets.token_urlsafe(36)
+        # 3-hex groups joined by "-": always 2+ classes and never a 4-character run (SEC-01 policy).
+        self.password = "-".join(secrets.token_hex(2)[:3] for _ in range(12))
         self.admin_password = secrets.token_hex(32)
         self.app_password = secrets.token_hex(32)
         self.redis_password = secrets.token_hex(32)

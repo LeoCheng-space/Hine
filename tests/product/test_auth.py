@@ -146,6 +146,46 @@ class AuthTests(ProductCase):
         self.assertGreater(result["error"]["details"]["retry_after_ms"], 0)
         self.assertNotIn(profile["email"], str(result))
 
+    async def test_registration_enforces_password_policy_without_creating_or_affecting_login(self):
+        # SEC-01: 8–128 characters, 2 of 4 classes, no email account name, no 4+ repeated/sequential characters.
+        local = "pw" + secrets.token_hex(4)
+        email = local + "@product.test"
+        weak = {
+            "7 characters": "Zx9-qpr",
+            "129 characters": "Zx9-" * 32 + "Q",
+            "one class": "qwertyzxcvpo",
+            "account name": "Zx9-" + local + "-q",
+            "account name in other case": "Zx9-" + local.upper() + "-q",
+            "repeated": "Zx9-aaaa-qp",
+            "repeated ignoring case": "Zx9-AaAa-qp",
+            "ascending digits": "Zx9-1234-qp",
+            "descending letters": "Zx9-dcba-qp",
+            "control character": "Zx9-qp\x07rt",
+        }
+        for name, password in weak.items():
+            with self.subTest(name=name):
+                status, result = await self.request("POST", "/api/v1/auth/register", json={"email": email, "password": password, "display_name": "Weak"})
+                self.assertEqual((status, result["error"]["code"]), (400, "INVALID_ARGUMENT"))
+        strong = {
+            "exactly 8": "Zx9-qprt",
+            "exactly 128": "Zx9-" * 32,
+            "lowercase passphrase with spaces": "correct horse battery staple",
+            "three-character runs": "abc1abc1",
+            "non-ASCII and letters": "密碼很長很安全ok",
+            "8 characters outside the BMP": "😀😁😂🤣😃😄😅a",
+        }
+        for name, password in strong.items():
+            with self.subTest(name=name):
+                address = secrets.token_hex(8) + "@product.test"
+                status, result = await self.request("POST", "/api/v1/auth/register", json={"email": address, "password": password, "display_name": "Strong"})
+                self.assertEqual(status, 201, result)
+                await self.api.login(address, password)
+        # Nothing was created by the rejected attempts, and login never applies the registration policy.
+        status, _ = await self.request("POST", "/api/v1/auth/register", json={"email": email, "password": PASSWORD, "display_name": "Strong"})
+        self.assertEqual(status, 201)
+        status, result = await self.request("POST", "/api/v1/auth/login", json={"email": email, "password": "x", "device_id": None})
+        self.assertEqual((status, result["error"]["code"]), (401, "UNAUTHENTICATED"))
+
     async def test_unique_registration_and_duplicate_json_keys(self):
         email = secrets.token_hex(8) + "@product.test"
         replies = await asyncio.gather(*(self.api.request("POST", "/api/v1/auth/register", json={"email": email, "password": PASSWORD, "display_name": "Race"}) for _ in range(2)))
