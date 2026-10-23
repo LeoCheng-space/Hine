@@ -37,9 +37,11 @@
 - [響應式網頁介面](ui/web-rwd.md#web-rwd)
 - [REQ-01–REQ-22 驗收](testing/acceptance-matrix.md#req-01)
 - [BA 專用失效分析、故障演練證據與殘餘風險](testing/backend-a-failure-analysis.md)
+- [資安風險評估：現有功能與未來通話風險](security/risk-assessment.md)（初步靜態評估草稿，含改善與驗證追蹤）
 - [決議紀錄](decisions.md)
 - [文件變更紀錄](CHANGELOG.md)
 
 ## 來源與狀態
 
 現行 HINE-IC-0.4 規格依 2026-10-01 PM 決議整合；決議不表示已實作、部署或完成測試。較早的整合版[契約](HINE-IC-0.4-contract.md)與[六角色需求文件](HINE-IC-0.4-role-prds.md)僅作歷史來源保存，並非共同權威文件或現行導覽目標。[變更紀錄](CHANGELOG.md)說明來源、增補內容及未變更的介面識別碼。歷史 HINE-IC-0.3 資料唯讀。
+
