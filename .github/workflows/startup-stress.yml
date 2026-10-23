@@ -1,0 +1,56 @@
+name: Startup Stress (#26)
+
+# Issue #26 reproduction only. Runs on pushes to this branch; never merged into main.
+on:
+  push:
+    branches: [chore/26-startup-stress]
+
+permissions:
+  contents: read
+
+jobs:
+  startup-stress:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+        load: [cpu-pressure]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install real product dependencies
+        run: python -m pip install -r backend/api/requirements.txt -r backend/realtime/requirements.txt
+      - name: Install native owned-cluster tools
+        uses: ./.github/actions/native-product-tools
+      - name: Repeatedly start the native stack on two busy cores
+        run: |
+          mkdir -m 700 .stress-evidence
+          # The #26 failure was seen with the stack pinned to few cores next to busy loops.
+          busy=""
+          for _ in 1 2 3 4; do taskset -c 0,1 sh -c 'while :; do :; done' & busy="$busy $!"; done
+          set +e
+          taskset -c 0,1 python tests/faults/startup_stress.py \
+            --postgres-bin /usr/lib/postgresql/17/bin \
+            --redis-server /usr/bin/redis-server \
+            --caddy /usr/bin/caddy \
+            --python "$(command -v python)" \
+            --minutes 30 \
+            --output .stress-evidence/startup-stress-${{ matrix.shard }}.json
+          status=$?
+          for pid in $busy; do kill "$pid" 2>/dev/null; done
+          python -c "import json,sys; r=json.load(open(sys.argv[1])); print(f\"### Shard ${{ matrix.shard }}: {r['successes']}/{r['attempts']} starts succeeded\n\nFailure codes: {r['failure_codes']}\n\nChild exit categories: {r['child_exit_categories']}\")" .stress-evidence/startup-stress-${{ matrix.shard }}.json >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - name: Preserve sanitized stress results only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: startup-stress-${{ matrix.shard }}
+          path: .stress-evidence/*.json
+          if-no-files-found: ignore
+          include-hidden-files: true
