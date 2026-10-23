@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 瀏覽器驗收改以 requirements 鎖定的 Playwright 版本為準
+
+- `tests/browser/browser_acceptance.py` 原本寫死只接受 Playwright 1.63.0，使 Dependabot 的 Python 分組更新（#57，升至 1.64.0）在 Chrome／Edge 驗收開始前就以 `PLAYWRIGHT_1630_REQUIRED` 停止。改為比對 `tests/browser/requirements.txt` 的 `playwright==X` 精確鎖定，仍要求安裝版本完全一致，失敗碼改為 `PLAYWRIGHT_PIN_MISMATCH`；證據檔記錄實際鎖定版本。
+- 新增 `infra/tests/test_acceptance_startup.py` 回歸測試：只接受精確鎖定，缺少或範圍寫法視為前置條件失敗。
+
 ## 2026-10-23 — 註冊密碼規則（SEC-01）
 
 - A01 註冊依決議套用密碼規則：8–128 個字元、大寫／小寫／數字／符號（含空格與非 ASCII）至少 2 類、不含電子郵件帳號名稱、無 4 個以上連續或重複字元。不符回 400 `INVALID_ARGUMENT`（既有錯誤碼），不建立帳號、不消耗註冊配額；登入與既有帳號不受影響。

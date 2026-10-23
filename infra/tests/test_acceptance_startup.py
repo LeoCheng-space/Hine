@@ -59,6 +59,31 @@ class DevToolsPortTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(await self.runner.devtools_port(self.port_file, child))
 
 
+class PinnedToolchainTests(unittest.TestCase):
+    # The browser gate attests the exact Playwright it runs, taken from the same file CI installs, so an
+    # update PR (e.g. Dependabot) is exercised with its new version instead of being refused before any browser runs.
+    def setUp(self):
+        self.runner = load("browser_acceptance_under_test", "tests/browser/browser_acceptance.py")
+        self.temp = tempfile.TemporaryDirectory(prefix="hine-pin-")
+        self.addCleanup(self.temp.cleanup)
+        self.requirements = Path(self.temp.name) / "requirements.txt"
+
+    def test_exact_pin_is_the_required_version(self):
+        self.requirements.write_text("# browser gate\nplaywright==1.64.0\n")
+        self.assertEqual(self.runner.pinned_version("playwright", self.requirements), "1.64.0")
+
+    def test_missing_or_non_exact_pin_is_a_prerequisite_failure(self):
+        for contents in ("", "aiohttp==3.14.4\n", "playwright>=1.63\n", "playwright\n"):
+            with self.subTest(contents=contents):
+                self.requirements.write_text(contents)
+                with self.assertRaises(self.runner.PrerequisiteFailure):
+                    self.runner.pinned_version("playwright", self.requirements)
+
+    def test_the_shipped_requirements_pin_playwright(self):
+        pinned = self.runner.pinned_version("playwright", SOURCE / "tests/browser/requirements.txt")
+        self.assertRegex(pinned, r"^[0-9]+\.[0-9]+\.[0-9]+$")
+
+
 def self_signed(directory, name):
     cert, key = directory / f"{name}.pem", directory / f"{name}.key"
     subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
