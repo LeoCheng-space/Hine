@@ -394,6 +394,28 @@ class BuildScriptTests(unittest.TestCase):
                 self.assertEqual(status.returncode, 0, status.stderr)
                 self.assertIn("附件儲存：設定有誤", status.stdout)
 
+    def test_local_runtime_ids_that_cannot_read_the_secrets_stop_before_starting(self):
+        # Containers run as HINE_RUNTIME_UID:GID with every capability dropped, so an ID that does not own the
+        # owner-only secrets leaves API/BA unready (CONFIG_MISSING) until the health wait times out.
+        self.assertEqual(self.build().returncode, 0)
+        owner = (self.root / ".secrets/redis_url").stat()
+        expected = f"HINE_RUNTIME_UID={owner.st_uid}、HINE_RUNTIME_GID={owner.st_gid}"
+        for values in ({"HINE_RUNTIME_UID": owner.st_uid + 1}, {"HINE_RUNTIME_GID": owner.st_gid + 1},
+                       {"HINE_RUNTIME_UID": ""}):
+            with self.subTest(values=values):
+                self.set_local_env(HINE_RUNTIME_UID=owner.st_uid, HINE_RUNTIME_GID=owner.st_gid)
+                self.set_local_env(**values)
+                self.log.write_text("")
+                result = self.build()
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn(".secrets", result.stderr)
+                self.assertIn(expected, result.stderr)
+                self.assertFalse(any(" up -d " in line for line in self.calls()))
+        self.set_local_env(HINE_RUNTIME_UID=owner.st_uid, HINE_RUNTIME_GID=owner.st_gid)
+        self.log.write_text("")
+        self.assertEqual(self.build().returncode, 0)
+        self.assertTrue(any(" up -d " in line for line in self.calls()))
+
     # Prerequisites -----------------------------------------------------------------------------
     def test_debian_installs_docker_from_the_official_repository_in_order(self):
         (self.bin / "docker").unlink()

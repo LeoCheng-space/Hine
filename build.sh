@@ -339,6 +339,18 @@ compose_local() {
     docker compose --project-directory "$ROOT" --env-file "$LOCAL_ENV_FILE" \
         -f "$ROOT/docker-compose.yml" -f "$ROOT/infra/docker/compose.local.yml" "$@"
 }
+# API/BA run as HINE_RUNTIME_UID:GID with every capability dropped, so they can read the owner-only secrets only
+# when those IDs own them. A mismatch (e.g. a hand-copied .env keeping the example's 0) would otherwise surface as
+# CONFIG_MISSING after the whole health wait. init-dev.sh derives the IDs from the same file when it creates .env.
+check_runtime_ids() {
+    owners=$(stat -c '%u %g' "$ROOT/.secrets/redis_url") || die '無法讀取 .secrets/redis_url 的擁有者'
+    secret_uid=${owners%% *}
+    secret_gid=${owners#* }
+    runtime_uid=$(local_env_value HINE_RUNTIME_UID)
+    runtime_gid=$(local_env_value HINE_RUNTIME_GID)
+    [ "$runtime_uid" = "$secret_uid" ] && [ "$runtime_gid" = "$secret_gid" ] && return 0
+    die ".env 的 HINE_RUNTIME_UID／HINE_RUNTIME_GID（目前 ${runtime_uid:-未設定}／${runtime_gid:-未設定}）與 .secrets 檔案擁有者（${secret_uid}／${secret_gid}）不符，服務會讀不到密鑰而無法啟動。請把 .env 的這兩行改成 HINE_RUNTIME_UID=${secret_uid}、HINE_RUNTIME_GID=${secret_gid} 後重跑 ./build.sh（不要放寬密鑰檔權限）"
+}
 local_up() {
     STEP_TOTAL=5
     step 1 '檢查並安裝前置工具' '確認網路能連到 download.docker.com 與 github.com、這個帳號可以使用 sudo；從上面記錄找出失敗的套件或下載後重跑 ./build.sh'
@@ -347,6 +359,7 @@ local_up() {
     acquire_lock
     step 2 '產生密鑰與設定（已存在就沿用）' '多半是 .secrets/ 或 .env 的擁有者與目前使用者不同（用 ls -ln .secrets .env 檢查），或密鑰檔被改過。若不需要舊資料：執行 ./build.sh clean 預覽、./build.sh clean --yes 清除後，再重跑 ./build.sh'
     run sh "$SCRIPTS/init-dev.sh"
+    check_runtime_ids
     problem=$(local_gcs_problem)
     [ -z "$problem" ] || die "$problem"
     step 3 '建置前端' '前端套件下載或建置失敗：確認網路能連到 registry.npmjs.org 後重跑 ./build.sh；仍失敗請把完整記錄檔提供給維護者'
