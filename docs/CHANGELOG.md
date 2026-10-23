@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — API 回應禁止快取與瀏覽器安全標頭（SEC-07）
+
+- API 對所有 `/api/v1` 回應（含錯誤與 204）加上 `Cache-Control: no-store`，特別是回傳 access_token 的 A02 login／A03 refresh；回應欄位與狀態碼不變。
+- 正式 `Caddyfile` 與本機／驗收 `Caddyfile.acceptance` 加上 `Content-Security-Policy: frame-ancestors 'none'`、`Referrer-Policy: same-origin`、`X-Content-Type-Options: nosniff`。不用 `no-referrer`，因為它會讓同源 POST 的 Origin 變成 null，使 cookie refresh 被拒絕。完整 CSP 尚未設定。
+- 更新[資安風險評估 SEC-07](security/risk-assessment.md)與[部署手冊](deployment/README.md)；新增 `tests/product/test_auth.py` 回歸測試，並在隔離 stack 以桌面 Chrome 實測登入、重新整理與 iframe 阻擋。
+
 ## 2026-10-23 — 規劃 PHP CVE-2026-109618／109619 部署應變
 
 - 新增 [PHP CVE 應變計畫](security/php-cve-2026-response-plan.md)與[導覽](README.md)：初稿 2026-10-22，2026-10-23 重查官方資料並補齊審閱意見；以資安風險評估 PR #34 為基底，PHP 計畫另行審閱。
