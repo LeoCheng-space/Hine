@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — API 回應禁止快取與瀏覽器安全標頭（SEC-07）
+
+- API 對所有 `/api/v1` 回應（含錯誤與 204）加上 `Cache-Control: no-store`，特別是回傳 access_token 的 A02 login／A03 refresh；回應欄位與狀態碼不變。
+- 正式 `Caddyfile` 與本機／驗收 `Caddyfile.acceptance` 加上 `Content-Security-Policy: frame-ancestors 'none'`、`Referrer-Policy: same-origin`、`X-Content-Type-Options: nosniff`。不用 `no-referrer`，因為它會讓同源 POST 的 Origin 變成 null，使 cookie refresh 被拒絕。完整 CSP 尚未設定。
+- 更新[資安風險評估 SEC-07](security/risk-assessment.md)與[部署手冊](deployment/README.md)；新增 `tests/product/test_auth.py` 回歸測試，並在隔離 stack 以桌面 Chrome 實測登入、重新整理與 iframe 阻擋。
+
 ## 2026-10-23 — Dependabot 改為每月分組更新（SEC-11）
 
 - `.github/dependabot.yml` 由「每週、每個資料夾的每個套件各一個 PR」改為每月、每類別一個分組 PR：Python（四個需求檔一起）、前端、Docker、GitHub Actions；Actions 大版本另成一組，方便單獨審查不相容變更。
