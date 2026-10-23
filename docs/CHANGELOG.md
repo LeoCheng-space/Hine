@@ -1,5 +1,11 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 深層連結進入聊天室後立即輸入／傳訊不再遺失（Fixes #13）
+
+- 整頁載入 `/chats/{id}` 時，聊天室會先以 REST 開啟（此時 WSS 尚未完成同步），WSS 同步完成後再重新核對一次。重新核對原本會先把聊天室清空再顯示，撰寫區因此被卸載：正在輸入的文字消失，舊版還可能讓剛送出的訊息被保留為「先前成員資格的傳送意圖」。
+- 修正：重新核對「已顯示中」的同一個聊天室時保持顯示，權限照樣重新檢查；被拒絕時仍會撤出聊天室，其他失敗則和以前一樣隱藏。首次開啟、切換聊天室的行為不變，也不改 REST／WSS 介面。
+- 瀏覽器驗收新增檢查：深層連結進入群組後立即傳訊，撰寫區不得被卸載、訊息持久化恰好一筆、不得出現成員資格核對提示。修正前 Edge 失敗（`DEEP_LINK_REOPEN_AFTER_RECONCILE_KEEPS_THE_COMPOSER_MOUNTED`），修正後 Chrome／Edge 皆通過。
+
 ## 2026-10-23 — 瀏覽器驗收改以 requirements 鎖定的 Playwright 版本為準
 
 - `tests/browser/browser_acceptance.py` 原本寫死只接受 Playwright 1.63.0，使 Dependabot 的 Python 分組更新（#57，升至 1.64.0）在 Chrome／Edge 驗收開始前就以 `PLAYWRIGHT_1630_REQUIRED` 停止。改為比對 `tests/browser/requirements.txt` 的 `playwright==X` 精確鎖定，仍要求安裝版本完全一致，失敗碼改為 `PLAYWRIGHT_PIN_MISMATCH`；證據檔記錄實際鎖定版本。
