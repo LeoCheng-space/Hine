@@ -204,6 +204,92 @@ async def web_build_provenance(bun: str, destination: Path) -> tuple[str, dict[s
     return version, source_hashes, asset_hashes, executable_hash
 
 
+REVIEW_SHELL_SOURCES = (ROOT / "tests/browser/review-shell-harness.ts", ROOT / "frontend/app/tests/review-shell-native.ts")
+
+
+async def build_review_shell(bun: str, web_root: Path, private: Path) -> None:
+    """Issue #17: bundle the frontend's native chat-list scenarios into /review-shell/ on the owned origin.
+    Built after the production asset provenance is recorded, so production hashes stay production-only."""
+    output = web_root / "review-shell"
+    process = await asyncio.create_subprocess_exec(
+        bun, "build", str(REVIEW_SHELL_SOURCES[0]), "--outdir", str(output), "--target", "browser", "--minify",
+        "--define", 'process.env.NODE_ENV="production"', cwd=ROOT, stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "HOME": str(private / "build-home")})
+    stdout, stderr = await process.communicate()
+    (private / "review-shell-build.stdout").write_bytes(stdout)
+    (private / "review-shell-build.stderr").write_bytes(stderr)
+    if process.returncode != 0 or not (output / "review-shell-harness.js").is_file():
+        raise AcceptanceFailure("REVIEW_SHELL_BUILD_FAILED")
+    css = '<link rel="stylesheet" href="/review-shell/review-shell-harness.css">' if (output / "review-shell-harness.css").is_file() else ""
+    (output / "index.html").write_text(
+        '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>HINE review shell</title>'
+        f'{css}<script src="/runtime-config.js"></script></head>'
+        '<body><script type="module" src="/review-shell/review-shell-harness.js"></script></body></html>\n')
+
+
+REVIEW_SHELL_RUNNER = """async ([name, args]) => {
+  const h = window.hineReviewShell, session = new h.SessionController();
+  await session.start();
+  await session.login(args.login, args.password);
+  try {
+    switch (name) {
+      case 'changes': return await h.runNativeChatListChanges(session, args.peer, 'all');
+      case 'burst': return await h.runNativeChatListBurstRace(session, args.peer);
+      case 'paging': return await h.runNativeChatListPaging(session);
+      case 'owner_race': return await h.runNativeChatListOwnerRace(session, args.alternate);
+      case 'casefold': return await h.runNativeCasefoldDevicePartition(session, args.owner, args.alternate);
+      case 'reload': return await h.verifyNativeDeviceIdentityAfterReload(session, args.proof);
+    }
+    throw new Error('UNKNOWN_REVIEW_SHELL_CASE');
+  } finally { session.dispose(); }
+}"""
+
+
+async def run_review_shell(browser, origin: str, components, contexts: list, record: dict) -> None:
+    """Issue #17: execute every review-shell-native.ts scenario against the real owned stack in this browser."""
+    suffix = secrets.token_hex(6)
+    # 3-hex groups joined by "-": always 2+ classes and never a 4-character run (SEC-01 policy).
+    password = "-".join(secrets.token_hex(2)[:3] for _ in range(8))
+    owner = {"canonicalEmail": f"strasse-{suffix}@owned.review.test", "unseenEmail": f"straße-{suffix}@owned.review.test", "password": password}
+    peer_email, alternate_email = f"peer-{suffix}@owned.review.test", f"alternate-{suffix}@owned.review.test"
+    for email in (owner["canonicalEmail"], peer_email, alternate_email):
+        status, _, _ = await components.http_request("POST", "/api/v1/auth/register",
+                                                     body={"email": email, "password": password, "display_name": "Review shell " + suffix})
+        check(record, "review_shell_fixture_account_registered", status == 201)
+    peer, _ = await components.login(peer_email, password)
+    alternate = {"email": alternate_email, "password": password}
+    context = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
+    contexts.append(context)
+    page = await context.new_page()
+
+    async def scenario(name: str, args: dict):
+        await page.goto(origin + "/review-shell/index.html", wait_until="load")
+        await page.wait_for_function("() => !!window.hineReviewShell", timeout=20000)
+        try:
+            return await page.evaluate(REVIEW_SHELL_RUNNER, [name, {"login": owner["canonicalEmail"], "password": password, **args}])
+        except PlaywrightError:
+            # The stage is a fixed string authored in review-shell-native.ts; the error text is not kept.
+            with contextlib.suppress(PlaywrightError):
+                record.setdefault("diagnostics", {})["review_shell_failed_stage"] = await page.evaluate(
+                    "() => window.hineReviewShell.nativeShellDiagnostic.stage")
+            check(record, f"review_shell_{name}_completed", False)
+
+    changes = await scenario("changes", {"peer": peer})
+    check(record, "review_shell_remote_join_rename_unread_removal_refresh_chats", changes["case"] == "all")
+    burst = await scenario("burst", {"peer": peer})
+    check(record, "review_shell_event_burst_coalesces_and_old_a11_cannot_win", burst["maxConcurrent"] == 1)
+    paging = await scenario("paging", {})
+    check(record, "review_shell_a11_paging_and_server_unread_authoritative", paging["firstPage"] == 20 and paging["uniqueRendered"] > 20)
+    race = await scenario("owner_race", {"alternate": alternate})
+    check(record, "review_shell_old_owner_a11_cannot_commit_after_account_switch", race["ownerChanged"] and race["oldResponseRejected"])
+    proof = await scenario("casefold", {"owner": owner, "alternate": alternate})
+    check(record, "review_shell_unseen_casefold_login_keeps_device_partition", isinstance(proof, dict) and bool(proof.get("deviceId")))
+    reload = await scenario("reload", {"proof": proof})
+    check(record, "review_shell_device_draft_and_intent_survive_reload", reload["nativeReloadPreserved"] is True)
+    record["counts"]["review_shell_scenarios"] = 6
+
+
 async def devtools_port(port_file: Path, child) -> int | None:
     """Chrome creat()s DevToolsActivePort and writes "<port>\\n<browser path>" afterwards, so an
     existing file can still be empty; only a file with both lines is ready. None: child exited."""
@@ -455,7 +541,10 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
         evidence["provenance"].update({
             "browser_runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "native_bundle_sha256": hashlib.sha256((ROOT / "tests/browser/native-acceptance.ts").read_bytes()).hexdigest(),
+            "review_shell_sources_sha256": {path.relative_to(ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                                            for path in REVIEW_SHELL_SOURCES},
         })
+        await build_review_shell(args.bun, temp_web, private)
         check(test_record, "native_fault_prerequisites_attested_real_toolchain", True)
         await components.__aenter__()
         check(test_record, "owned_native_api_ba_postgresql17_redis_caddy_started", True)
@@ -1261,6 +1350,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                   and tls_context.verify_mode == ssl.CERT_REQUIRED and tls_context.check_hostname)
             check(test_record, "real_same_origin_websocket_used", any(
                 url == f"wss://localhost:{components.tls_port}/ws/v1" for url in observed_websockets))
+            await run_review_shell(browser, origin, components, contexts, test_record)
             evidence["environment"]["browser_version"] = browser.version
             evidence["environment"]["browser_selection"] = (
                 "executable:" + Path(args.browser_executable).name if args.browser_executable else args.browser)

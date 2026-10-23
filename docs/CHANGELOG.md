@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — review-shell-native.ts 的聊天清單情境納入 CI（Fixes #17）
+
+- 這支腳本原本沒有執行入口，斷言從未真正跑過。瀏覽器驗收（Chrome／Edge）現在會在 production 資產雜湊之後，另外建置 `tests/browser/review-shell-harness.ts` 到 `/review-shell/`，以三個真實帳號依序執行：遠端加入／改名／伺服器未讀／移除、事件突發與舊 A11 不得勝出、A11 分頁、換帳號後舊回應不得寫入、未見過的 casefold 拼法保留原裝置分區，以及重新載入後草稿與待送訊息仍在。結果寫成 6 個 `review_shell_*` 檢查；失敗時只記錄腳本內的固定階段名稱。
+- 首次實跑（本機隔離 stack 的桌面 Chrome，以及 CI 的 Chrome／Edge）全部通過，產品程式不需修改。
+
 ## 2026-10-23 — 原生服務啟動時子程序結束會留下診斷（Refs #26）
 
 - 故障演練與瀏覽器驗收共用的原生服務啟動流程，若 API／BA 子程序在等待就緒時結束（`OWNED_PRODUCT_CHILD_EXITED`），會在清除暫存目錄前讀取該子程序的私有 log，記錄服務、退出碼／訊號、例外類別名稱與固定分類（如 `ADDRESS_IN_USE`、`API_STARTUP_UNAVAILABLE`、`PYTHON_IMPORT_FAILED`）。報告分別寫入 `diagnostics.startup_child_exit` 與 `diagnostics.product_child_startup`，不複製 log 內容、路徑或埠號。

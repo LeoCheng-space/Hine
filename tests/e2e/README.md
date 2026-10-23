@@ -30,6 +30,10 @@ M1／本文／order_key 一致、歷史去重與排序、同步邊界／游標�
 Playwright1.63.0與production Web，重用原有owned native PG17／API／BA／Redis／
 Caddy生命週期，跑實際UI、WSS、IndexedDB、reload、保存游標重連、receipt、
 群組撤權與同帳號另一裝置的session存續；不是協定oracle單元測試。
+同一次執行最後會另建瀏覽器設定檔，打開 `/review-shell/`（由 `tests/browser/review-shell-harness.ts`
+在 production 資產雜湊之後建置），以真實帳號跑 `frontend/app/tests/review-shell-native.ts`
+的 8 個聊天清單情境（遠端加入／改名／未讀／移除、事件突發、A11 分頁、換帳號舊回應、casefold 裝置分區與重新載入），
+每項各有一個 `review_shell_*` 檢查（#17）。
 
 ```sh
 .venv/bin/python -m pip install -r backend/api/requirements.txt \
