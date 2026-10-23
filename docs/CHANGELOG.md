@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — PostgreSQL 中斷時 API 收到 SIGTERM 能自行結束（Fixes #25）
+
+- 原因：asyncpg 0.31 在 PostgreSQL 中斷後，pool 連線釋放可能卡住（`wait_until_released` 永遠不結束），`pool.close()` 因此等不到結果，API 收到 SIGTERM 後要等 8 秒被 SIGKILL。本機以 0.31 重現 3／3 次超過 20 秒未結束；換成 asyncpg 0.32.0（#57 已升級，官方修正 #1324「protocol abort 後釋放連線造成 pool deadlock」）後 6／6 次在 0.07 秒內以退出碼 0 結束。
+- PF03 新增檢查：PostgreSQL 仍中斷時對 API 送 SIGTERM，不得需要 SIGKILL，並記錄結束耗時。以目前 main（asyncpg 0.32）在 CI 實跑通過，耗時 61 ms。API 程式未修改。
+
 ## 2026-10-23 — 未登入開啟註冊／登入頁不再顯示「登入已失效」（Fixes #59）
 
 - 頁面啟動時會以 A03 嘗試恢復工作階段；沒有 refresh cookie 時回 401 只代表「本來就沒有登入」。前端原本一律顯示「登入已失效，請重新登入。」，現改為：之前沒有工作階段且結果為 `UNAUTHENTICATED` 時安靜顯示登入頁；網路錯誤、結果不明等其他失敗仍顯示。使用中的工作階段失效（refresh 失敗或被伺服器撤銷）照舊提示，符合 FB-02／M3。A03 介面與錯誤碼不變。
