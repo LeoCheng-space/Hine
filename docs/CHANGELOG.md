@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 規劃 PHP CVE-2026-109618／109619 部署應變
+
+- 新增 [PHP CVE 應變計畫](security/php-cve-2026-response-plan.md)與[導覽](README.md)：初稿 2026-10-22，2026-10-23 重查官方資料並補齊審閱意見；以資安風險評估 PR #34 為基底，PHP 計畫另行審閱。
+- 記錄第一個修補版本、PHP 7.4／8.0／8.1 官方最小回補分支與查核 commit、構建證據及 EOL 升級責任；補齊初始化前 INI 診斷、mod_php／FPM session 路徑與生效設定盤點。
+- 將 hine-web、hine-sql 列為第一批盤點對象，兩者都保持 UNKNOWN。列出部分臨時措施、隔離日誌稽核、PHP body／input 限制、worker 替換及結案驗收；這些措施不能取代完整修補。
+- HINE 原始碼採 Python／aiohttp、Caddy、GCS，未見 PHP 直接依賴；未登入正式 VM、改設定、修補、掃描或執行部署驗收。
+
 ## 2026-10-23 — 精確化資安風險引用（#34；Fixes #35）
 
 - 資安風險評估的兩個內容特徵辨識連結改指向 `sniff_content_type` 定義行；SEC-08 的 Compose 連結改指向實際 UID／GID、capabilities 與禁止提權設定。

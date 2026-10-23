@@ -38,6 +38,7 @@
 - [REQ-01–REQ-22 驗收](testing/acceptance-matrix.md#req-01)
 - [BA 專用失效分析、故障演練證據與殘餘風險](testing/backend-a-failure-analysis.md)
 - [資安風險評估：現有功能與未來通話風險](security/risk-assessment.md)（初步靜態評估草稿，含改善與驗證追蹤）
+- [PHP CVE-2026-109618／109619 風險評估與部署應變](security/php-cve-2026-response-plan.md)（含適用性盤點、條件式修補與驗收）
 - [決議紀錄](decisions.md)
 - [文件變更紀錄](CHANGELOG.md)
 
