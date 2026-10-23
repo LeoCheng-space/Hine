@@ -1,19 +1,37 @@
-# SEC-11: weekly update PRs; each still has to pass every required check, including dependency-audit.
+# SEC-11: monthly, one grouped PR per ecosystem; each still has to pass every required check, including
+# dependency-audit. Known vulnerabilities are caught daily by dependency-audit, not by this schedule.
 version: 2
 updates:
   - package-ecosystem: pip
     directories: ["/backend/api", "/backend/realtime", "/tests/load", "/tests/browser"]
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      python:
+        patterns: ["*"]
   - package-ecosystem: bun
     directory: /frontend/app
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      frontend:
+        patterns: ["*"]
   - package-ecosystem: docker
     directories: ["/backend/api", "/backend/realtime"]
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directories: ["/", "/.github/actions/native-product-tools"]
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      # Major versions can break workflows, so they arrive in their own PR for separate review.
+      actions-major:
+        patterns: ["*"]
+        update-types: ["major"]
+      actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

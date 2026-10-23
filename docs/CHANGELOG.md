@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — Dependabot 改為每月分組更新（SEC-11）
+
+- `.github/dependabot.yml` 由「每週、每個資料夾的每個套件各一個 PR」改為每月、每類別一個分組 PR：Python（四個需求檔一起）、前端、Docker、GitHub Actions；Actions 大版本另成一組，方便單獨審查不相容變更。
+- 首次執行時開出的 12 個個別 PR（#42–#53）於本變更合併後關閉，由分組 PR 取代。已知弱點仍由每日 `dependency-audit` 阻擋，不依賴此排程。更新[決議紀錄](decisions.md)與[資安風險評估 SEC-11](security/risk-assessment.md)。
+
 ## 2026-10-23 — 本機啟動前檢查執行身分與密鑰擁有者（SEC-08）
 
 - 本機 `./build.sh` 在產生密鑰後、建置與啟動前比對 `.env` 的 `HINE_RUNTIME_UID`／`HINE_RUNTIME_GID` 與 `.secrets` 擁有者；不符時停止並指出應填的值，取代原本等健康檢查逾時才看到的 CONFIG_MISSING。不自動改寫 `.env`、不放寬密鑰權限；直接 Compose 與正式模式不受影響。

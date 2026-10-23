@@ -7,7 +7,7 @@
 
 ## 2026-10-23 — 弱點掃描失敗即阻擋合併（SEC-11）
 
-使用者決議：已知弱點直接讓 CI 失敗，且 `dependency-audit` 加入 `main` 必要檢查（共 9 個）。Python／前端依賴有任何已知弱點即失敗；API／BA 映像僅在 HIGH／CRITICAL 且已有修補版本時失敗，避免基底映像尚無修補的 CVE 讓 CI 永久失敗。每日於 `main` 重跑；Dependabot 每週提出更新。其餘保護設定沿用 2026-10-19 決議。
+使用者決議：已知弱點直接讓 CI 失敗，且 `dependency-audit` 加入 `main` 必要檢查（共 9 個）。Python／前端依賴有任何已知弱點即失敗；API／BA 映像僅在 HIGH／CRITICAL 且已有修補版本時失敗，避免基底映像尚無修補的 CVE 讓 CI 永久失敗。每日於 `main` 重跑。Dependabot 每月依類別各開一個分組 PR（Python、前端、Docker、Actions；Actions 大版本另成一組），避免每個套件各開一個 PR（同日使用者決議）。其餘保護設定沿用 2026-10-19 決議。
 
 ## 2026-10-19 — main 分支保護啟用（取代 2026-10-04 暫緩決議）
 
