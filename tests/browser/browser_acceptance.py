@@ -228,6 +228,26 @@ async def build_review_shell(bun: str, web_root: Path, private: Path) -> None:
         '<body><script type="module" src="/review-shell/review-shell-harness.js"></script></body></html>\n')
 
 
+CSP_WATCH = """document.addEventListener('securitypolicyviolation', event => {
+  let blocked = String(event.blockedURI || '');
+  try { blocked = new URL(blocked).origin; } catch { blocked = blocked.slice(0, 16); }
+  window.hineCspViolation({ directive: event.effectiveDirective, disposition: event.disposition, blocked });
+}, true);"""
+
+
+async def watch_csp(context, violations: list) -> None:
+    """SEC-07: every page in every acceptance context reports CSP violations (directive, disposition and
+    blocked origin or keyword only; never paths or query strings, which could carry signed URLs)."""
+    await context.expose_binding("hineCspViolation", lambda _source, violation: violations.append(violation))
+    await context.add_init_script(script=CSP_WATCH)
+
+
+async def acceptance_context(browser, origin: str, violations: list):
+    context = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
+    await watch_csp(context, violations)
+    return context
+
+
 REVIEW_SHELL_RUNNER = """async ([name, args]) => {
   const h = window.hineReviewShell, session = new h.SessionController();
   await session.start();
@@ -246,7 +266,7 @@ REVIEW_SHELL_RUNNER = """async ([name, args]) => {
 }"""
 
 
-async def run_review_shell(browser, origin: str, components, contexts: list, record: dict) -> None:
+async def run_review_shell(browser, origin: str, components, contexts: list, record: dict, violations: list) -> None:
     """Issue #17: execute every review-shell-native.ts scenario against the real owned stack in this browser."""
     suffix = secrets.token_hex(6)
     # 3-hex groups joined by "-": always 2+ classes and never a 4-character run (SEC-01 policy).
@@ -259,7 +279,7 @@ async def run_review_shell(browser, origin: str, components, contexts: list, rec
         check(record, "review_shell_fixture_account_registered", status == 201)
     peer, _ = await components.login(peer_email, password)
     alternate = {"email": alternate_email, "password": password}
-    context = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
+    context = await acceptance_context(browser, origin, violations)
     contexts.append(context)
     page = await context.new_page()
 
@@ -303,7 +323,7 @@ async def devtools_port(port_file: Path, child) -> int | None:
         await asyncio.sleep(0.02)
 
 
-async def _native_recipient(playwright, managed_browser, args, components, private, evidence):
+async def _native_recipient(playwright, managed_browser, args, components, private, evidence, violations):
     executable = args.browser_executable or {
         "chrome": "/opt/google/chrome/chrome",
         "msedge": "/opt/microsoft/msedge/msedge",
@@ -341,6 +361,7 @@ async def _native_recipient(playwright, managed_browser, args, components, priva
     native = await playwright.chromium.connect_over_cdp(
         f"http://127.0.0.1:{port}", no_defaults=True)
     context = native.contexts[0]
+    await watch_csp(context, violations)
     page = context.pages[0]
     await page.set_viewport_size({"width": 1365, "height": 900})
     return native, context, page
@@ -514,6 +535,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
     browser = None
     native_receiver = None
     contexts = []
+    csp_violations: list[dict] = []
     pages = []
     try:
         await build_web(args.bun, temp_web, origin, private)
@@ -570,15 +592,15 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                 browser = await browser_type.launch(**launch)
             except PlaywrightError:
                 raise PrerequisiteFailure("REQUESTED_BROWSER_CHANNEL_UNAVAILABLE") from None
-            context_a = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
+            context_a = await acceptance_context(browser, origin, csp_violations)
             page_a = await context_a.new_page()
             if args.headed:
                 native_receiver, context_b, page_b = await _native_recipient(
-                    playwright, browser, args, components, private, evidence)
+                    playwright, browser, args, components, private, evidence, csp_violations)
                 evidence["configuration"]["recipient_focus_emulation"] = False
                 evidence["environment"]["native_recipient_browser_version"] = native_receiver.version
             else:
-                context_b = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
+                context_b = await acceptance_context(browser, origin, csp_violations)
                 page_b = await context_b.new_page()
             contexts.extend([context_a, context_b])
             pages.extend([page_a, page_b])
@@ -1294,7 +1316,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             check(test_record, "layout_768_two_columns", wide["noOverflow"] and wide["list"] > 0 and wide["room"] > 0)
             await page_a.set_viewport_size(restore_viewport)
             await page_a.wait_for_timeout(300)
-            context_c = await browser.new_context(base_url=origin, ignore_https_errors=True, viewport={"width": 1365, "height": 900})
+            context_c = await acceptance_context(browser, origin, csp_violations)
             contexts.append(context_c)
             page_c = await context_c.new_page()
             page_c.on("websocket", lambda websocket: observed_websockets.append(websocket.url))
@@ -1350,7 +1372,15 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                   and tls_context.verify_mode == ssl.CERT_REQUIRED and tls_context.check_hostname)
             check(test_record, "real_same_origin_websocket_used", any(
                 url == f"wss://localhost:{components.tls_port}/ws/v1" for url in observed_websockets))
-            await run_review_shell(browser, origin, components, contexts, test_record)
+            await run_review_shell(browser, origin, components, contexts, test_record, csp_violations)
+            served_csp = await page_c.evaluate(
+                "() => fetch('/', {cache: 'no-store'}).then(r => r.headers.get('content-security-policy-report-only') || '')")
+            check(test_record, "csp_policy_served_on_owned_origin",
+                  "default-src 'none'" in served_csp and "script-src 'self';" in served_csp)
+            if csp_violations:
+                test_record.setdefault("diagnostics", {})["csp_violations"] = sorted(
+                    {json.dumps(v, sort_keys=True) for v in csp_violations})[:20]
+            check(test_record, "csp_no_violation_across_all_acceptance_pages", not csp_violations)
             evidence["environment"]["browser_version"] = browser.version
             evidence["environment"]["browser_selection"] = (
                 "executable:" + Path(args.browser_executable).name if args.browser_executable else args.browser)
