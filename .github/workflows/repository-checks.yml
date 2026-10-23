@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -58,9 +58,9 @@ jobs:
       HINE_TEST_REDIS_URL: redis://127.0.0.1:6379/0
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install implemented module dependencies
@@ -82,7 +82,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Validate operations scripts
         run: sh -n build.sh infra/scripts/*.sh infra/docker/redis-start.sh
       - name: Initialize owner-only development credentials
@@ -140,9 +140,9 @@ jobs:
       HINE_TEST_REDIS_URL: redis://127.0.0.1:6379/0
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Set up frontend build runtime
@@ -168,7 +168,7 @@ jobs:
           bun run test
           bun run build
       - name: Preserve only non-secret Web build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hine-web
           path: frontend/app/dist/
@@ -183,9 +183,9 @@ jobs:
         browser: [chrome, msedge]
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Set up frontend build runtime
@@ -211,7 +211,7 @@ jobs:
             --output ".browser-evidence/${{ matrix.browser }}.json"
       - name: Preserve sanitized browser observations only
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-acceptance-${{ matrix.browser }}
           path: .browser-evidence/*.json
@@ -223,9 +223,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install real product dependencies
@@ -243,7 +243,7 @@ jobs:
             --output .fault-evidence/product-faults.json
       - name: Preserve sanitized fault observations only
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-product-fault-acceptance
           path: .fault-evidence/*.json
@@ -255,9 +255,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Set up frontend build runtime
@@ -281,7 +281,7 @@ jobs:
             --output .container-evidence/product-containers.json
       - name: Preserve sanitized container observations only
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container-product-acceptance
           path: .container-evidence/*.json
