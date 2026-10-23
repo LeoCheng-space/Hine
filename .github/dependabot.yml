@@ -1,0 +1,19 @@
+# SEC-11: weekly update PRs; each still has to pass every required check, including dependency-audit.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directories: ["/backend/api", "/backend/realtime", "/tests/load", "/tests/browser"]
+    schedule:
+      interval: weekly
+  - package-ecosystem: bun
+    directory: /frontend/app
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directories: ["/backend/api", "/backend/realtime"]
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/native-product-tools"]
+    schedule:
+      interval: weekly
