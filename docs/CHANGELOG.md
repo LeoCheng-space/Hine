@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 本機啟動前檢查執行身分與密鑰擁有者（SEC-08）
+
+- 本機 `./build.sh` 在產生密鑰後、建置與啟動前比對 `.env` 的 `HINE_RUNTIME_UID`／`HINE_RUNTIME_GID` 與 `.secrets` 擁有者；不符時停止並指出應填的值，取代原本等健康檢查逾時才看到的 CONFIG_MISSING。不自動改寫 `.env`、不放寬密鑰權限；直接 Compose 與正式模式不受影響。
+- 更新[資安風險評估 SEC-08](security/risk-assessment.md)、[一鍵部署疑難排解](deployment/one-click.md)與[部署手冊](deployment/README.md)；新增 `infra/tests/test_build.py` 回歸測試，並在隔離 checkout 實跑不符與修正後兩種情況。
+
 ## 2026-10-23 — 規劃 PHP CVE-2026-109618／109619 部署應變
 
 - 新增 [PHP CVE 應變計畫](security/php-cve-2026-response-plan.md)與[導覽](README.md)：初稿 2026-10-22，2026-10-23 重查官方資料並補齊審閱意見；以資安風險評估 PR #34 為基底，PHP 計畫另行審閱。
