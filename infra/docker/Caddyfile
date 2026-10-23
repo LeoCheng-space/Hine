@@ -7,13 +7,12 @@
 	encode zstd gzip
 	root * /srv/hine
 	# SEC-07. Referrer-Policy must keep Origin on same-origin POSTs (refresh requires the exact Origin), so it is
-	# same-origin rather than no-referrer. The full CSP is report-only until browser acceptance shows no violation:
-	# scripts/styles only from this origin, images from this origin or blob: (decrypted avatars/attachments),
-	# fetch/WSS to this origin plus GCS signed upload/download URLs. This block must stay identical to
-	# Caddyfile.acceptance; the native acceptance Caddy copies it (tests/faults/product_fault_drill.py).
+	# same-origin rather than no-referrer. CSP: scripts/styles only from this origin, images from this origin or
+	# blob: (decrypted avatars/attachments), fetch/WSS to this origin plus GCS signed upload/download URLs; enforced
+	# after a report-only CI run showed no violation. This block must stay identical to Caddyfile.acceptance; the
+	# native acceptance Caddy copies it (tests/faults/product_fault_drill.py).
 	header {
-		Content-Security-Policy "frame-ancestors 'none'"
-		Content-Security-Policy-Report-Only "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self' https://storage.googleapis.com; font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self' https://storage.googleapis.com; font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
 		Referrer-Policy same-origin
 		X-Content-Type-Options nosniff
 	}

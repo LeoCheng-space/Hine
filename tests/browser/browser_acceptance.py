@@ -1374,13 +1374,33 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
                 url == f"wss://localhost:{components.tls_port}/ws/v1" for url in observed_websockets))
             await run_review_shell(browser, origin, components, contexts, test_record, csp_violations)
             served_csp = await page_c.evaluate(
-                "() => fetch('/', {cache: 'no-store'}).then(r => r.headers.get('content-security-policy-report-only') || '')")
-            check(test_record, "csp_policy_served_on_owned_origin",
+                "() => fetch('/', {cache: 'no-store'}).then(r => r.headers.get('content-security-policy') || '')")
+            check(test_record, "csp_policy_enforced_on_owned_origin",
                   "default-src 'none'" in served_csp and "script-src 'self';" in served_csp)
             if csp_violations:
                 test_record.setdefault("diagnostics", {})["csp_violations"] = sorted(
                     {json.dumps(v, sort_keys=True) for v in csp_violations})[:20]
             check(test_record, "csp_no_violation_across_all_acceptance_pages", not csp_violations)
+            # Prove both enforcement and the collector: an injected inline script and a foreign image must be
+            # blocked and each reported as an enforced violation, in a separate context so the count above stays clean.
+            probe_violations: list[dict] = []
+            probe_context = await acceptance_context(browser, origin, probe_violations)
+            contexts.append(probe_context)
+            probe_page = await probe_context.new_page()
+            await probe_page.goto(origin + "/login", wait_until="load")
+            inline_ran = await probe_page.evaluate("""() => new Promise(resolve => {
+              window.hineCspProbe = false;
+              const script = document.createElement('script');
+              script.textContent = 'window.hineCspProbe = true';
+              document.head.appendChild(script);
+              const image = new Image();
+              image.src = 'https://example.invalid/probe.png';
+              setTimeout(() => resolve(window.hineCspProbe), 300);
+            })""")
+            enforced = {(v.get("directive"), v.get("disposition")) for v in probe_violations}
+            check(test_record, "csp_blocks_injected_inline_script",
+                  inline_ran is False and ("script-src-elem", "enforce") in enforced)
+            check(test_record, "csp_blocks_foreign_image_origin", ("img-src", "enforce") in enforced)
             evidence["environment"]["browser_version"] = browser.version
             evidence["environment"]["browser_selection"] = (
                 "executable:" + Path(args.browser_executable).name if args.browser_executable else args.browser)
