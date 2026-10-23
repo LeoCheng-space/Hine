@@ -1,0 +1,54 @@
+name: Dependency Audit
+
+# SEC-11: known vulnerabilities in pinned dependencies or product images fail this required check.
+on:
+  push:
+  pull_request:
+  schedule:
+    # Daily on main so newly published advisories surface without waiting for a PR (09:17 Asia/Taipei).
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    env:
+      TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: Audit Python dependencies (any known vulnerability fails)
+        run: |
+          python -m pip install pip-audit==2.10.1
+          pip-audit --progress-spinner off \
+            -r backend/api/requirements.txt -r backend/realtime/requirements.txt \
+            -r tests/load/requirements.txt -r tests/browser/requirements.txt
+      - name: Audit frontend dependencies (any known vulnerability fails)
+        working-directory: frontend/app
+        run: |
+          bun install --frozen-lockfile
+          bun audit
+      - name: Build product images
+        run: |
+          docker build -t hine-audit-api -f backend/api/Dockerfile .
+          docker build -t hine-audit-realtime backend/realtime
+      - name: Scan product images (HIGH/CRITICAL with an available fix fails)
+        # Base images always carry CVEs without a released fix; those cannot be acted on and are not gated.
+        run: |
+          status=0
+          for image in hine-audit-api hine-audit-realtime; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image \
+              --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image" || status=1
+          done
+          exit "$status"
