@@ -30,7 +30,7 @@ No operator PostgreSQL/Redis, Docker, SSH, global firewall or cloud write is use
 | --- | --- |
 | PF01 | API SIGKILL; unchanged SQL records, existing JWT/public identity, saved cursor and original C1/M1 recovery. |
 | PF02 | BA SIGKILL; offline message recovered from saved cursor, stable event and original C1. |
-| PF03 | Native PostgreSQL stop/restart; live200/ready503, new W01 rejected, no fake ACK/data; after the real stale window existing sockets retain exact W04 and dependency W17 only; same sockets recover. Independent real 30-second API-issued/SQL-persisted token expiry closes stale sockets. |
+| PF03 | Native PostgreSQL stop/restart; live200/ready503, new W01 rejected, no fake ACK/data; after the real stale window existing sockets retain exact W04 and dependency W17 only; same sockets recover. Independent real 30-second API-issued/SQL-persisted token expiry closes stale sockets; with PostgreSQL still down the API then exits on SIGTERM without needing SIGKILL. |
 | PF04 | Native Redis reset; unknown presence, API still ready, confirmed PostgreSQL ACK without live fanout, durable feed recovery. |
 | PF05 | Drop actual committed A04 notification; durable invalidation rejects revoked JWT and closes its WSS, other device continues. |
 | PF06 | Drop the actual committed API write response; unknown outcome/no false ACK, same original C1 returns one SQL M1 mapping. |

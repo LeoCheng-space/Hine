@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — PostgreSQL 中斷時 API 收到 SIGTERM 能自行結束（Fixes #25）
+
+- 原因：asyncpg 0.31 在 PostgreSQL 中斷後，pool 連線釋放可能卡住（`wait_until_released` 永遠不結束），`pool.close()` 因此等不到結果，API 收到 SIGTERM 後要等 8 秒被 SIGKILL。本機以 0.31 重現 3／3 次超過 20 秒未結束；換成 asyncpg 0.32.0（#57 已升級，官方修正 #1324「protocol abort 後釋放連線造成 pool deadlock」）後 6／6 次在 0.07 秒內以退出碼 0 結束。
+- PF03 新增檢查：PostgreSQL 仍中斷時對 API 送 SIGTERM，不得需要 SIGKILL，並記錄結束耗時。以目前 main（asyncpg 0.32）在 CI 實跑通過，耗時 61 ms。API 程式未修改。
+
 ## 2026-10-23 — 深層連結進入聊天室後立即輸入／傳訊不再遺失（Fixes #13）
 
 - 整頁載入 `/chats/{id}` 時，聊天室會先以 REST 開啟（此時 WSS 尚未完成同步），WSS 同步完成後再重新核對一次。重新核對原本會先把聊天室清空再顯示，撰寫區因此被卸載：正在輸入的文字消失，舊版還可能讓剛送出的訊息被保留為「先前成員資格的傳送意圖」。
