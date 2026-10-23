@@ -220,6 +220,12 @@ async def pg_outage(c, o):
                     time.time() >= stored[session["device_id"]])
         o.timing("short_real_ttl_pg_outage_to_expiry_closure", expired_started)
         o.count("actual_short_access_ttl_seconds", 30)
+        # Issue #25: with PostgreSQL still down the API must finish its own graceful shutdown inside the
+        # 8-second grace instead of waiting for SIGKILL (a held pool connection used to block pool.close()).
+        api_stop_started = time.monotonic()
+        await expiry.stop(expiry.api_process)
+        o.timing("api_sigterm_to_exit_with_postgresql_down", api_stop_started)
+        o.check("api_exits_on_sigterm_while_postgresql_is_down", expiry.api_process.returncode != -signal.SIGKILL)
 
 
 async def redis_outage(c, o):
