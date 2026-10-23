@@ -738,7 +738,7 @@ class Components:
             f'dir {self.directory}\nsave ""\nappendonly no\ndaemonize no\nloglevel warning\n')
         self.ba_env = environment()
         self.ba_env.update({
-            "HINE_ENV": "test", "REALTIME_HOST": "127.0.0.1", "REALTIME_PORT": str(self.ba_port),
+            "HINE_ENV": "test", "PUBLIC_ORIGIN": self.origin, "REALTIME_HOST": "127.0.0.1", "REALTIME_PORT": str(self.ba_port),
             "API_INTERNAL_URL": self.api_link.url,
             "INTERNAL_CALLER_TOKEN_SECRET_REF": str(self.directory / "ba-token"),
             "INTERNAL_ALLOWED_CALLERS": json.dumps({"api": str(self.directory / "api-token")}),

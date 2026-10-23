@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 class Settings:
     valid: bool = False
     environment: str = ""
+    public_origin: str = ""
     host: str = "0.0.0.0"
     port: int = 8081
     api_url: str = field(default="", repr=False)
@@ -78,6 +79,15 @@ class Settings:
                 return ""
 
         fields["environment"] = text("HINE_ENV")
+        # The only browser origin allowed to open /ws/v1 (SEC-02); same bare-HTTPS-origin form the API enforces.
+        fields["public_origin"] = text("PUBLIC_ORIGIN").rstrip("/")
+        try:
+            origin = urlsplit(fields["public_origin"])
+            if origin.scheme != "https" or not origin.hostname or origin.username or origin.password or origin.path or origin.query or origin.fragment:
+                valid = False
+            _ = origin.port
+        except ValueError:
+            valid = False
         fields["host"] = text("REALTIME_HOST", "0.0.0.0")
         fields["port"] = integer("REALTIME_PORT", "8081")
         if fields["port"] > 65535:

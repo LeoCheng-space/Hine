@@ -6,6 +6,34 @@
 - 註冊頁顯示規則說明，送出前以相同規則逐條提示；API 仍是最終判定。
 - 共同介面：更新[契約 A01](contracts/interface-contract.md#api-a01)。測試、瀏覽器驗收、故障演練與容器驗收產生的密碼改為必定合規的格式。更新[資安風險評估 SEC-01](security/risk-assessment.md)；雜湊參數、外洩密碼阻擋與帳號列舉仍待處理。
 
+## 2026-10-23 — WebSocket 只接受 HINE 自己的網頁來源（SEC-02）
+
+- BA 讀取並驗證 `PUBLIC_ORIGIN`（缺少或格式不符即不就緒）；`/ws/v1` 升級請求必須帶恰好一個與它相同的 `Origin`，否則在升級前回 403 `FORBIDDEN`。依決議，沒有 Origin 的非瀏覽器用戶端一律拒絕。
+- 共同介面：[契約](contracts/interface-contract.md) W 登錄表新增連線前提，`PUBLIC_ORIGIN` 使用端加入 BA。Compose 原本就傳入此值；Web 前端不需修改。
+- 壓測／驗收協定工具改帶與 `ws_url` 同主機的頁面 Origin；BA 測試、故障演練與整合測試的設定同步加入 `PUBLIC_ORIGIN`。更新[資安風險評估 SEC-02](security/risk-assessment.md)。
+
+## 2026-10-23 — API 回應禁止快取與瀏覽器安全標頭（SEC-07）
+
+- API 對所有 `/api/v1` 回應（含錯誤與 204）加上 `Cache-Control: no-store`，特別是回傳 access_token 的 A02 login／A03 refresh；回應欄位與狀態碼不變。
+- 正式 `Caddyfile` 與本機／驗收 `Caddyfile.acceptance` 加上 `Content-Security-Policy: frame-ancestors 'none'`、`Referrer-Policy: same-origin`、`X-Content-Type-Options: nosniff`。不用 `no-referrer`，因為它會讓同源 POST 的 Origin 變成 null，使 cookie refresh 被拒絕。完整 CSP 尚未設定。
+- 更新[資安風險評估 SEC-07](security/risk-assessment.md)與[部署手冊](deployment/README.md)；新增 `tests/product/test_auth.py` 回歸測試，並在隔離 stack 以桌面 Chrome 實測登入、重新整理與 iframe 阻擋。
+
+## 2026-10-23 — Dependabot 改為每月分組更新（SEC-11）
+
+- `.github/dependabot.yml` 由「每週、每個資料夾的每個套件各一個 PR」改為每月、每類別一個分組 PR：Python（四個需求檔一起）、前端、Docker、GitHub Actions；Actions 大版本另成一組，方便單獨審查不相容變更。
+- 首次執行時開出的 12 個個別 PR（#42–#53）於本變更合併後關閉，由分組 PR 取代。已知弱點仍由每日 `dependency-audit` 阻擋，不依賴此排程。更新[決議紀錄](decisions.md)與[資安風險評估 SEC-11](security/risk-assessment.md)。
+
+## 2026-10-23 — 本機啟動前檢查執行身分與密鑰擁有者（SEC-08）
+
+- 本機 `./build.sh` 在產生密鑰後、建置與啟動前比對 `.env` 的 `HINE_RUNTIME_UID`／`HINE_RUNTIME_GID` 與 `.secrets` 擁有者；不符時停止並指出應填的值，取代原本等健康檢查逾時才看到的 CONFIG_MISSING。不自動改寫 `.env`、不放寬密鑰權限；直接 Compose 與正式模式不受影響。
+- 更新[資安風險評估 SEC-08](security/risk-assessment.md)、[一鍵部署疑難排解](deployment/one-click.md)與[部署手冊](deployment/README.md)；新增 `infra/tests/test_build.py` 回歸測試，並在隔離 checkout 實跑不符與修正後兩種情況。
+
+## 2026-10-23 — 依賴與映像弱點掃描列為必要檢查（SEC-11）
+
+- 首次掃描發現 aiohttp 3.14.3 有 8 筆已知弱點，API、BA 與壓測工具升級至 3.14.4。
+- 新增 `dependency-audit` CI：pip-audit、bun audit 有任何已知弱點即失敗；Trivy 掃描 API／BA 映像，HIGH／CRITICAL 且已有修補版本即失敗；每日於 `main` 重跑。新增 Dependabot 每週更新 pip／bun／Docker／Actions。
+- `main` 必要檢查由 8 個增為 9 個；更新[協作指南](../CONTRIBUTING.md)、[決議紀錄](decisions.md)與[資安風險評估 SEC-11](security/risk-assessment.md)。
+
 ## 2026-10-23 — 規劃 PHP CVE-2026-109618／109619 部署應變
 
 - 新增 [PHP CVE 應變計畫](security/php-cve-2026-response-plan.md)與[導覽](README.md)：初稿 2026-10-22，2026-10-23 重查官方資料並補齊審閱意見；以資安風險評估 PR #34 為基底，PHP 計畫另行審閱。

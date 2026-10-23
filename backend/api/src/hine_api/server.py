@@ -101,9 +101,13 @@ async def errors(request, handler):
         # A mutation may already have committed, so do not claim known rollback.
         LOG.error("request_failed")
         code = "OUTCOME_UNCONFIRMED" if request.method in {"POST", "PATCH", "DELETE"} else "DEPENDENCY_UNAVAILABLE"
-        return error(Fault(code, True))
-    if isinstance(outcome, BaseException):
+        outcome = error(Fault(code, True))
+    elif isinstance(outcome, BaseException):
         raise outcome
+    if request.path.startswith("/api/v1/"):
+        # Every product response is private (access tokens, profiles, messages, grants), errors and 204s included:
+        # neither the browser nor any shared cache may store it.
+        outcome.headers["Cache-Control"] = "no-store"
     return outcome
 
 
