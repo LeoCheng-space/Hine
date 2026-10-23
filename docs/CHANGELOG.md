@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 跨帳號與成員授權的負向測試（SEC-03）
+
+- 新增 `tests/product/test_authorization.py`（16 個測試）：以三個隔離帳號（A 管理者、B 成員、C 外人）、群組 G＝{A,B} 與直聊 A–B，涵蓋 REST 的對話列表／詳情／歷史（含外人、已移除、外人沿用他人游標、同一使用者把 G 的游標用在直聊）、改名、加成員、改角色（含曾為管理員、被移除再加入後仍只是 member）、移除成員（含重複離開為 204 無副作用）、A14 重放，以及被拒絕時標題、`membership_version`、成員表、`user_feed` 皆不變。
+- 同模組涵蓋個人檔案頭像可見性與選用他人／對話範圍附件（A06／A07）、外人上傳意圖（不建立 `attachments` 列）、從未加入／被移除的非上傳者／尚未被訊息引用的附件下載（A20／A22），以及內部 `authorize` 對外人回 `allowed:false`、未知資源回 404。
+- 經真實 BA＋Redis＋BB 的 WSS 案例：外人／被移除成員／未知對話送 `message.send`、附件誤用、W08／W09 回條（外人、他人訊息 ID、被移除、寄件者本人）皆回對應的 correlated 錯誤框，不產生 ack、訊息、回條或 W10，且連線仍可回應 heartbeat；W13 他人快照與跨快照 page token、W15 他人 `snapshot_boundary` 皆為 `CURSOR_INVALID`；移除再加入後的 feed 與全新 bootstrap 只含新加入之後的內容；移除後的即時投遞不到 B 與 C，B 的 W12 不含 `actor_id`。
+- 本批測試未發現產品行為與預期不符。仍未涵蓋：丟棄 publish 後的競爭／API 與 BA 重啟恢復演練（AC-N02）。
+
 ## 2026-10-23 — review-shell-native.ts 的聊天清單情境納入 CI（Fixes #17）
 
 - 這支腳本原本沒有執行入口，斷言從未真正跑過。瀏覽器驗收（Chrome／Edge）現在會在 production 資產雜湊之後，另外建置 `tests/browser/review-shell-harness.ts` 到 `/review-shell/`，以三個真實帳號依序執行：遠端加入／改名／伺服器未讀／移除、事件突發與舊 A11 不得勝出、A11 分頁、換帳號後舊回應不得寫入、未見過的 casefold 拼法保留原裝置分區，以及重新載入後草稿與待送訊息仍在。結果寫成 6 個 `review_shell_*` 檢查；失敗時只記錄腳本內的固定階段名稱。
