@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — Dependabot 改為每月分組更新（SEC-11）
+
+- `.github/dependabot.yml` 由「每週、每個資料夾的每個套件各一個 PR」改為每月、每類別一個分組 PR：Python（四個需求檔一起）、前端、Docker、GitHub Actions；Actions 大版本另成一組，方便單獨審查不相容變更。
+- 首次執行時開出的 12 個個別 PR（#42–#53）於本變更合併後關閉，由分組 PR 取代。已知弱點仍由每日 `dependency-audit` 阻擋，不依賴此排程。更新[決議紀錄](decisions.md)與[資安風險評估 SEC-11](security/risk-assessment.md)。
+
 ## 2026-10-23 — 依賴與映像弱點掃描列為必要檢查（SEC-11）
 
 - 首次掃描發現 aiohttp 3.14.3 有 8 筆已知弱點，API、BA 與壓測工具升級至 3.14.4。
