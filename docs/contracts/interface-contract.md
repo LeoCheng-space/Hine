@@ -209,7 +209,7 @@ BA 仍做既有 connection/frame abuse defense、envelope／required fields／�
 
 | ID / operationId | 方法與路徑 | 請求 → 回應；狀態碼 | 授權、錯誤與重試／金鑰行為 |
 |---|---|---|---|
-| <a id="api-a01"></a>A01 `registerUser` | POST `/api/v1/auth/register` | `{email,password,display_name}` → UserProfile；201 | 公開。INVALID_ARGUMENT、CONFLICT、RATE_LIMITED；重複電子郵件會回傳 409，若回應不確定，不得改用新電子郵件繞過。無工作階段回應。 |
+| <a id="api-a01"></a>A01 `registerUser` | POST `/api/v1/auth/register` | `{email,password,display_name}` → UserProfile；201 | 公開。INVALID_ARGUMENT、CONFLICT、RATE_LIMITED；重複電子郵件會回傳 409，若回應不確定，不得改用新電子郵件繞過。無工作階段回應。**密碼規則（2026-10-23 起，僅 A01）：** 8–128 個 Unicode 字元、不含控制字元；大寫 A–Z、小寫 a–z、數字 0–9、其他字元（含空格、非 ASCII）四類中至少 2 類；電子郵件 `@` 前的帳號名稱達 3 字元時不得出現在密碼中（不分大小寫）；不得有 4 個以上相同字元，或 4 個以上遞增／遞減的連續 ASCII 數字或字母（不分大小寫，例如 `aaaa`、`1234`、`dcba`）。不符時回 400 INVALID_ARGUMENT，不建立帳號、不消耗註冊配額。A02 登入不套用此規則，既有帳號不受影響。 |
 | <a id="api-a02"></a>A02 `login` | POST `/api/v1/auth/login` | `{email,password,device_id:DeviceID\|null}` → AccessSession；200 + 更新憑證 Cookie | 公開；僅首次安裝簽發 DeviceID 時可為 null。UNAUTHENTICATED（帳號不存在或密碼錯誤，兩者不可區分）、DEVICE_NOT_RECOGNIZED（密碼正確但 `device_id` 不屬於此帳號；只在密碼驗證通過後回傳，因此不洩漏帳號是否存在，恢復見[錯誤分流](#error-recovery)）、RATE_LIMITED；結果不確定時透過登入解決，而非建立第二個工作階段儲存區。 |
 | <a id="api-a03"></a>A03 `refreshSession` | POST `/api/v1/auth/refresh` | 無 JSON 主體；更新憑證 Cookie → AccessSession；200 + 輪替後的 Cookie | 有效的更新憑證 Cookie。UNAUTHENTICATED、RATE_LIMITED；舊 Cookie 不會無限期重複使用。 |
 | <a id="api-a04"></a>A04 `logout` | POST `/api/v1/auth/logout` | 無主體 → 無主體；204 | 目前的工作階段 Cookie；具冪等性。UNAUTHENTICATED；登出成功後撤銷目前裝置工作階段。 |
