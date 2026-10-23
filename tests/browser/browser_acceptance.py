@@ -121,6 +121,19 @@ def metadata_version(name: str) -> str:
     return value
 
 
+def pinned_version(name: str, requirements: Path) -> str:
+    """Exact `name==X` pin from the requirements file CI installs; the gate runs only that version."""
+    try:
+        lines = requirements.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        raise PrerequisiteFailure("PINNED_REQUIREMENTS_UNREADABLE") from None
+    for line in lines:
+        match = re.fullmatch(re.escape(name) + r"==([0-9][A-Za-z0-9.+_-]{0,63})", line.strip())
+        if match:
+            return match.group(1)
+    raise PrerequisiteFailure("EXACT_PACKAGE_PIN_MISSING")
+
+
 def reserve_ports(count: int) -> tuple[list[int], list[socket.socket]]:
     listeners: list[socket.socket] = []
     try:
@@ -435,7 +448,6 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             "browser_runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "native_bundle_sha256": hashlib.sha256((ROOT / "tests/browser/native-acceptance.ts").read_bytes()).hexdigest(),
         })
-        evidence["environment"]["playwright"] = "1.63.0"
         check(test_record, "native_fault_prerequisites_attested_real_toolchain", True)
         await components.__aenter__()
         check(test_record, "owned_native_api_ba_postgresql17_redis_caddy_started", True)
@@ -444,8 +456,8 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
         check(test_record, "actual_owned_postgresql17_available", postgres_version // 10000 == 17)
         check(test_record, "actual_owned_redis_authenticated_and_available", await components.redis.ping())
         async with async_playwright() as playwright:
-            # Browser.getBrowserCommandLine requires this explicit CDP opt-in;
-            # pinned SDK 1.63 no longer includes it in its default switches.
+            # Browser.getBrowserCommandLine requires this explicit CDP opt-in; the pinned
+            # Playwright SDK (1.63 and later) no longer includes it in its default switches.
             launch = {"headless": not args.headed, "args": ["--enable-automation"] if args.headed else []}
             if args.browser_executable:
                 browser_type = playwright.chromium
@@ -1315,15 +1327,16 @@ def main() -> int:
         if sys.version_info < (3, 12):
             raise PrerequisiteFailure("PYTHON_312_REQUIRED")
         evidence["environment"]["playwright"] = metadata_version("playwright")
-        if evidence["environment"]["playwright"] != "1.63.0":
-            raise PrerequisiteFailure("PLAYWRIGHT_1630_REQUIRED")
+        playwright_pin = pinned_version("playwright", ROOT / "tests/browser/requirements.txt")
+        if evidence["environment"]["playwright"] != playwright_pin:
+            raise PrerequisiteFailure("PLAYWRIGHT_PIN_MISMATCH")
         metadata_version("aiohttp")
         metadata_version("asyncpg")
         evidence["provenance"] = {
             "browser_runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "native_bundle_sha256": hashlib.sha256((ROOT / "tests/browser/native-acceptance.ts").read_bytes()).hexdigest(),
             "authority": "EXISTING_UNMODIFIED_PRODUCT_FAULT_COMPONENTS",
-            "playwright_version": "1.63.0",
+            "playwright_version": playwright_pin,
         }
         code = asyncio.run(interruptible_run(args, evidence, private))
         record["status"] = "PASS" if code == 0 else "FAIL"
