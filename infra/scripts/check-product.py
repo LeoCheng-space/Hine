@@ -730,10 +730,11 @@ def main():
             ready(compose, compose_env, docker, ca, port)
             wait_healthy(compose, compose_env, docker, ("api", "realtime", "postgres", "redis"))
             report["evidence"]["tls_api"] = "verified_local_ca"
+            # 3-hex groups joined by "-": always 2+ classes and never a 4-character run (SEC-01 policy).
             login = [{"register": True, "display_name": "Acceptance One", "login": {
-                          "email": "one@product.test", "password": secrets.token_urlsafe(24), "device_id": None}},
+                          "email": "one@product.test", "password": "-".join(secrets.token_hex(2)[:3] for _ in range(8)), "device_id": None}},
                      {"register": True, "display_name": "Acceptance Two", "login": {
-                          "email": "two@product.test", "password": secrets.token_urlsafe(24), "device_id": None}}]
+                          "email": "two@product.test", "password": "-".join(secrets.token_hex(2)[:3] for _ in range(8)), "device_id": None}}]
             config = {"api_base_url": f"https://{DOMAIN}:{port}",
                       "ws_url": f"wss://{DOMAIN}:{port}/ws/v1", "users": login}
             exercise, protocol, protocol_summary = create_protocol_exercise(config, ca)

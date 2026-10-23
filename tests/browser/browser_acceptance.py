@@ -484,7 +484,8 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             check(test_record, "real_browser_secure_context", test_record["checks"]["real_browser_secure_context"])
 
             emails = [secrets.token_hex(12) + "@owned.browser.test" for _ in range(2)]
-            password = secrets.token_urlsafe(24) + "A1!"
+            # 3-hex groups joined by "-": always 2+ classes and never a 4-character run (SEC-01 policy).
+            password = "-".join(secrets.token_hex(2)[:3] for _ in range(8))
             names = ["Owned Browser Alice " + secrets.token_hex(3), "Owned Browser Bob " + secrets.token_hex(3)]
             await register(page_a, emails[0], password, names[0], test_record, "alice")
             await register(page_b, emails[1], password, names[1], test_record, "bob")

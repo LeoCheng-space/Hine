@@ -5,9 +5,11 @@ import hashlib
 import hmac
 import re
 import secrets
+import unicodedata
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from ipaddress import IPv6Address, ip_address
+from itertools import pairwise
 from uuid import uuid4
 
 import asyncpg
@@ -82,6 +84,28 @@ def password_valid(password, stored):
         return False
 
 
+def password_acceptable(password, email):
+    """SEC-01 registration policy; the Web register page mirrors it in passwordProblems (password.ts)."""
+    if not 8 <= len(password) <= 128 or any(unicodedata.category(c) == "Cc" for c in password):
+        return False
+    classes = {"upper" if "A" <= c <= "Z" else "lower" if "a" <= c <= "z" else "digit" if "0" <= c <= "9" else "symbol" for c in password}
+    if len(classes) < 2:
+        return False
+    # lower(), not casefold(): the browser mirror can only use toLowerCase().
+    lowered = password.lower()
+    account = email.rsplit("@", 1)[0].lower()
+    if len(account) >= 3 and account in lowered:
+        return False
+    for start in range(len(lowered) - 3):
+        run = lowered[start:start + 4]
+        steps = {ord(b) - ord(a) for a, b in pairwise(run)}
+        if steps == {0}:
+            return False
+        if steps in ({1}, {-1}) and run.isascii() and (run.isdigit() or run.isalpha()):
+            return False
+    return True
+
+
 def credentials(value, register=False):
     p.keys(value, ["email", "password", "display_name"] if register else ["email", "password", "device_id"])
     email = p.string(value["email"], True)
@@ -96,6 +120,8 @@ def credentials(value, register=False):
     if register:
         p.string(value["display_name"], True)
         value["display_name"].encode("utf-8", errors="strict")
+        if not password_acceptable(password, email):
+            raise p.Invalid("Password policy")
     elif value["device_id"] is not None:
         p.string(value["device_id"], True)
         value["device_id"].encode("utf-8", errors="strict")
