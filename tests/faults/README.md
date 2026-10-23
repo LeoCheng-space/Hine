@@ -43,6 +43,13 @@ atomically with no-clobber and fsync; existing output including symlinks is
 refused before launching. Exit0 means all selected cases passed,1 means an
 observed case failed/interrupted,2 means input/prerequisite failure. The full run
 retains failed and subsequent observed case results rather than fabricating PASS.
+If an owned API/BA child exits while its readiness is awaited (`OWNED_PRODUCT_CHILD_EXITED`),
+the case record also gets `diagnostics.startup_child_exit`: service, exit code (and
+signal name), the traceback's exception class name and one fixed category such as
+`ADDRESS_IN_USE`, `API_STARTUP_UNAVAILABLE`, `PYTHON_IMPORT_FAILED` or
+`EXITED_UNCLASSIFIED`. It is computed from the private log before the temp directory
+is removed; no log text, path or port is copied. Browser acceptance reports the same
+object as `diagnostics.product_child_startup`.
 Execution evidence is linked from the [acceptance matrix](../../docs/testing/acceptance-matrix.md).
 
 This proves only the named **local native product** experiments. It does not

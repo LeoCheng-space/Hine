@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 原生服務啟動時子程序結束會留下診斷（Refs #26）
+
+- 故障演練與瀏覽器驗收共用的原生服務啟動流程，若 API／BA 子程序在等待就緒時結束（`OWNED_PRODUCT_CHILD_EXITED`），會在清除暫存目錄前讀取該子程序的私有 log，記錄服務、退出碼／訊號、例外類別名稱與固定分類（如 `ADDRESS_IN_USE`、`API_STARTUP_UNAVAILABLE`、`PYTHON_IMPORT_FAILED`）。報告分別寫入 `diagnostics.startup_child_exit` 與 `diagnostics.product_child_startup`，不複製 log 內容、路徑或埠號。
+- 新增 `infra/tests/test_acceptance_startup.py` 測試：以真的子程序重現埠衝突、API 啟動拒絕、訊號終止與未知例外，並確認私密字串不會進入診斷。根因要等 CI 再次出現時依分類判斷，#26 保持開啟。
+
 ## 2026-10-23 — PostgreSQL 中斷時 API 收到 SIGTERM 能自行結束（Fixes #25）
 
 - 原因：asyncpg 0.31 在 PostgreSQL 中斷後，pool 連線釋放可能卡住（`wait_until_released` 永遠不結束），`pool.close()` 因此等不到結果，API 收到 SIGTERM 後要等 8 秒被 SIGKILL。本機以 0.31 重現 3／3 次超過 20 秒未結束；換成 asyncpg 0.32.0（#57 已升級，官方修正 #1324「protocol abort 後釋放連線造成 pool deadlock」）後 6／6 次在 0.07 秒內以退出碼 0 結束。

@@ -1393,6 +1393,9 @@ def main() -> int:
         # Class name and owned frames only; never the message, which may carry SQL or secrets.
         evidence["failure_type"] = type(failure).__name__
         evidence["failure_sites"] = _failure_sites(failure)
+        # The shared native components attach a fixed-category child exit diagnostic (#26); never log text.
+        if isinstance(getattr(failure, "diagnostic", None), dict):
+            evidence["diagnostics"]["product_child_startup"] = failure.diagnostic
         record["status"] = "FAIL" if record["checks"] else "NOT_EXERCISED"
         code = 1 if record["checks"] else 2
     finally:

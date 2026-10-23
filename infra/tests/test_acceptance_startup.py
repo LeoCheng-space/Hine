@@ -1,6 +1,7 @@
 """Acceptance runners must not fail on startup windows of the real tools they launch."""
 import asyncio
 import importlib.util
+import json
 import ssl
 import subprocess
 import sys
@@ -177,6 +178,59 @@ class StaticResolver(AbstractResolver):
 
     async def close(self):
         pass
+
+
+class StartupChildExitTests(unittest.IsolatedAsyncioTestCase):
+    # Issue #26: a product child that exits while its health is awaited must be reported with its service, exit
+    # status and a fixed category before the owned temp directory (and its log) is removed. Log text never leaks.
+    async def asyncSetUp(self):
+        self.drill = load("product_fault_drill_under_test", "tests/faults/product_fault_drill.py")
+        self.drill.aiohttp = aiohttp
+        self.temp = tempfile.TemporaryDirectory(prefix="hine-child-exit-")
+        self.components = self.drill.Components(SimpleNamespace())
+        self.components.directory = Path(self.temp.name)
+        self.components.api_port = self.components.ba_port = 1
+
+    async def asyncTearDown(self):
+        for log in self.components.logs:
+            log.close()
+        self.temp.cleanup()
+
+    async def exited(self, service, script):
+        child = await self.components.spawn(service, sys.executable, "-c", script)
+        async with asyncio.timeout(10):
+            await child.wait()
+        setattr(self.components, service + "_process", child)
+        with self.assertRaises(self.drill.DrillFailure) as raised:
+            async with asyncio.timeout(10):
+                await self.components.wait_health(service, 200)
+        self.assertEqual(str(raised.exception), "OWNED_PRODUCT_CHILD_EXITED")
+        return raised.exception.diagnostic
+
+    async def test_bind_conflict_is_named_without_the_log_text(self):
+        diagnostic = await self.exited("ba", "import sys\nprint('INFO token=SECRET-123', file=sys.stderr)\n"
+                                             "raise OSError(98, \"error while attempting to bind on address "
+                                             "('127.0.0.1', 8081): address already in use\")")
+        self.assertEqual({key: diagnostic[key] for key in ("service", "exit_code", "category", "exception_type")},
+                         {"service": "ba", "exit_code": 1, "category": "ADDRESS_IN_USE", "exception_type": "OSError"})
+        self.assertNotIn("SECRET-123", json.dumps(diagnostic))
+        self.assertNotIn("8081", json.dumps(diagnostic))
+
+    async def test_api_startup_refusal_is_its_own_category(self):
+        diagnostic = await self.exited("api", "raise SystemExit('API startup unavailable')")
+        self.assertEqual((diagnostic["service"], diagnostic["exit_code"], diagnostic["category"], diagnostic["exception_type"]),
+                         ("api", 1, "API_STARTUP_UNAVAILABLE", None))
+
+    async def test_signal_termination_names_the_signal(self):
+        diagnostic = await self.exited("ba", "import os, signal\nos.kill(os.getpid(), signal.SIGKILL)")
+        self.assertEqual((diagnostic["exit_code"], diagnostic["category"], diagnostic["signal"]),
+                         (-9, "TERMINATED_BY_SIGNAL", "SIGKILL"))
+
+    async def test_unrecognized_exception_keeps_only_its_class_name(self):
+        diagnostic = await self.exited("ba", "raise RuntimeError('password=hunter2 at /srv/private')")
+        self.assertEqual((diagnostic["category"], diagnostic["exception_type"]), ("PYTHON_EXCEPTION_UNCLASSIFIED", "RuntimeError"))
+        self.assertNotIn("hunter2", json.dumps(diagnostic))
+        self.assertNotIn("/srv/private", json.dumps(diagnostic))
 
 
 if __name__ == "__main__":
