@@ -5,6 +5,10 @@
 
 **目前實作／證據讀法：** 方案決議維持既有核准範圍；實際程式索引見[架構程式碼對應](architecture/README.md#arch-code-map)，不能以歷史「尚未實作」文字推翻現行程式碼。Backend A W18 私有聯絡人查詢、BB `readPresenceTargets` operation 11 與 23 項回歸測試已交付（父任務已驗證）。本機真 API／PG／BA fault PF01–PF08、50-WSS protocol 負載與 Chrome product proof 分別列於[故障證據](testing/evidence/product-native-faults.json)、[負載證據](testing/evidence/product-direct-load.json)及驗收紀錄；W07 protocol p95 不代表瀏覽器呈現。Edge／Android 裝置矩陣、正式 GCP VM、雲端 GCS／signed URL、遠端 CI 與公有容量仍須各自證明；本機測試沒有因此取得團隊簽核。以下歷史決議文字僅在政策範圍內解讀，不當作目前完成度清單。Title 1–80 字元仍是候選，未獲批准為全域政策。
 
+## 2026-10-23 — 弱點掃描失敗即阻擋合併（SEC-11）
+
+使用者決議：已知弱點直接讓 CI 失敗，且 `dependency-audit` 加入 `main` 必要檢查（共 9 個）。Python／前端依賴有任何已知弱點即失敗；API／BA 映像僅在 HIGH／CRITICAL 且已有修補版本時失敗，避免基底映像尚無修補的 CVE 讓 CI 永久失敗。每日於 `main` 重跑；Dependabot 每週提出更新。其餘保護設定沿用 2026-10-19 決議。
+
 ## 2026-10-19 — main 分支保護啟用（取代 2026-10-04 暫緩決議）
 
 使用者決議：GitHub `main` 啟用 Branch Protection。只能透過 PR 合併；必須通過 8 個 CI 檢查（`repository-structure`、`python-behavior`、`product-integration`、`compose-data-services`、`Browser acceptance (chrome)`、`Browser acceptance (msedge)`、`product-fault-acceptance`、`container-product-acceptance`）；禁止 force-push 與刪除；管理員同樣適用（`enforce_admins`）。不強制其他成員核准（approvals 0），不要求分支先更新到最新 `main`（`strict: false`）。CI 偶發失敗以重跑失敗 job 處理，不繞過保護。規則與流程見[協作指南](../CONTRIBUTING.md)。
