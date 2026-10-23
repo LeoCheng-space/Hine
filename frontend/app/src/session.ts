@@ -204,7 +204,12 @@ export class SessionController {
       } catch (error) {
         if (!this.disposed && epoch === this.epoch) {
           if (error instanceof ApiError && error.code === 'STORAGE_UNAVAILABLE') this.failStorage(error);
-          else { this.clear(); this.publish(loggedOut, 'ready', describeError(error)); }
+          else {
+            // Without a prior session (e.g. the startup check of a fresh profile) a 401 only means "not logged in":
+            // show the login page quietly. Losing an existing session still explains why (#59, FB-02 / M3).
+            const nothingToRestore = previous.state === 'logged_out' && error instanceof ApiError && error.code === 'UNAUTHENTICATED';
+            this.clear(); this.publish(loggedOut, 'ready', nothingToRestore ? null : describeError(error));
+          }
         }
         throw error;
       }
