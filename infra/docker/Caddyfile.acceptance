@@ -8,6 +8,12 @@
 {$HINE_DOMAIN} {
 	tls internal
 	root * /srv/hine
+	# Keep identical to the production Caddyfile security headers (SEC-07).
+	header {
+		Content-Security-Policy "frame-ancestors 'none'"
+		Referrer-Policy same-origin
+		X-Content-Type-Options nosniff
+	}
 	route {
 		@private path /internal /internal/* /health /health/*
 		handle @private {

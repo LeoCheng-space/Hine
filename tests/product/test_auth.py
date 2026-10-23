@@ -42,6 +42,24 @@ class AuthTests(ProductCase):
         self.api.last_cookie = fresh_cookie
         self.assertEqual((await self.request("GET", "/api/v1/users/me", fresh))[0], 200)
 
+    async def test_every_api_response_forbids_storage_including_tokens_errors_and_empty_replies(self):
+        # Access tokens and private data must never be kept by the browser or a shared cache (SEC-07).
+        profile, access = await self.account("NoStore")
+        credentials = {"email": profile["email"], "password": PASSWORD, "device_id": None}
+        exchanges = (  # Cookie-authenticated calls reuse the harness's latest session cookie.
+            ("profile", "GET", "/api/v1/users/me", access, None, 200),
+            ("unknown route", "GET", "/api/v1/no-such-resource", access, None, 404),
+            ("bad password", "POST", "/api/v1/auth/login", None, {**credentials, "password": "incorrect password"}, 401),
+            ("login", "POST", "/api/v1/auth/login", None, credentials, 200),
+            ("refresh", "POST", "/api/v1/auth/refresh", None, None, 200),
+            ("logout", "POST", "/api/v1/auth/logout", None, None, 204),
+        )
+        for name, method, path, session, body, expected in exchanges:
+            with self.subTest(name=name):
+                status, result = await self.api.request(method, path, session=session, json=body)
+                self.assertEqual(status, expected, result)
+                self.assertEqual(self.api.last_headers.get("Cache-Control"), "no-store")
+
     async def test_same_device_login_replaces_only_that_device(self):
         profile, first = await self.account("Device")
         other = await self.api.login(profile["email"])

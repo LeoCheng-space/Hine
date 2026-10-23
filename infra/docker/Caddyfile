@@ -6,6 +6,13 @@
 {$HINE_DOMAIN} {
 	encode zstd gzip
 	root * /srv/hine
+	# SEC-07. Referrer-Policy must keep Origin on same-origin POSTs (refresh requires the exact Origin), so it is
+	# same-origin rather than no-referrer. A full CSP is not set yet: it must first allow GCS and blob images.
+	header {
+		Content-Security-Policy "frame-ancestors 'none'"
+		Referrer-Policy same-origin
+		X-Content-Type-Options nosniff
+	}
 
 	# Ordering is explicit: no private/API/WSS error reaches the SPA fallback.
 	route {
