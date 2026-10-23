@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 未登入開啟註冊／登入頁不再顯示「登入已失效」（Fixes #59）
+
+- 頁面啟動時會以 A03 嘗試恢復工作階段；沒有 refresh cookie 時回 401 只代表「本來就沒有登入」。前端原本一律顯示「登入已失效，請重新登入。」，現改為：之前沒有工作階段且結果為 `UNAUTHENTICATED` 時安靜顯示登入頁；網路錯誤、結果不明等其他失敗仍顯示。使用中的工作階段失效（refresh 失敗或被伺服器撤銷）照舊提示，符合 FB-02／M3。A03 介面與錯誤碼不變。
+- 瀏覽器驗收新增檢查：新設定檔開啟註冊頁時，啟動 refresh 為 401 且不出現工作階段提示。修正前 Chrome／Edge 皆失敗（`ALICE_FRESH_REGISTER_PAGE_SHOWS_NO_SESSION_ERROR`）。
+
 ## 2026-10-23 — 瀏覽器驗收改以 requirements 鎖定的 Playwright 版本為準
 
 - `tests/browser/browser_acceptance.py` 原本寫死只接受 Playwright 1.63.0，使 Dependabot 的 Python 分組更新（#57，升至 1.64.0）在 Chrome／Edge 驗收開始前就以 `PLAYWRIGHT_1630_REQUIRED` 停止。改為比對 `tests/browser/requirements.txt` 的 `playwright==X` 精確鎖定，仍要求安裝版本完全一致，失敗碼改為 `PLAYWRIGHT_PIN_MISMATCH`；證據檔記錄實際鎖定版本。
