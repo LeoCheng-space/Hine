@@ -59,6 +59,47 @@ TABLES = ("users", "devices", "sessions", "authority_state", "session_invalidati
 class DrillFailure(Exception):
     """Only fixed runner-authored diagnostic codes cross the evidence boundary."""
 
+    def __init__(self, code, diagnostic=None):
+        super().__init__(code)
+        # Fixed categories/numbers only (see child_exit_diagnostic); never log text.
+        self.diagnostic = diagnostic
+
+
+# Stable startup signatures in an exited product child's private log (#26). Order matters: first match wins.
+CHILD_EXIT_SIGNATURES = (
+    (b"address already in use", "ADDRESS_IN_USE"),
+    (b"API startup unavailable", "API_STARTUP_UNAVAILABLE"),
+    (b"API fatal error", "API_FATAL_ERROR"),
+    (b"Realtime requires Python", "PYTHON_VERSION_UNSUPPORTED"),
+)
+
+
+def child_exit_diagnostic(service, child, log_path):
+    """Classify why an owned child exited before its temp directory, and the log in it, are removed."""
+    tail = b""
+    with contextlib.suppress(OSError), open(log_path, "rb") as private_log:
+        private_log.seek(0, os.SEEK_END)
+        private_log.seek(max(0, private_log.tell() - 65536))
+        tail = private_log.read()
+    exception_type = None
+    if b"Traceback (most recent call last):" in tail:
+        # The last line of a traceback is "Class: message"; keep only a well-formed class name.
+        last = next((line for line in reversed(tail.splitlines()) if line.strip()), b"")
+        match = re.match(rb"([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,4})(?::|$)", last)
+        if match and len(match.group(1)) <= 80:
+            exception_type = match.group(1).decode("ascii")
+    diagnostic = {"service": service, "exit_code": child.returncode, "exception_type": exception_type, "log_bytes": len(tail)}
+    if child.returncode is not None and child.returncode < 0:
+        diagnostic["category"] = "TERMINATED_BY_SIGNAL"
+        with contextlib.suppress(ValueError):
+            diagnostic["signal"] = signal.Signals(-child.returncode).name
+        return diagnostic
+    category = next((name for marker, name in CHILD_EXIT_SIGNATURES if marker in tail), None)
+    if category is None and exception_type in {"ModuleNotFoundError", "ImportError"}:
+        category = "PYTHON_IMPORT_FAILED"
+    diagnostic["category"] = category or ("PYTHON_EXCEPTION_UNCLASSIFIED" if exception_type else "EXITED_UNCLASSIFIED")
+    return diagnostic
+
 
 class PrerequisiteFailure(Exception):
     pass
@@ -580,6 +621,7 @@ class Components:
         self.args = args
         self.access_ttl_seconds = access_ttl_seconds
         self.children, self.logs, self.peers = [], [], []
+        self.child_logs = {}  # id(child) -> its private log, read only to classify a startup exit (#26)
         self.temp = self.http = self.local_http = self.redis = None
         self.api_link = self.notice_link = None
         self.pg_process = self.api_process = self.ba_process = self.redis_process = None
@@ -625,6 +667,7 @@ class Components:
                 stdin=asyncio.subprocess.DEVNULL, start_new_session=True,
                 stdout=asyncio.subprocess.PIPE if capture else log, stderr=log)
             self.children.append(child)
+            self.child_logs[id(child)] = log_path
             return child
 
         return await finish_shielded(asyncio.create_task(launch()))
@@ -828,7 +871,8 @@ class Components:
                 child = self.api_process if service == "api" else self.ba_process
                 port = self.api_port if service == "api" else self.ba_port
                 if child.returncode is not None:
-                    raise DrillFailure("OWNED_PRODUCT_CHILD_EXITED")
+                    raise DrillFailure("OWNED_PRODUCT_CHILD_EXITED",
+                                       child_exit_diagnostic(service, child, self.child_logs.get(id(child), "")))
                 try:
                     if owned_listener(child, port) and await self.health(service, "ready") == status:
                         return
@@ -1182,6 +1226,8 @@ async def execute(args, evidence):
         except DrillFailure as failure:
             record["status"] = "FAIL"
             record["failure_code"] = str(failure)
+            if failure.diagnostic is not None:
+                record["diagnostics"] = {"startup_child_exit": failure.diagnostic}
             failed = True
         except TimeoutError as failure:
             record["status"] = "FAIL"
