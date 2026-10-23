@@ -52,7 +52,7 @@ Database-only retention runs in an owned API task every 60 seconds, pruning at m
 
 `TRUSTED_PROXY_NETWORKS` is a comma-separated list of strict CIDRs; API defaults to trusting none, and development defaults to the direct TCP peer. Only a socket peer inside a configured network may supply exactly one valid `X-Hine-Client-IP`, used for client-IP rate limits. Production Compose requires this setting: provide only operator-verified, isolated reverse-proxy CIDR(s), ensure clients cannot connect from those ranges, and ensure the proxy strips/replaces incoming copies of the header. Do not invent a broad subnet or trust a client-reachable range. It is never authentication.
 
-Compose secret bind mounts retain host UID/GID/mode; their `uid/gid/mode` options do not remap ownership. The containers drop all capabilities and use `no-new-privileges`; configure `HINE_RUNTIME_UID`/`HINE_RUNTIME_GID` to the actual secret owner when needed. `init-dev.sh` only initializes an absent `.env`; inspect existing values and file owners after moving secrets.
+Compose secret bind mounts retain host UID/GID/mode; their `uid/gid/mode` options do not remap ownership. The containers drop all capabilities and use `no-new-privileges`; configure `HINE_RUNTIME_UID`/`HINE_RUNTIME_GID` to the actual secret owner when needed. `init-dev.sh` only initializes an absent `.env`; inspect existing values and file owners after moving secrets. Local `./build.sh` refuses to build or start when these IDs differ from the owner of `.secrets/redis_url` and prints the values to set; direct Compose and production mode do not run this check.
 
 ## 3. Optional real GCS attachments
 

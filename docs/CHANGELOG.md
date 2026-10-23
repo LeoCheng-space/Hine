@@ -6,6 +6,22 @@
 - 正式 `Caddyfile` 與本機／驗收 `Caddyfile.acceptance` 加上 `Content-Security-Policy: frame-ancestors 'none'`、`Referrer-Policy: same-origin`、`X-Content-Type-Options: nosniff`。不用 `no-referrer`，因為它會讓同源 POST 的 Origin 變成 null，使 cookie refresh 被拒絕。完整 CSP 尚未設定。
 - 更新[資安風險評估 SEC-07](security/risk-assessment.md)與[部署手冊](deployment/README.md)；新增 `tests/product/test_auth.py` 回歸測試，並在隔離 stack 以桌面 Chrome 實測登入、重新整理與 iframe 阻擋。
 
+## 2026-10-23 — Dependabot 改為每月分組更新（SEC-11）
+
+- `.github/dependabot.yml` 由「每週、每個資料夾的每個套件各一個 PR」改為每月、每類別一個分組 PR：Python（四個需求檔一起）、前端、Docker、GitHub Actions；Actions 大版本另成一組，方便單獨審查不相容變更。
+- 首次執行時開出的 12 個個別 PR（#42–#53）於本變更合併後關閉，由分組 PR 取代。已知弱點仍由每日 `dependency-audit` 阻擋，不依賴此排程。更新[決議紀錄](decisions.md)與[資安風險評估 SEC-11](security/risk-assessment.md)。
+
+## 2026-10-23 — 本機啟動前檢查執行身分與密鑰擁有者（SEC-08）
+
+- 本機 `./build.sh` 在產生密鑰後、建置與啟動前比對 `.env` 的 `HINE_RUNTIME_UID`／`HINE_RUNTIME_GID` 與 `.secrets` 擁有者；不符時停止並指出應填的值，取代原本等健康檢查逾時才看到的 CONFIG_MISSING。不自動改寫 `.env`、不放寬密鑰權限；直接 Compose 與正式模式不受影響。
+- 更新[資安風險評估 SEC-08](security/risk-assessment.md)、[一鍵部署疑難排解](deployment/one-click.md)與[部署手冊](deployment/README.md)；新增 `infra/tests/test_build.py` 回歸測試，並在隔離 checkout 實跑不符與修正後兩種情況。
+
+## 2026-10-23 — 依賴與映像弱點掃描列為必要檢查（SEC-11）
+
+- 首次掃描發現 aiohttp 3.14.3 有 8 筆已知弱點，API、BA 與壓測工具升級至 3.14.4。
+- 新增 `dependency-audit` CI：pip-audit、bun audit 有任何已知弱點即失敗；Trivy 掃描 API／BA 映像，HIGH／CRITICAL 且已有修補版本即失敗；每日於 `main` 重跑。新增 Dependabot 每週更新 pip／bun／Docker／Actions。
+- `main` 必要檢查由 8 個增為 9 個；更新[協作指南](../CONTRIBUTING.md)、[決議紀錄](decisions.md)與[資安風險評估 SEC-11](security/risk-assessment.md)。
+
 ## 2026-10-23 — 規劃 PHP CVE-2026-109618／109619 部署應變
 
 - 新增 [PHP CVE 應變計畫](security/php-cve-2026-response-plan.md)與[導覽](README.md)：初稿 2026-10-22，2026-10-23 重查官方資料並補齊審閱意見；以資安風險評估 PR #34 為基底，PHP 計畫另行審閱。

@@ -282,6 +282,7 @@ git pull
 | `Docker 專案 X 的容器是從另一個資料夾建立的：…` | `clean` 發現同名專案屬於別的資料夾（例如另一份 clone），為了不刪到那邊的資料而停止。到訊息指出的資料夾執行 `./build.sh clean`；若兩份 clone 要各自獨立，在這份 `.env` 設定不同的 `COMPOSE_PROJECT_NAME` |
 | `找到 Docker 專案 X 的資料卷，但這個資料夾沒有 .env…無法確認資料屬於這裡` | 這個資料夾從未建置過（或 `.env` 已被刪除），無法證明那些資料卷屬於這裡，`clean` 不會刪。確認是自己的資料後，照訊息裡的 `docker volume rm …` 手動刪除 |
 | `init-secrets: run initialization as the existing secret owner UID/GID` | `.secrets/` 裡的檔案擁有者（使用者或群組）與目前執行的使用者不同，`build.sh` 拒絕改動既有密鑰。用 `ls -ln .secrets` 對照 `id`；若是用 `sudo` 或其他帳號產生的，改回正確擁有者（`sudo chown -R 你的帳號:你的群組 .secrets .env`）後重跑。若確定不需要舊資料，依 §2.5 完全重新安裝 |
+| `.env 的 HINE_RUNTIME_UID／HINE_RUNTIME_GID（目前 X／Y）與 .secrets 檔案擁有者（A／B）不符` | 服務以 `.env` 的這組 ID 執行且沒有額外權限，讀不到只有擁有者能讀的密鑰（常見於手動複製 `.env.example`，沿用其中的 0）。照訊息把 `.env` 的兩行改成提示的值後重跑；不要放寬 `.secrets/` 的權限 |
 | `需要 Docker Compose v2.20 以上` | Docker 太舊；Ubuntu／Debian 可移除舊版後重新執行 `./build.sh` 由官方來源安裝 |
 | 第 4 步逾時，`./build.sh logs api` 出現 PostgreSQL 密碼驗證失敗（`password authentication failed`） | 資料庫 volume 是用**另一組密鑰**初始化的：同一台電腦上另一份 checkout 用過同樣的 project 名稱（預設 `hine-dev`），但兩份 `.secrets/` 不同。處理方式擇一：在這份 checkout 的 `.env` 把 `COMPOSE_PROJECT_NAME` 改成不同名稱；或把原本那份 checkout 的 `.secrets/` 複製過來；或確認舊資料不需要後依 §2.4 清除資料 |
 | `Bun 下載檔的 SHA-256 不符` | 下載內容遭到修改或不完整，已拒絕安裝；檢查網路或代理後重試 |
