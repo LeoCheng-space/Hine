@@ -266,8 +266,16 @@ async def wait_visible(locator, timeout: int = 15000) -> None:
 
 async def register(page, email: str, password: str, name: str, record: dict, tag: str) -> None:
     target = urlsplit(page.url)
-    await page.goto(f"{target.scheme}://{target.netloc}/register", wait_until="domcontentloaded")
+    # A fresh profile has no refresh cookie, so the startup A03 answers 401. That only means "not logged in"
+    # and must not surface as an expired-login error on the register page (#59).
+    async with page.expect_response(
+            lambda response: response.url.endswith("/api/v1/auth/refresh") and response.request.method == "POST") as startup:
+        await page.goto(f"{target.scheme}://{target.netloc}/register", wait_until="domcontentloaded")
+    check(record, f"{tag}_fresh_profile_startup_refresh_is_unauthenticated", (await startup.value).status == 401)
     await page.bring_to_front()
+    await page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+    check(record, f"{tag}_fresh_register_page_shows_no_session_error",
+          await page.locator(".session-notice").count() == 0)
     await page.get_by_label("電子郵件").fill(email)
     await page.get_by_label("顯示名稱").fill(name)
     await page.get_by_label("密碼").fill(password)
