@@ -7,6 +7,11 @@
 - `tests/integration/test_realtime_boundaries.py` 新增 5 個假後端案例：W01 錯裝置、`session_invalidation` 通知在 PUBLISH 被拒時由輪詢關閉且同 `notice_id` 可重送、較舊世代條目不得關閉新世代、同一工作階段兩個連線同時關閉、`expires_at` 已過期。
 - 新增 `infra/tests/test_sql_static.py`：以 AST 掃描 API 與 BA 原始碼，凡 asyncpg 呼叫（`execute`／`fetch*`／`copy_*` 等）的第一個參數不是純字串常值組成（f-string、`%`、`.format`、函式呼叫、參數皆不允許）即失敗，並附自我檢查案例。目前行為已用 `test_policy_pin_*` 固定供決策：refresh cookie 重播不偵測重用（攻擊者先輪替會讓受害者被鎖出，只有同裝置重新登入可驅逐）、無 cookie 登出回 204 但不撤銷。AC-N04 故障演練（通知遺失加 BA→API 連線中斷）尚未納入。
 
+## 2026-10-23 — PostgreSQL 查詢中途斷線時，健康檢查仍回健康檢查格式（Fixes #64）
+
+- `/health/ready` 在資料庫查詢途中斷線時，asyncpg 可能拋出 `InternalClientError`（不屬於 `InterfaceError`）。過去這會被當成未預期錯誤：記錄 `request_failed`，並回一般 REST 錯誤封套。現在一律視為資料庫不可用，回健康檢查格式的 503（`dependencies.postgresql: "fail"`），不記錄錯誤。其他端點的錯誤處理不變。
+- 新增 API 測試：真 API 就緒後，讓資料庫連線在查詢時拋出該例外，確認回應格式與沒有錯誤記錄。修正前此測試失敗於 `request_failed` 記錄。
+
 ## 2026-10-23 — review-shell-native.ts 的聊天清單情境納入 CI（Fixes #17）
 
 - 這支腳本原本沒有執行入口，斷言從未真正跑過。瀏覽器驗收（Chrome／Edge）現在會在 production 資產雜湊之後，另外建置 `tests/browser/review-shell-harness.ts` 到 `/review-shell/`，以三個真實帳號依序執行：遠端加入／改名／伺服器未讀／移除、事件突發與舊 A11 不得勝出、A11 分頁、換帳號後舊回應不得寫入、未見過的 casefold 拼法保留原裝置分區，以及重新載入後草稿與待送訊息仍在。結果寫成 6 個 `review_shell_*` 檢查；失敗時只記錄腳本內的固定階段名稱。
