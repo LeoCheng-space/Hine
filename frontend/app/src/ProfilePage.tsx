@@ -24,7 +24,7 @@ export class AvatarSaveRecovery {
     if (this.inflight) return this.inflight;
     const generation = this.generation, file = this.snapshot.file, transfer = this.retry;
     this.inflight = (transfer ? transfer() : upload(file)).then(attachment => {
-      if (generation !== this.generation) throw new Error('已選擇其他頭像，舊上傳不會指派至個人檔案。');
+      if (generation !== this.generation) throw new Error('已選擇其他頭像，先前上傳的頭像不會套用到個人檔案。');
       if (attachment.state !== 'ready') throw new AttachmentTransferError('UPLOAD_NOT_READY', true, null, { scope: 'avatar', attemptCreated: true });
       this.retry = null; this.update({ readyId: attachment.id, attemptRetained: false });
       return attachment.id;
@@ -77,9 +77,9 @@ export function ProfilePage({ session }: { session: SessionController }) {
     recovery.update({ pending: true }); const directory = directoryFor(session);
     try {
       const attachmentId = file ? await recovery.attachment(uploadFile => uploadAttachment(session, uploadFile, 'avatar', null)) : draft.avatarId ?? null;
-      if (!ownerActive()) throw new Error('工作階段正在變更；原頭像嘗試已保留，登入後請核對。');
+      if (!ownerActive()) throw new Error('登入狀態正在變更；原本的頭像上傳已保留，登入後請再確認。');
       const result = await session.request<UserProfile>('/users/me', { method: 'PATCH', json: { display_name: name, avatar_attachment_id: attachmentId } });
-      if (!ownerActive() || result.data.id !== session.getSnapshot().context.user_id) throw new Error('工作階段已變更，尚未確認這次個人檔案操作。');
+      if (!ownerActive() || result.data.id !== session.getSnapshot().context.user_id) throw new Error('登入狀態已變更，尚未確認這次個人檔案是否已更新。');
       recovery.confirmed(result.data); directory.put(result.data.id, result.data); if (active.current) setProfile(result.data);
     } catch (error) { recovery.update({ error: describeError(error) }); }
     finally { recovery.update({ pending: false }); }
@@ -97,15 +97,15 @@ export function ProfilePage({ session }: { session: SessionController }) {
         {preview ? <img className="avatar-preview" src={preview} alt="待儲存頭像預覽" /> : <Avatar session={session} attachmentId={avatar} name={name} />}
         <div><label htmlFor="profile-avatar">更換頭像</label><input id="profile-avatar" type="file" accept="image/jpeg,image/png" disabled={draft.pending} onChange={event => recovery.select(event.target.files?.[0] ?? null)} />
           {draft.file && <p className="small">{draft.file.name}</p>}
-          <p className="small muted">JPEG / PNG，最大 10 MiB。核驗完成後才會指派頭像。</p>
+          <p className="small muted">JPEG / PNG，最大 10 MiB。檢查完成後才會套用頭像。</p>
           <button type="button" disabled={draft.pending} onClick={() => { recovery.select(null); recovery.update({ avatarId: null }); }}>移除頭像</button>
         </div>
       </div>
-      {draft.readyId && <p className="notice" role="status">頭像已核驗就緒。再次儲存只核對 A06 指派，不會重新上傳。</p>}
-      {draft.attemptRetained && !draft.readyId && <p className="notice" role="status">原上傳嘗試已保留。再次儲存會核對相同嘗試。</p>}
-      {draft.expired && <p className="notice error" role="alert">原授權已過期。請重新選取檔案，明確建立新的上傳嘗試。</p>}
+      {draft.readyId && <p className="notice" role="status">頭像已檢查完成。再次儲存只會確認是否套用，不會重新上傳。</p>}
+      {draft.attemptRetained && !draft.readyId && <p className="notice" role="status">原本的頭像上傳已保留。再次儲存會繼續確認同一次上傳。</p>}
+      {draft.expired && <p className="notice error" role="alert">原本的上傳已過期。請重新選取檔案，再上傳一次。</p>}
       {draft.notice && <p className="notice success" role="status">{draft.notice}</p>}
-      <div className="actions"><button className="primary" disabled={draft.pending || draft.expired} type="submit">{draft.pending ? '核對上傳與儲存中…' : '儲存 / 核對原變更'}</button>
+      <div className="actions"><button className="primary" disabled={draft.pending || draft.expired} type="submit">{draft.pending ? '確認上傳與儲存中…' : '儲存並確認原變更'}</button>
         <button disabled={draft.pending} type="button" onClick={() => { recovery.select(null); recovery.update({ name: profile.display_name, avatarId: profile.avatar_attachment_id, error: null, notice: null }); }}>取消變更</button>
       </div>
     </form>}

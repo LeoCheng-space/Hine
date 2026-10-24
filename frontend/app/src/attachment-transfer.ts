@@ -13,14 +13,14 @@ const TRANSFER_CAUSE:Record<string,string>={
  RATE_LIMITED:'操作太頻繁，請稍後再試。',
  UNAUTHENTICATED:'登入已失效，請重新登入。',
  AUTH_REFRESH_PENDING:'登入狀態更新中，請稍後再試。',
- OUTCOME_UNCONFIRMED:'無法確認附件是否已上傳完成，請再試一次以核對結果。',
- TRANSFER_UNCONFIRMED:'無法確認附件是否已上傳完成，請再試一次以核對結果。',
- ATTACHMENT_MISMATCH:'附件核驗結果與原檔不符。',
- INVALID_STORAGE_GRANT:'儲存服務回傳的上傳授權無效。',
+ OUTCOME_UNCONFIRMED:'無法確認附件是否已上傳完成，請再試一次以確認結果。',
+ TRANSFER_UNCONFIRMED:'無法確認附件是否已上傳完成，請再試一次以確認結果。',
+ ATTACHMENT_MISMATCH:'附件檢查結果與原檔不符。',
+ INVALID_STORAGE_GRANT:'儲存服務回傳的上傳連結無效。',
 };
 function transferMessage(code:string,scope:TransferScope|undefined):string {
- if(code==='UPLOAD_NOT_READY')return '附件尚未完成核驗，請核對原上傳嘗試。';
- if(code==='UPLOAD_EXPIRED')return '上傳授權已過期，請重新選取檔案建立新嘗試。';
+ if(code==='UPLOAD_NOT_READY')return '附件尚未檢查完成，請重新確認原本的上傳。';
+ if(code==='UPLOAD_EXPIRED')return '上傳連結已過期，請重新選取檔案再上傳一次。';
  const outcome=scope==='avatar'?'頭像尚未儲存。':scope==='conversation'?'尚未傳送訊息。':'';
  return (TRANSFER_CAUSE[code]??'附件傳輸失敗。')+outcome;
 }

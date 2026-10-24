@@ -122,7 +122,7 @@ export function ChatList({ session, chat, path, onNavigate, onCreateGroup }: { s
             <span className={`avatar-accent accent-${accentIndex(peer ?? item.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={entry && !entry.avatarStale ? entry.avatarId : null} name={title} /></span>
             <span className="item-copy">
               <span className="item-line"><strong>{title}</strong>{last && <time className="item-time" dateTime={last.created_at}>{formatListTime(last.created_at, now)}</time>}</span>
-              <span className="item-line"><span className="item-preview">{previewText(last, item.type, me, id => directory.get(id)?.displayName ?? id)}</span>{item.unread_count > 0 && <span className="unread" aria-label={`${item.unread_count} 則伺服器查詢未讀`}>{item.unread_count}</span>}</span>
+              <span className="item-line"><span className="item-preview">{previewText(last, item.type, me, id => directory.get(id)?.displayName ?? id)}</span>{item.unread_count > 0 && <span className="unread" aria-label={`${item.unread_count} 則未讀`}>{item.unread_count}</span>}</span>
             </span>
           </button></li>;
         })}</ul>}

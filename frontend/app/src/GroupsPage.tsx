@@ -101,7 +101,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
     finally { if (active.current) setBusy(false); }
   }
   function resolveIntent() {
-    if (!pending || !window.confirm('確認您已核對原建立操作的結果，並要結束此意圖？這不會刪除任何已建立的群組。')) return;
+    if (!pending || !window.confirm('確認您已查看原本建立群組的結果，並要放棄這次建立？這不會刪除任何已建立的群組。')) return;
     try { store.confirm(pending.key); setPending(null); setTitle(''); setSelected([]); setError(null); } catch (error) { session.failStorage(error); }
   }
   if (!open) return null;
@@ -109,7 +109,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
   const locked = busy || !!pending, selectionLocked = locked || lookupBusy;
   return <dialog ref={dialog} className="create-group-dialog" aria-modal="true" aria-labelledby="create-group-title" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
     <header className="create-group-header"><h2 id="create-group-title">建立群組</h2><button type="button" className="text-button" onClick={onClose} disabled={busy}>關閉</button></header>
-    {pending && <p className="notice" role="status">原建立意圖已保留。重試會核對相同群組，不會另建一個；請先確認結果再修改內容。</p>}
+    {pending && <p className="notice" role="status">原本的建立內容已保留。重試會確認同一個群組，不會另建一個；請先確認結果再修改內容。</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
     <div className="create-group-body">
       <label htmlFor="group-title">群組名稱</label><input id="group-title" form="create-group-form" value={title} onChange={event => setTitle(event.target.value)} disabled={locked} />
@@ -134,8 +134,8 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
       </section>
     </div>
     <form id="create-group-form" className="create-group-actions" onSubmit={submit}>
-      {pending && <button type="button" disabled={busy} onClick={resolveIntent}>已核對結果，結束原意圖</button>}
-      <button className="primary" type="submit" disabled={busy || lookupBusy}>{busy ? '核對建立結果…' : pending ? '以原意圖重試 / 核對' : '建立群組'}</button>
+      {pending && <button type="button" disabled={busy} onClick={resolveIntent}>已確認結果，放棄這次建立</button>}
+      <button className="primary" type="submit" disabled={busy || lookupBusy}>{busy ? '確認建立結果…' : pending ? '重試並確認原建立' : '建立群組'}</button>
     </form>
   </dialog>;
 }
@@ -192,7 +192,7 @@ export function GroupsPage({ session, chat, conversationId, onNavigate }: { sess
     {loading && <p role="status">正在確認群組權限…</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
     {notice && <p className="notice success" role="status">{notice}</p>}
-    {!detail && !loading && <button onClick={() => { void load(); }}>重新核對權限</button>}
+    {!detail && !loading && <button onClick={() => { void load(); }}>重新確認權限</button>}
     {detail && <>
       <div className="card group-hero">
         <span className={`avatar-accent accent-${accentIndex(detail.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={null} name={detail.title ?? '群組'} /></span>
@@ -220,11 +220,11 @@ export function GroupsPage({ session, chat, conversationId, onNavigate }: { sess
             {isAdmin && <div className="actions"><button disabled={busy} onClick={() => { void mutate('role', member.user_id, member.role === 'admin' ? 'member' : 'admin'); }}>{member.role === 'admin' ? '改為成員' : '設為管理員'}</button>{member.user_id !== me && <button className="danger" disabled={busy} onClick={() => { void mutate('remove', member.user_id); }}>移除</button>}</div>}
           </li>;
         })}</ul>
-        <p className="small muted">管理權限由伺服器核對；不能移除、降級或退出最後一位管理員。</p>
+        <p className="small muted">管理權限由系統確認；不能移除、降級或退出最後一位管理員。</p>
       </div>
       <div className="card danger-zone">
         <h2>退出群組</h2>
-        <p>退出後不能繼續查看群組內容。重新加入只會取得新的加入界線之後的訊息。</p>
+        <p>退出後不能繼續查看群組內容。重新加入後，只能看到重新加入之後的訊息。</p>
         <button className="danger" disabled={busy} onClick={() => { if (me) void mutate('remove', me); }}>退出群組</button>
       </div>
     </>}

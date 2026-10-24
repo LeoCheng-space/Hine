@@ -130,7 +130,7 @@ function verifySummary(summary: ConversationSummary): void {
   const title = button.querySelector('strong')?.textContent ?? '';
   assert(summary.type === 'group' ? title === summary.title : title.length > 0, 'Rendered title disagrees with actual A11.');
   const unread = button.querySelector('.unread');
-  assert(summary.unread_count > 0 ? unread?.textContent === String(summary.unread_count) && unread.getAttribute('aria-label') === `${summary.unread_count} 則伺服器查詢未讀` : unread === null, 'The list invented a client-side unread count instead of displaying A11.');
+  assert(summary.unread_count > 0 ? unread?.textContent === String(summary.unread_count) && unread.getAttribute('aria-label') === `${summary.unread_count} 則未讀` : unread === null, 'The list invented a client-side unread count instead of displaying A11.');
 }
 async function listReady(observation: NativeListObserver): Promise<void> {
   await until(() => observation.observations.length > 0 && observation.active === 0 && !!document.querySelector('.chat-list') && !document.querySelector('.chat-list [role="status"]'), 'Actual initial A11 did not render.');

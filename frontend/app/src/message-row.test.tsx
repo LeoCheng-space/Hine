@@ -34,5 +34,5 @@ test('a pending intent has no message id, keeps its status wording and offers or
   expect(html).not.toContain('data-message-id');
   expect(html).toContain('pending-message');
   expect(html).toContain('結果尚未確認');
-  expect(html).toContain('以原意圖重試');
+  expect(html).toContain('重試傳送');
 });

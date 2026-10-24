@@ -104,12 +104,12 @@ test('date keys are not message ids and stay stable when history is prepended', 
 test('status text matches the existing message meta wording', () => {
   const base = stamped('m', 'me', new Date(2026, 9, 17, 9), '1');
   const receipt = (status: 'delivered' | 'read') => ({ kind: 'direct' as const, message_id: 'm', recipient_id: 'b', status, updated_at: base.created_at });
-  expect(messageStatus(base, 'direct')).toEqual({ icon: 'check', text: '已持久保存' });
+  expect(messageStatus(base, 'direct')).toEqual({ icon: 'check', text: '已送出' });
   expect(messageStatus({ ...base, receipt: receipt('delivered') }, 'direct')).toEqual({ icon: 'double', text: '已送達' });
   expect(messageStatus({ ...base, receipt: receipt('read') }, 'direct')).toEqual({ icon: 'double-read', text: '已讀' });
-  expect(messageStatus(base, 'group')).toEqual({ icon: 'check', text: '已持久保存' });
+  expect(messageStatus(base, 'group')).toEqual({ icon: 'check', text: '已送出' });
   expect(intentStatus('pending')).toEqual({ icon: 'clock', text: '等待傳送' });
-  expect(intentStatus('persisted')).toEqual({ icon: 'clock', text: '已持久保存，正在核對訊息' });
+  expect(intentStatus('persisted')).toEqual({ icon: 'clock', text: '已送出，正在確認' });
   expect(intentStatus('unknown')).toEqual({ icon: 'warn', text: '結果尚未確認' });
   expect(intentStatus('rejected')).toEqual({ icon: 'warn', text: '未傳送' });
 });
