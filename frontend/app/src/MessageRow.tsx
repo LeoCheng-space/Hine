@@ -10,9 +10,10 @@ function Status({ icon, text }: { icon: StatusIcon; text: string }) {
   return <span className={`message-status status-${icon}`}><Icon name={STATUS_ICON[icon]} /><span className="visually-hidden">{text}</span></span>;
 }
 
-/** A day boundary inside the scroller. Never carries a message id or read occlusion (design §7.2). */
+/** A day boundary inside the scroller. Never carries a message id or read occlusion (design §7.2).
+ *  A plain list item: `role="separator"` on an `<li>` would leave the `<ol>` with a non-listitem child. */
 export function DateSeparator({ label }: { label: string }) {
-  return <li className="date-separator" role="separator"><span>{label}</span></li>;
+  return <li className="date-separator"><span>{label}</span></li>;
 }
 
 /** One persisted message. The bubble is the only element carrying `data-message-id`. */
