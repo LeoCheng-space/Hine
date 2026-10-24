@@ -47,10 +47,10 @@ export function buildTimeline(messages: MessageView[], now: Date): TimelineItem[
 export type StatusIcon = 'clock' | 'check' | 'double' | 'double-read' | 'warn';
 export function messageStatus(message: MessageView, kind: 'direct' | 'group'): { icon: StatusIcon; text: string } {
   if (kind === 'direct' && message.receipt) return message.receipt.status === 'read' ? { icon: 'double-read', text: '已讀' } : { icon: 'double', text: '已送達' };
-  return { icon: 'check', text: '已持久保存' };
+  return { icon: 'check', text: '已送出' };
 }
 export function intentStatus(status: SendIntent['status']): { icon: StatusIcon; text: string } {
-  if (status === 'persisted') return { icon: 'clock', text: '已持久保存，正在核對訊息' };
+  if (status === 'persisted') return { icon: 'clock', text: '已送出，正在確認' };
   if (status === 'rejected') return { icon: 'warn', text: '未傳送' };
   if (status === 'unknown') return { icon: 'warn', text: '結果尚未確認' };
   return { icon: 'clock', text: '等待傳送' };

@@ -34,8 +34,8 @@ export function IntentRow({ intent, connectionReady, onRetry, children }: { inte
     <article className={`message-bubble pending-message${intent.status === 'rejected' ? ' rejected-message' : ''}`} aria-label="你的待確認訊息">
       {children}
       <footer className="message-meta"><Status {...intentStatus(intent.status)} /></footer>
-      {intent.error && <p className="intent-error">{intent.error === 'RATE_LIMITED' ? '傳送速度受限，請等待後重試。' : intent.error === 'FORBIDDEN' ? '對話權限已變更。' : '此傳送意圖尚未完成，原內容及識別碼已保留。'}</p>}
-      {intent.status !== 'persisted' && <button type="button" disabled={!connectionReady || intent.retryAt !== null && intent.retryAt > Date.now()} onClick={onRetry}>以原意圖重試</button>}
+      {intent.error && <p className="intent-error">{intent.error === 'RATE_LIMITED' ? '傳送速度受限，請等待後重試。' : intent.error === 'FORBIDDEN' ? '對話權限已變更。' : '這則訊息尚未完成傳送，內容已保留；重試會沿用原本的訊息。'}</p>}
+      {intent.status !== 'persisted' && <button type="button" disabled={!connectionReady || intent.retryAt !== null && intent.retryAt > Date.now()} onClick={onRetry}>重試傳送</button>}
     </article>
   </li>;
 }

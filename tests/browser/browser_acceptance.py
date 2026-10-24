@@ -927,7 +927,7 @@ async def run_browser(args, evidence: dict, private: Path) -> int:
             check(test_record, "deep_link_reopen_after_reconcile_keeps_the_composer_mounted",
                   await page_b.evaluate("() => window.__hineComposerDetached") == 0)
             check(test_record, "deep_link_send_needs_no_membership_recheck",
-                  await page_b.get_by_text("先前成員資格", exact=False).count() == 0)
+                  await page_b.get_by_text("權限變更前送出", exact=False).count() == 0)
             async with components.sql() as conn:
                 deep_link_rows = await conn.fetchval(
                     "SELECT count(*) FROM messages WHERE conversation_id=$1 AND payload->>'text'=$2", group_id, deep_link_message)
