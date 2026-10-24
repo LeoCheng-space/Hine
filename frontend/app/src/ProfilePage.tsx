@@ -105,7 +105,7 @@ export function ProfilePage({ session }: { session: SessionController }) {
       {draft.attemptRetained && !draft.readyId && <p className="notice" role="status">原本的頭像上傳已保留。再次儲存會繼續確認同一次上傳。</p>}
       {draft.expired && <p className="notice error" role="alert">原本的上傳已過期。請重新選取檔案，再上傳一次。</p>}
       {draft.notice && <p className="notice success" role="status">{draft.notice}</p>}
-      <div className="actions"><button className="primary" disabled={draft.pending || draft.expired} type="submit">{draft.pending ? '確認上傳與儲存中…' : '儲存並確認原變更'}</button>
+      <div className="actions"><button className="primary" disabled={draft.pending || draft.expired} type="submit">{draft.pending ? '正在儲存…' : '儲存'}</button>
         <button disabled={draft.pending} type="button" onClick={() => { recovery.select(null); recovery.update({ name: profile.display_name, avatarId: profile.avatar_attachment_id, error: null, notice: null }); }}>取消變更</button>
       </div>
     </form>}
