@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 啟用完整內容安全政策（CSP）（SEC-07）
+
+- Caddy（正式與本機）改送完整 CSP：script／style 只允許同源；圖片只允許同源與 `blob:`（解密後的頭像與附件）；`fetch`／WSS 只允許同源與 GCS 簽章網址；`default-src`、`object-src`、`base-uri` 為 `'none'`，表單只能送往同源，禁止被嵌入。不使用 `unsafe-inline` 或 `unsafe-eval`。
+- 先以 report-only 模式在 CI 的 Chrome／Edge 瀏覽器驗收跑完全部情境（含 review-shell），零違規後才改為強制。
+- 瀏覽器驗收原本使用自己產生的 Caddy 設定、沒有任何安全標頭；現在直接讀取兩份 Caddyfile 的標頭區塊（兩份不一致即失敗），每個瀏覽器設定檔都收集 CSP 違規，並新增檢查：全部頁面零違規、注入的 inline script 與外站圖片會被阻擋並回報。
+- 本機以 Docker stack 的真 Caddy 與桌面 Chrome 實測註冊、登入、加聯絡人、傳訊、重新整理，無 CSP 違規。附件上傳／下載需要真 GCS，尚未在 CSP 下實測。
+
 ## 2026-10-23 — 跨帳號與成員授權的負向測試（SEC-03）
 
 - 新增 `tests/product/test_authorization.py`（16 個測試）：以三個隔離帳號（A 管理者、B 成員、C 外人）、群組 G＝{A,B} 與直聊 A–B，涵蓋 REST 的對話列表／詳情／歷史（含外人、已移除、外人沿用他人游標、同一使用者把 G 的游標用在直聊）、改名、加成員、改角色（含曾為管理員、被移除再加入後仍只是 member）、移除成員（含重複離開為 204 無副作用）、A14 重放，以及被拒絕時標題、`membership_version`、成員表、`user_feed` 皆不變。
