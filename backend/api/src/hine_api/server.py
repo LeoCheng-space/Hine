@@ -178,7 +178,9 @@ async def health(request):
                     if not rt.schema_ready:
                         raise RuntimeError("Schema unavailable")
                 dependencies["postgresql"] = "ok"
-            except (asyncpg.PostgresError, OSError, TimeoutError, RuntimeError, asyncpg.InterfaceError):
+            # InternalClientError: asyncpg's protocol state broke because PostgreSQL dropped mid-query (#64).
+            except (asyncpg.PostgresError, OSError, TimeoutError, RuntimeError, asyncpg.InterfaceError,
+                    asyncpg.exceptions.InternalClientError):
                 dependencies["postgresql"] = "fail"
                 ready = False
     result = {"status": "ok" if ready else "unready", "service": "api", "timestamp": p.now(), "dependencies": dependencies}
