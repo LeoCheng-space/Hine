@@ -7,6 +7,13 @@
 - `tests/integration/test_realtime_boundaries.py` 新增 5 個假後端案例：W01 錯裝置、`session_invalidation` 通知在 PUBLISH 被拒時由輪詢關閉且同 `notice_id` 可重送、較舊世代條目不得關閉新世代、同一工作階段兩個連線同時關閉、`expires_at` 已過期。
 - 新增 `infra/tests/test_sql_static.py`：以 AST 掃描 API 與 BA 原始碼，凡 asyncpg 呼叫（`execute`／`fetch*`／`copy_*` 等）的第一個參數不是純字串常值組成（f-string、`%`、`.format`、函式呼叫、參數皆不允許）即失敗，並附自我檢查案例。目前行為已用 `test_policy_pin_*` 固定供決策：refresh cookie 重播不偵測重用（攻擊者先輪替會讓受害者被鎖出，只有同裝置重新登入可驅逐）、無 cookie 登出回 204 但不撤銷。AC-N04 故障演練（通知遺失加 BA→API 連線中斷）尚未納入。
 
+## 2026-10-23 — 跨帳號與成員授權的負向測試（SEC-03）
+
+- 新增 `tests/product/test_authorization.py`（16 個測試）：以三個隔離帳號（A 管理者、B 成員、C 外人）、群組 G＝{A,B} 與直聊 A–B，涵蓋 REST 的對話列表／詳情／歷史（含外人、已移除、外人沿用他人游標、同一使用者把 G 的游標用在直聊）、改名、加成員、改角色（含曾為管理員、被移除再加入後仍只是 member）、移除成員（含重複離開為 204 無副作用）、A14 重放，以及被拒絕時標題、`membership_version`、成員表、`user_feed` 皆不變。
+- 同模組涵蓋個人檔案頭像可見性與選用他人／對話範圍附件（A06／A07）、外人上傳意圖（不建立 `attachments` 列）、從未加入／被移除的非上傳者／尚未被訊息引用的附件下載（A20／A22），以及內部 `authorize` 對外人回 `allowed:false`、未知資源回 404。
+- 經真實 BA＋Redis＋BB 的 WSS 案例：外人／被移除成員／未知對話送 `message.send`、附件誤用、W08／W09 回條（外人、他人訊息 ID、被移除、寄件者本人）皆回對應的 correlated 錯誤框，不產生 ack、訊息、回條或 W10，且連線仍可回應 heartbeat；W13 他人快照與跨快照 page token、W15 他人 `snapshot_boundary` 皆為 `CURSOR_INVALID`；移除再加入後的 feed 與全新 bootstrap 只含新加入之後的內容；移除後的即時投遞不到 B 與 C，B 的 W12 不含 `actor_id`。
+- 本批測試未發現產品行為與預期不符。仍未涵蓋：丟棄 publish 後的競爭／API 與 BA 重啟恢復演練（AC-N02）。
+
 ## 2026-10-23 — PostgreSQL 查詢中途斷線時，健康檢查仍回健康檢查格式（Fixes #64）
 
 - `/health/ready` 在資料庫查詢途中斷線時，asyncpg 可能拋出 `InternalClientError`（不屬於 `InterfaceError`）。過去這會被當成未預期錯誤：記錄 `request_failed`，並回一般 REST 錯誤封套。現在一律視為資料庫不可用，回健康檢查格式的 503（`dependencies.postgresql: "fail"`），不記錄錯誤。其他端點的錯誤處理不變。
