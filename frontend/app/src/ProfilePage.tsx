@@ -53,7 +53,7 @@ export function ProfilePage({ session }: { session: SessionController }) {
   const recovery = useMemo(() => avatarRecoveryFor(owner), [owner]);
   const draft = useSyncExternalStore(recovery.subscribe, recovery.getSnapshot);
   const [profile, setProfile] = useState<UserProfile | null>(null), [preview, setPreview] = useState<string | null>(null), [loading, setLoading] = useState(true), [loadError, setLoadError] = useState<string | null>(null);
-  const active = useRef(false);
+  const active = useRef(false), avatarInput = useRef<HTMLInputElement>(null);
   function ownerActive(): boolean { const current = session.getSnapshot().context; return current.state === 'authenticated' && ownerPartition(current.user_id, current.device_id) === owner; }
   async function load() {
     setLoading(true); setLoadError(null);
@@ -73,7 +73,7 @@ export function ProfilePage({ session }: { session: SessionController }) {
     recovery.update({ error: null, notice: null });
     const name = draft.name ?? '', file = draft.file;
     if (!name) { recovery.update({ error: '請輸入顯示名稱。' }); event.currentTarget.querySelector('input')?.focus(); return; }
-    if (file && (!['image/jpeg', 'image/png'].includes(file.type) || file.size <= 0 || file.size > 10_485_760)) { recovery.update({ error: '頭像必須為 JPEG 或 PNG，檔案大於 0 且不超過 10 MiB。' }); event.currentTarget.querySelector<HTMLInputElement>('input[type=file]')?.focus(); return; }
+    if (file && (!['image/jpeg', 'image/png'].includes(file.type) || file.size <= 0 || file.size > 10_485_760)) { recovery.update({ error: '頭像必須為 JPEG 或 PNG，檔案大於 0 且不超過 10 MiB。' }); event.currentTarget.querySelector<HTMLButtonElement>('.file-picker button')?.focus(); return; }
     recovery.update({ pending: true }); const directory = directoryFor(session);
     try {
       const attachmentId = file ? await recovery.attachment(uploadFile => uploadAttachment(session, uploadFile, 'avatar', null)) : draft.avatarId ?? null;
@@ -86,7 +86,7 @@ export function ProfilePage({ session }: { session: SessionController }) {
   }
   const name = draft.name ?? '', avatar = draft.avatarId ?? null;
   return <section className="page-content profile-page">
-    <p className="eyebrow">YOUR ACCOUNT</p><h1 tabIndex={-1} data-route-heading>個人檔案</h1><p className="muted">您的公開身分，以及只對您顯示的帳號資料。</p>
+    <p className="eyebrow">您的帳號</p><h1 tabIndex={-1} data-route-heading>個人檔案</h1><p className="muted">您的公開身分，以及只對您顯示的帳號資料。</p>
     {loading && <p role="status">載入個人檔案…</p>}{(loadError || draft.error) && <p className="notice error" role="alert">{loadError ?? draft.error}</p>}
     {!profile && !loading && <button onClick={() => { void load(); }}>重新載入</button>}
     {profile && <form className="card profile-form" onSubmit={save}>
@@ -95,8 +95,10 @@ export function ProfilePage({ session }: { session: SessionController }) {
       <label htmlFor="profile-id">公開 ID（分享給對方以加入聯絡人）</label><input id="profile-id" value={profile.id} readOnly />
       <div className="avatar-editor">
         {preview ? <img className="avatar-preview" src={preview} alt="待儲存頭像預覽" /> : <Avatar session={session} attachmentId={avatar} name={name} />}
-        <div><label htmlFor="profile-avatar">更換頭像</label><input id="profile-avatar" type="file" accept="image/jpeg,image/png" disabled={draft.pending} onChange={event => recovery.select(event.target.files?.[0] ?? null)} />
-          {draft.file && <p className="small">{draft.file.name}</p>}
+        {/* The native file input renders in the browser's UI language ("Choose File / No file chosen"); it stays as the
+            labelled form control but is driven by a Chinese button, the same pattern as the chat attachment picker. */}
+        <div><label htmlFor="profile-avatar">更換頭像</label><input ref={avatarInput} id="profile-avatar" className="visually-hidden" tabIndex={-1} type="file" accept="image/jpeg,image/png" disabled={draft.pending} onChange={event => recovery.select(event.target.files?.[0] ?? null)} />
+          <div className="file-picker"><button type="button" disabled={draft.pending} aria-describedby="profile-avatar-file" onClick={() => avatarInput.current?.click()}>選擇頭像圖片…</button><span id="profile-avatar-file" className="small">{draft.file?.name ?? '尚未選擇檔案'}</span></div>
           <p className="small muted">JPEG / PNG，最大 10 MiB。核驗完成後才會指派頭像。</p>
           <button type="button" disabled={draft.pending} onClick={() => { recovery.select(null); recovery.update({ avatarId: null }); }}>移除頭像</button>
         </div>

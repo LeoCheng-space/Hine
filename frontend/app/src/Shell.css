@@ -33,7 +33,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 form > button.primary { margin-top: 24px; }
 .muted { color: var(--muted); }
 .small { font-size: .8rem; }
-.eyebrow { font-size: .65rem; font-weight: 750; letter-spacing: .18em; color: #729080; margin: 0; }
+.eyebrow { font-size: .78rem; font-weight: 700; letter-spacing: .08em; color: #729080; margin: 0; }
 .card { background: white; border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
 .input-action { display: flex; gap: 8px; align-items: start; }
@@ -162,6 +162,8 @@ form > button.primary { margin-top: 24px; }
 .avatar-editor > .avatar, .avatar-preview { width: 90px; height: 90px; flex-shrink: 0; border-radius: 50%; object-fit: cover; }
 .avatar-editor > div { min-width: 0; }
 .avatar-editor label { margin-top: 0; }
+.file-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0; }
+.file-picker > span { min-width: 0; overflow-wrap: anywhere; }
 .member-list { padding: 0; list-style: none; }
 .member-list li { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 16px 0; border-bottom: 1px solid var(--line); }
 .member-list li > div { min-width: 0; }
