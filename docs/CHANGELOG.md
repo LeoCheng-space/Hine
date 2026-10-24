@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 工作階段憑證攻擊負向測試與 SQL 拼接靜態防線（SEC-04）
+
+- 新增 `tests/product/test_session_attacks.py`，對真實 API／PostgreSQL／Redis／BA 共 16 個案例：50 種以上竄改 JWT（錯誤金鑰、原簽章換內文、`alg:none`、HS384／HS512、缺少或為 null 的必要欄位、錯誤型別、`aud` 為清單、未來 `iat`／`nbf`、`exp` 與資料庫不符、他裝置 `did`、`kid`／`crit`）與非 `Bearer ` 標頭，在公開 REST 與內部 validateAccess 皆為 401，且原憑證仍可使用；另涵蓋過期 JWT（重簽與實際 3 秒到期）、舊世代、同裝置取代、過期 refresh cookie、refresh 與登出競態、並行 refresh 只有一個贏家。
+- 真實 WSS：W01 對偽造、他人裝置、refresh 前／登出後／被取代的憑證回相關聯的 UNAUTHENTICATED 並以 1001 關閉、不送出 `auth.accepted`；登出（通知經 Redis 送達，5 秒內）關閉同工作階段的兩個連線而其他裝置不受影響；refresh 後舊世代連線被關閉（1008），其途中 `message.send` 不會得到 ack 也不寫入資料庫；同裝置取代、並行 refresh 與 Redis PUBLISH 被 ACL 拒絕時（改由輪詢關閉）皆已驗證。
+- `tests/integration/test_realtime_boundaries.py` 新增 5 個假後端案例：W01 錯裝置、`session_invalidation` 通知在 PUBLISH 被拒時由輪詢關閉且同 `notice_id` 可重送、較舊世代條目不得關閉新世代、同一工作階段兩個連線同時關閉、`expires_at` 已過期。
+- 新增 `infra/tests/test_sql_static.py`：以 AST 掃描 API 與 BA 原始碼，凡 asyncpg 呼叫（`execute`／`fetch*`／`copy_*` 等）的第一個參數不是純字串常值組成（f-string、`%`、`.format`、函式呼叫、參數皆不允許）即失敗，並附自我檢查案例。目前行為已用 `test_policy_pin_*` 固定供決策：refresh cookie 重播不偵測重用（攻擊者先輪替會讓受害者被鎖出，只有同裝置重新登入可驅逐）、無 cookie 登出回 204 但不撤銷。AC-N04 故障演練（通知遺失加 BA→API 連線中斷）尚未納入。
+
 ## 2026-10-23 — 跨帳號與成員授權的負向測試（SEC-03）
 
 - 新增 `tests/product/test_authorization.py`（16 個測試）：以三個隔離帳號（A 管理者、B 成員、C 外人）、群組 G＝{A,B} 與直聊 A–B，涵蓋 REST 的對話列表／詳情／歷史（含外人、已移除、外人沿用他人游標、同一使用者把 G 的游標用在直聊）、改名、加成員、改角色（含曾為管理員、被移除再加入後仍只是 member）、移除成員（含重複離開為 204 無副作用）、A14 重放，以及被拒絕時標題、`membership_version`、成員表、`user_feed` 皆不變。
