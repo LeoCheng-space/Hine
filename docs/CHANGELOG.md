@@ -7,6 +7,11 @@
 - 經真實 BA＋Redis＋BB 的 WSS 案例：外人／被移除成員／未知對話送 `message.send`、附件誤用、W08／W09 回條（外人、他人訊息 ID、被移除、寄件者本人）皆回對應的 correlated 錯誤框，不產生 ack、訊息、回條或 W10，且連線仍可回應 heartbeat；W13 他人快照與跨快照 page token、W15 他人 `snapshot_boundary` 皆為 `CURSOR_INVALID`；移除再加入後的 feed 與全新 bootstrap 只含新加入之後的內容；移除後的即時投遞不到 B 與 C，B 的 W12 不含 `actor_id`。
 - 本批測試未發現產品行為與預期不符。仍未涵蓋：丟棄 publish 後的競爭／API 與 BA 重啟恢復演練（AC-N02）。
 
+## 2026-10-23 — PostgreSQL 查詢中途斷線時，健康檢查仍回健康檢查格式（Fixes #64）
+
+- `/health/ready` 在資料庫查詢途中斷線時，asyncpg 可能拋出 `InternalClientError`（不屬於 `InterfaceError`）。過去這會被當成未預期錯誤：記錄 `request_failed`，並回一般 REST 錯誤封套。現在一律視為資料庫不可用，回健康檢查格式的 503（`dependencies.postgresql: "fail"`），不記錄錯誤。其他端點的錯誤處理不變。
+- 新增 API 測試：真 API 就緒後，讓資料庫連線在查詢時拋出該例外，確認回應格式與沒有錯誤記錄。修正前此測試失敗於 `request_failed` 記錄。
+
 ## 2026-10-23 — review-shell-native.ts 的聊天清單情境納入 CI（Fixes #17）
 
 - 這支腳本原本沒有執行入口，斷言從未真正跑過。瀏覽器驗收（Chrome／Edge）現在會在 production 資產雜湊之後，另外建置 `tests/browser/review-shell-harness.ts` 到 `/review-shell/`，以三個真實帳號依序執行：遠端加入／改名／伺服器未讀／移除、事件突發與舊 A11 不得勝出、A11 分頁、換帳號後舊回應不得寫入、未見過的 casefold 拼法保留原裝置分區，以及重新載入後草稿與待送訊息仍在。結果寫成 6 個 `review_shell_*` 檢查；失敗時只記錄腳本內的固定階段名稱。

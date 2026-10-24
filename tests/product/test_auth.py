@@ -257,6 +257,48 @@ class AuthTests(ProductCase):
         self.assertEqual((await self.api.request("GET", "/health/live"))[0], 200)
         self.assertNotIn("unavailable@", str(result))
 
+    async def test_database_dropped_mid_query_is_health_shaped_ready503_without_request_failed(self):
+        # #64: when PostgreSQL goes away during the readiness query, asyncpg can raise
+        # InternalClientError (not an InterfaceError). Readiness must still answer in the health format.
+        import asyncpg
+        from aiohttp.test_utils import TestServer
+        from hine_api.config import Settings
+        from hine_api.server import RUNTIME, create_app
+
+        class DroppedConnection:
+            async def fetchval(self, *_):
+                raise asyncpg.exceptions.InternalClientError("cannot switch to state 12; another operation (2) is in progress")
+
+        class DroppedPool:
+            def acquire(self):
+                return self
+
+            async def __aenter__(self):
+                return DroppedConnection()
+
+            async def __aexit__(self, *_):
+                return False
+
+        server = TestServer(create_app(Settings.from_env(self.api.settings_env)))
+        await server.start_server()
+        try:
+            async with self.api.session.get(server.make_url("/health/ready")) as reply:
+                self.assertEqual(reply.status, 200)
+            runtime = server.app[RUNTIME]
+            real_pool, runtime.pool = runtime.pool, DroppedPool()
+            try:
+                with self.assertNoLogs("hine_api", level="ERROR"):
+                    async with self.api.session.get(server.make_url("/health/ready")) as reply:
+                        status, result = reply.status, await reply.json()
+            finally:
+                runtime.pool = real_pool
+            self.assertEqual(status, 503)
+            self.assertEqual(result["status"], "unready")
+            self.assertEqual(result["dependencies"], {"postgresql": "fail", "redis": "not_checked"})
+            self.assertNotIn("error", result)
+        finally:
+            await server.close()
+
     async def test_migration_metadata_checksum_tampering_is_rejected(self):
         from hine_api import db
         async with self.api.pool.acquire() as conn:
