@@ -5,7 +5,8 @@ import { avatarCacheFor } from './avatar-cache';
 import { directoryFor } from './user-directory';
 import type { SessionController } from './session';
 import type { ChatController } from './chat';
-import type { ContactView, ConversationCreateResult, Page, UserSummary, DownloadGrant } from './types';
+import type { ContactView, ConversationCreateResult, Page, Presence, UserSummary, DownloadGrant } from './types';
+const PRESENCE_LABEL: Record<Presence, string> = { online: '線上', offline: '離線', unknown: '狀態未知' };
 interface PageCache<T> { items: T[]; cursor: string | null }
 export function usePagedList<T>(session: SessionController, scope: 'contacts' | 'conversations', identify: (item: T) => string) {
   const context = session.getSnapshot().context;
@@ -181,11 +182,11 @@ export function ContactsPage({ session, chat, onNavigate }: { session: SessionCo
   const loaded = list.items.filter(item => item.user.display_name.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
   return <section className={`split-page contacts-page ${selected ? 'detail-selected' : ''}`}>
     <div className="list-panel">
-      <header className="panel-header"><p className="eyebrow">YOUR PEOPLE</p><h1 tabIndex={-1} data-route-heading>聯絡人</h1><p className="muted">分享公開 ID，開啟新的對話。</p></header>
+      <header className="panel-header"><p className="eyebrow">您的聯絡人</p><h1 tabIndex={-1} data-route-heading>聯絡人</h1><p className="muted">分享公開 ID，開啟新的對話。</p></header>
       <form className="lookup-form" onSubmit={lookup}><label htmlFor="known-id">已知公開 ID</label><div className="input-action"><input id="known-id" value={knownId} onChange={event => setKnownId(event.target.value)} placeholder="貼上對方分享的 ID" /><button disabled={busy}>查詢</button></div></form>
       <label htmlFor="contact-filter">篩選已載入的聯絡人</label><input id="contact-filter" type="search" value={filter} onChange={event => setFilter(event.target.value)} /><p className="small muted">僅篩選已載入項目，不是全站找人。</p>
       {list.error && <p className="notice error" role="alert">{list.error}</p>}{error && !selected && <p className="notice error" role="alert">{error}</p>}
-      <ul className="item-list">{loaded.map(item => <li key={item.user.id}><button className={`list-item ${selected?.id === item.user.id ? 'selected' : ''}`} onClick={() => selectUser(item.user)}><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /><span className="item-copy"><strong>{item.user.display_name}</strong><span className="muted small">{chat.getSnapshot().presence[item.user.id] ?? item.presence ?? 'unknown'}</span></span><span aria-hidden="true">›</span></button></li>)}</ul>
+      <ul className="item-list">{loaded.map(item => <li key={item.user.id}><button className={`list-item ${selected?.id === item.user.id ? 'selected' : ''}`} onClick={() => selectUser(item.user)}><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /><span className="item-copy"><strong>{item.user.display_name}</strong><span className="muted small">{PRESENCE_LABEL[chat.getSnapshot().presence[item.user.id] ?? item.presence ?? 'unknown']}</span></span><span aria-hidden="true">›</span></button></li>)}</ul>
       {!loaded.length && !list.busy && <div className="empty-state"><strong>{filter ? '沒有符合的已載入項目' : '還沒有聯絡人'}</strong><p>輸入對方的公開 ID，核對後加入。</p></div>}{list.busy && <p role="status">載入聯絡人…</p>}
       <div className="actions"><button disabled={list.busy} onClick={() => { void list.load(true); }}>重新整理</button>{list.cursor && <button disabled={list.busy} onClick={() => { void list.load(); }}>載入下一頁</button>}</div>
     </div>
