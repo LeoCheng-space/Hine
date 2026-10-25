@@ -560,6 +560,135 @@ class RealtimeBoundaryTests(unittest.IsolatedAsyncioTestCase):
             await ws.send_json(ping)
             await self.correlated(ws, ping, "heartbeat.pong")
 
+    async def drain(self, ws, timeout=4):
+        """Every text frame until the socket closes, plus the close code the client observed."""
+        frames = []
+        async with asyncio.timeout(timeout):
+            while True:
+                message = await ws.receive()
+                if message.type == aiohttp.WSMsgType.TEXT:
+                    frames.append(json.loads(message.data))
+                elif message.type == aiohttp.WSMsgType.CLOSE:
+                    return frames, message.data
+                elif message.type in {aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED}:
+                    return frames, ws.close_code
+
+    async def heartbeat(self, ws, nonce=None):
+        ping = frame("heartbeat.ping", {"nonce": nonce or str(uuid4())})
+        await ws.send_json(ping)
+        await self.correlated(ws, ping, "heartbeat.pong")
+
+    async def test_valid_token_with_another_device_id_is_rejected_at_w01(self):
+        await self.start()
+        ws = await self.client.ws_connect(self.url + "/ws/v1", headers={"Origin": ORIGIN})
+        self.addAsyncCleanup(ws.close)
+        request = frame("auth.authenticate", {"access_token": "access-a", "device_id": "device-b"})
+        await ws.send_json(request)
+        frames, code = await self.drain(ws)
+        self.assertEqual([item["event"] for item in frames], ["error"])
+        self.assertEqual(frames[0]["correlation_id"], request["event_id"])
+        self.assertEqual((frames[0]["payload"]["code"], frames[0]["payload"]["retryable"]), ("UNAUTHENTICATED", False))
+        self.assertEqual(code, 1001)
+        legitimate, _, accepted = await self.auth()
+        self.assertEqual(accepted["event"], "auth.accepted")
+        await self.heartbeat(legitimate)
+
+    async def test_session_invalidation_notice_survives_denied_redis_publish_via_poll(self):
+        from urllib.parse import urlsplit, urlunsplit
+        admin = Redis.from_url(self.redis_url, socket_connect_timeout=1, socket_timeout=1, protocol=2)
+        try:
+            await admin.ping()
+        except (RedisError, OSError):
+            await admin.aclose()
+            if "HINE_TEST_REDIS_URL" in os.environ:
+                raise
+            self.skipTest("Requires actual isolated Redis")
+        self.addAsyncCleanup(admin.aclose)
+        username, password = "hine_test_" + uuid4().hex, uuid4().hex
+        try:
+            await admin.execute_command("ACL", "SETUSER", username, "on", ">" + password, "~*", "&*", "+@all", "-publish")
+        except RedisError:
+            if "HINE_TEST_REDIS_URL" in os.environ:
+                raise
+            self.skipTest("Requires isolated Redis test authority with ACL administration")
+        self.addAsyncCleanup(admin.execute_command, "ACL", "DELUSER", username)
+        parsed = urlsplit(self.redis_url)
+        host = "[" + parsed.hostname + "]" if ":" in parsed.hostname else parsed.hostname
+        restricted_url = urlunsplit((parsed.scheme, f"{username}:{password}@{host}:{parsed.port or 6379}", parsed.path, "", ""))
+        await self.start({**self.env, "REDIS_URL": restricted_url})
+        revoked, _, _ = await self.auth()
+        survivor, _, _ = await self.auth("access-a2")
+        entry = self.authority.invalidate("session-a")
+        notice = self.invalidation_notice(entry)
+        status, body = await self.publish(notice)
+        self.assertEqual(status, 503)
+        self.assertEqual(body["error"]["code"], "DEPENDENCY_UNAVAILABLE")
+        self.assertNotIn("published", body.get("data", {}))
+        # The notice never reached Redis, so only the committed-stream poll can revoke the socket.
+        frames, code = await self.drain(revoked, timeout=6)
+        self.assertEqual([(item["event"], item["payload"]["code"]) for item in frames], [("error", "UNAUTHENTICATED")])
+        self.assertNotIn("correlation_id", frames[0])
+        self.assertEqual(code, 1008)
+        await self.heartbeat(survivor)
+        await admin.execute_command("ACL", "SETUSER", username, "+publish")
+        status, body = await self.publish(notice)
+        self.assertEqual((status, body["data"]), (200, {"notice_id": notice["notice_id"], "published": True}))
+        await self.heartbeat(survivor)
+
+    async def test_stale_lower_generation_entry_cannot_close_newer_generation(self):
+        await self.start()
+        old, _, _ = await self.auth()
+        refresh = self.authority.invalidate("session-a", 2, "refresh")
+        self.authority.sessions["access-a"]["session_generation"] = 2
+        status, _ = await self.publish(self.invalidation_notice(refresh))
+        self.assertEqual(status, 200)
+        current, _, accepted = await self.auth()
+        self.assertEqual(accepted["payload"]["session_generation"], 2)
+        frames, code = await self.drain(old)
+        self.assertEqual([(item["event"], item["payload"]["code"]) for item in frames], [("error", "UNAUTHENTICATED")])
+        self.assertEqual(code, 1008)
+        # An older refresh entry (min_valid_generation=1) arrives late; generation 2 is not below it.
+        late = self.authority.invalidate("session-a", 1, "refresh")
+        notice = self.invalidation_notice(late)
+        status, _ = await self.publish(notice)
+        self.assertEqual(status, 200)
+        await self.notice_consumed(notice)
+        await self.heartbeat(current)
+        replacement, _, accepted = await self.auth()
+        self.assertEqual(accepted["payload"]["session_generation"], 2)
+        await self.heartbeat(replacement)
+
+    async def test_logout_closes_every_socket_of_the_session_and_no_other_session(self):
+        await self.start()
+        first, _, _ = await self.auth()
+        second, _, _ = await self.auth()
+        other_device, _, _ = await self.auth("access-a2")
+        other_user, _, _ = await self.auth("access-b")
+        entry = self.authority.invalidate("session-a")
+        status, _ = await self.publish(self.invalidation_notice(entry))
+        self.assertEqual(status, 200)
+        for socket in (first, second):
+            frames, code = await self.drain(socket)
+            self.assertEqual([(item["event"], item["payload"]["code"]) for item in frames], [("error", "UNAUTHENTICATED")])
+            self.assertEqual(code, 1008)
+        await self.heartbeat(other_device)
+        await self.heartbeat(other_user)
+        _, _, reply = await self.auth()
+        self.assertEqual((reply["event"], reply["payload"]["code"]), ("error", "UNAUTHENTICATED"))
+
+    async def test_access_result_already_expired_is_rejected_without_accepting(self):
+        await self.start()
+        self.authority.mutate_result = lambda operation, result: {**result, "expires_at": timestamp(-5)}
+        ws = await self.client.ws_connect(self.url + "/ws/v1", headers={"Origin": ORIGIN})
+        self.addAsyncCleanup(ws.close)
+        request = frame("auth.authenticate", {"access_token": "access-a", "device_id": "device-a"})
+        await ws.send_json(request)
+        frames, code = await self.drain(ws)
+        self.assertEqual([item["event"] for item in frames], ["error"])
+        self.assertEqual(frames[0]["correlation_id"], request["event_id"])
+        self.assertEqual(frames[0]["payload"]["code"], "UNAUTHENTICATED")
+        self.assertEqual(code, 1001)
+
     async def test_unsupported_event_and_structural_nulls_do_not_write_or_close_session(self):
         await self.start()
         ws, _, _ = await self.auth()
