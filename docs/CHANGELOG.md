@@ -1,5 +1,12 @@
 # HINE 文件變更紀錄
 
+## 2026-10-23 — 啟用完整內容安全政策（CSP）（SEC-07）
+
+- Caddy（正式與本機）改送完整 CSP：script／style 只允許同源；圖片只允許同源與 `blob:`（解密後的頭像與附件）；`fetch`／WSS 只允許同源與 GCS 簽章網址；`default-src`、`object-src`、`base-uri` 為 `'none'`，表單只能送往同源，禁止被嵌入。不使用 `unsafe-inline` 或 `unsafe-eval`。
+- 先以 report-only 模式在 CI 的 Chrome／Edge 瀏覽器驗收跑完全部情境（含 review-shell），零違規後才改為強制。
+- 瀏覽器驗收原本使用自己產生的 Caddy 設定、沒有任何安全標頭；現在直接讀取兩份 Caddyfile 的標頭區塊（兩份不一致即失敗），每個瀏覽器設定檔都收集 CSP 違規，並新增檢查：全部頁面零違規、注入的 inline script 與外站圖片會被阻擋並回報。
+- 本機以 Docker stack 的真 Caddy 與桌面 Chrome 實測註冊、登入、加聯絡人、傳訊、重新整理，無 CSP 違規。附件上傳／下載需要真 GCS，尚未在 CSP 下實測。
+
 ## 2026-10-23 — 工作階段憑證攻擊負向測試與 SQL 拼接靜態防線（SEC-04）
 
 - 新增 `tests/product/test_session_attacks.py`，對真實 API／PostgreSQL／Redis／BA 共 16 個案例：50 種以上竄改 JWT（錯誤金鑰、原簽章換內文、`alg:none`、HS384／HS512、缺少或為 null 的必要欄位、錯誤型別、`aud` 為清單、未來 `iat`／`nbf`、`exp` 與資料庫不符、他裝置 `did`、`kid`／`crit`）與非 `Bearer ` 標頭，在公開 REST 與內部 validateAccess 皆為 401，且原憑證仍可使用；另涵蓋過期 JWT（重簽與實際 3 秒到期）、舊世代、同裝置取代、過期 refresh cookie、refresh 與登出競態、並行 refresh 只有一個贏家。
