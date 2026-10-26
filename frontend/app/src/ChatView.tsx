@@ -20,7 +20,7 @@ export function Chat({session,chat,conversationId,onNavigate}:{session:SessionCo
  const snapshot=useSyncExternalStore(chat.subscribe,chat.getSnapshot),sessionSnapshot=useSyncExternalStore(session.subscribe,session.getSnapshot);
  const root=useRef<HTMLElement>(null),scroller=useRef<HTMLDivElement>(null),heading=useRef<HTMLHeadingElement>(null),composer=useRef<HTMLTextAreaElement>(null),fileInput=useRef<HTMLInputElement>(null);
  const composition=useRef(false),anchor=useRef<ScrollAnchor|null>(null),restoring=useRef(false),previousIds=useRef<string[]>([]),loadedDraft=useRef<string|null>(null);
- const [draft,setDraft]=useState(''),[error,setError]=useState<string|null>(null),[sending,setSending]=useState(false),[loadingHistory,setLoadingHistory]=useState(false),[newCount,setNewCount]=useState(0),[preview,setPreview]=useState<string|null>(null),[uploading,setUploading]=useState(false),[atLatest,setAtLatest]=useState(true);
+ const [draft,setDraft]=useState(''),[error,setError]=useState<string|null>(null),[sending,setSending]=useState(false),[loadingHistory,setLoadingHistory]=useState(false),[newCount,setNewCount]=useState(0),[preview,setPreview]=useState<string|null>(null),[uploading,setUploading]=useState(false),[atLatest,setAtLatest]=useState(true),[announcement,setAnnouncement]=useState('');
  const [groupInfoOpen,setGroupInfoOpen]=useState(false),groupInfoButton=useRef<HTMLButtonElement>(null),groupInfoEpoch=useRef(0);
  const historyEpoch=useRef(0);
  const animationBaseline=useRef<string[]|null>(null),shownIntents=useRef<Set<string>>(new Set());
@@ -41,7 +41,7 @@ export function Chat({session,chat,conversationId,onNavigate}:{session:SessionCo
  const closeGroupInfo=useCallback(()=>setGroupInfoOpen(false),[]);
  const restoreGroupInfoFocus=useCallback(()=>groupInfoButton.current?.focus(),[]);
  useEffect(()=>{
-  setError(null);setPreview(null);setNewCount(0);setDraft('');setAtLatest(true);loadedDraft.current=null;anchor.current=null;previousIds.current=[];
+  setError(null);setPreview(null);setNewCount(0);setAnnouncement('');setDraft('');setAtLatest(true);loadedDraft.current=null;anchor.current=null;previousIds.current=[];
   setLoadingHistory(false);
   ++historyEpoch.current;
   ++groupInfoEpoch.current;setGroupInfoOpen(false);
@@ -73,7 +73,12 @@ export function Chat({session,chat,conversationId,onNavigate}:{session:SessionCo
  useLayoutEffect(()=>{
   if(!authorized){animationBaseline.current=null;return;}
   const ids=messages.map(message=>message.id),old=previousIds.current;
-  if(old.length&&anchor.current&&!anchor.current.atLatest){const previousLast=old[old.length-1],index=ids.indexOf(previousLast);if(index>=0){const added=ids.slice(index+1).filter(id=>!old.includes(id)).length;if(added)setNewCount(count=>count+added);}}
+  // Messages appended after the previous last one: counted for the jump button while reading older messages,
+  // otherwise announced (others' messages only) so screen-reader users hear new messages as they arrive.
+  if(old.length){const previousLast=old[old.length-1],index=ids.indexOf(previousLast);if(index>=0){const addedIds=ids.slice(index+1).filter(id=>!old.includes(id));
+   if(addedIds.length&&anchor.current&&!anchor.current.atLatest)setNewCount(count=>count+addedIds.length);
+   else if(addedIds.length){const incoming=messages.filter(message=>addedIds.includes(message.id)&&message.sender_id!==me);const last=incoming[incoming.length-1];
+    if(last)setAnnouncement(`${incoming.length>1?`${incoming.length} 則新訊息，最新一則：`:'新訊息：'}${nameOf(last.sender_id)}：${last.type==='text'?last.text:last.type==='image'?'圖片':'檔案'}`);}}}
   restoreAnchor();previousIds.current=ids;
   // Entry motion only for a few messages appended after an established baseline; the ReadObserver skips bubbles while they animate.
   const replaced=new Set(messages.filter(message=>message.client_message_id!==undefined&&shownIntents.current.has(message.client_message_id)).map(message=>message.id));
@@ -149,6 +154,7 @@ export function Chat({session,chat,conversationId,onNavigate}:{session:SessionCo
   <DatePill scroller={scroller} messages={messages} now={now}/>
   <button type="button" className="jump-latest-fab" data-read-occlusion aria-label="跳至最新" hidden={atLatest&&newCount===0} disabled={loadingHistory} onClick={()=>{void latest();}}><Icon name="down"/>{newCount>0&&<span className="fab-count" aria-hidden="true">{newCount}</span>}</button>
   <p className="visually-hidden" role="status">{newCount>0?`${newCount} 則新訊息 · 不代表未讀數`:''}</p>
+  <p className="visually-hidden" role="status">{announcement}</p>
   <form className="chat-composer" onSubmit={event=>{void submit(event);}} data-read-occlusion><label className="visually-hidden" htmlFor="chat-draft">撰寫訊息</label><div className="composer-controls"><button type="button" className="icon-button attachment-button" disabled={uploading||snapshot.connection==='blocked'} onClick={()=>fileInput.current?.click()} aria-label="選取 JPEG、PNG 或 PDF 附件"><Icon name="attach"/></button><input ref={fileInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,application/pdf" aria-label="選取附件，最大 10 MiB" onChange={event=>{const file=event.target.files?.[0];if(!file)return;void finishUpload(()=>uploadAttachment(session,file,'conversation',conversationId),conversationId);}}/><textarea ref={composer} id="chat-draft" placeholder="輸入訊息…" value={draft} rows={1} aria-describedby="composer-help" disabled={snapshot.connection==='blocked'} onChange={event=>{const text=event.target.value;setDraft(text);void chat.setDraft(conversationId,text).catch(()=>setError('草稿無法持久保存，聊天已停止。'));}} onCompositionStart={()=>{composition.current=true;}} onCompositionEnd={()=>{composition.current=false;}} onKeyDown={event=>{if(composition.current||event.nativeEvent.isComposing||event.keyCode===229)return;if(shouldSubmitEnter({key:event.key,isComposing:event.nativeEvent.isComposing,keyCode:event.keyCode,shiftKey:event.shiftKey,ctrlKey:event.ctrlKey,metaKey:event.metaKey},hardwareKeyboardAvailable())){event.preventDefault();void submit();}}}/><button className="primary icon-button send-button" type="submit" disabled={sending||draft.length===0||snapshot.connection==='blocked'}><Icon name="send"/><span className="visually-hidden">{sending?'保存中…':'傳送'}</span></button></div><div className="composer-help" id="composer-help"><span className={uploading?undefined:'visually-hidden'}>{uploading?'正在上傳與核驗附件；未就緒不傳送。':'Ctrl / ⌘ + Enter 傳送；組字中不會送出。'}</span>{[...draft].length>3800&&<span>{[...draft].length} / 4096</span>}</div></form>
   {preview&&<AttachmentViewer session={session} attachmentId={preview} onClose={closePreview}/>}
  </section>;

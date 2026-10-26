@@ -880,9 +880,22 @@ class Components:
                     pass
                 await asyncio.sleep(0.1)
 
+    @staticmethod
+    def security_headers() -> str:
+        """SEC-07: serve the deployed Caddy security headers, read from both real Caddyfiles (which must agree)."""
+        blocks = []
+        for name in ("Caddyfile", "Caddyfile.acceptance"):
+            match = re.search(r"^\theader \{\n(.*?)^\t\}\n", (ROOT / "infra/docker" / name).read_text(), re.MULTILINE | re.DOTALL)
+            if match is None:
+                raise DrillFailure("CADDY_SECURITY_HEADERS_MISSING")
+            blocks.append(match.group(1))
+        if blocks[0] != blocks[1]:
+            raise DrillFailure("CADDY_SECURITY_HEADERS_DIVERGED")
+        return " header {\n" + blocks[0] + " }\n"
+
     async def start_tls(self):
         config = ("{\n admin off\n skip_install_trust\n auto_https disable_redirects\n}\n"
-                  f"https://localhost:{self.tls_port} {{\n bind 127.0.0.1\n tls internal\n"
+                  f"https://localhost:{self.tls_port} {{\n bind 127.0.0.1\n tls internal\n" + self.security_headers() +
                   f" handle /api/v1/* {{\n  reverse_proxy 127.0.0.1:{self.api_port}\n }}\n"
                   f" handle /ws/v1 {{\n  reverse_proxy 127.0.0.1:{self.ba_port}\n }}\n")
         if self.args.web_root:

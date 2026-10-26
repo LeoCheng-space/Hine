@@ -30,13 +30,13 @@
 .accent-text-5 { color: var(--accent-5); }
 .accent-text-6 { color: var(--accent-6); }
 .message-text { margin: 0; font-size: .95rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-.message-meta { display: flex; gap: 4px; align-items: center; justify-content: flex-end; margin-top: 1px; font-size: .68rem; color: #6f857a; line-height: 1.4; }
-.own .message-meta { color: #4f7a68; }
+.message-meta { display: flex; gap: 4px; align-items: center; justify-content: flex-end; margin-top: 1px; font-size: .68rem; color: var(--muted); line-height: 1.4; }
+.own .message-meta { color: #3f6a58; }
 .pending-message { outline: 1px dashed #9ab8a8; box-shadow: none; opacity: .86; }
 .rejected-message { outline-color: #d9959d !important; }
 .date-separator { display: flex; justify-content: center; margin: 14px 0 10px; }
-.date-separator span { padding: 3px 12px; border-radius: 12px; background: #0f3d352e; color: #fff; font-size: .74rem; font-weight: 600; }
-.date-pill { position: absolute; top: 100px; left: 50%; z-index: 3; transform: translateX(-50%); padding: 3px 12px; border-radius: 12px; background: #0f3d3566; color: #fff; font-size: .74rem; font-weight: 600; pointer-events: none; }
+.date-separator span { padding: 3px 12px; border-radius: 12px; background: #ffffffe6; color: var(--muted); box-shadow: 0 1px 1.5px #0f3d351a; font-size: .74rem; font-weight: 600; }
+.date-pill { position: absolute; top: 100px; left: 50%; z-index: 3; transform: translateX(-50%); padding: 3px 12px; border-radius: 12px; background: #ffffffe6; color: var(--muted); box-shadow: 0 1px 3px #0f3d3526; font-size: .74rem; font-weight: 600; pointer-events: none; }
 .jump-latest-fab[hidden], .date-pill[hidden] { display: none !important; }
 .message-status { display: inline-flex; align-items: center; }
 .message-status .icon { width: 16px; height: 16px; }

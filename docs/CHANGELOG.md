@@ -1,9 +1,40 @@
 # HINE 文件變更紀錄
 
+## 2026-10-26 — 即時服務映像改用與 API 相同的 Debian 13 基底（依賴稽核）
+
+- Dependency Audit 自 2026-10-26 起在 `main` 失敗：即時服務映像的基底 `python:3.12-slim-bookworm`（Debian 12）含 OpenSSL 的 HIGH 漏洞 CVE-2026-84782（`libssl3`／`openssl` 3.0.22-1~deb12u1）。Debian 已推出修正版 deb12u2，但 Python 官方映像尚未重建。API 映像使用 `python:3.12-slim`（Debian 13），掃描結果是 0。
+- `backend/realtime/Dockerfile` 改用 `python:3.12-slim`，與 API 一致。Debian 12 已在 2026 年 6 月結束一般安全支援，repo 也沒有任何說明需要固定使用 bookworm。本機以 CI 相同版本的 Trivy 0.76.1 重現：改前 2 筆 HIGH，改後 0 筆；隔離 stack 五個服務都 healthy，並以兩個帳號實測 WSS 即時傳訊（寄件者收到 `message.ack`，收件者收到 `message.created`）。
+
 ## 2026-10-23 — 登入／註冊失敗後焦點回到可修正的欄位（UI／UX 第 5 項）
 
 - 送出時欄位會暫時停用，原本焦點因此掉到頁面最外層，鍵盤與螢幕閱讀器使用者必須重新找回輸入框。現在：帳號或密碼錯誤時，焦點回到密碼欄並選取內容，兩個欄位標示 `aria-invalid`；其他失敗時，焦點回到電子郵件欄；註冊成功時，焦點移到「前往登入」。錯誤訊息以 `aria-describedby` 連到欄位。
 - 註冊已存在的電子郵件時，原本顯示通用的衝突訊息（內容講的是群組管理員），改為「這個電子郵件已經註冊，請直接登入。」。A01 本來就以 409 表示電子郵件重複，所以不增加額外的帳號揭露。
+
+## 2026-10-23 — 螢幕閱讀器語意修正與新訊息播報（UI／UX 第 2–4 項）
+
+- 訊息清單的日期分隔改為一般清單項目，`<ol>` 只包含 `<li>`，螢幕閱讀器的清單項目數因此正確。
+- 單獨出現的頭像（聯絡人詳情、個人檔案）改用 `role="img"` 搭配名稱；聯絡人清單按鈕內的頭像改為隱藏，按鈕名稱不再重複唸兩次姓名。左上角 HINE 按鈕的名稱改由內容產生，一定包含畫面上看得到的「HINE」（WCAG 2.5.3）。
+- 停在最新訊息時收到別人的訊息，會以 `role="status"` 播報「新訊息：寄件者：內容」（多則時播報則數與最新一則；自己送出的不播報）。往上捲動閱讀舊訊息時，維持原本的「N 則新訊息」計數，不播報內容。
+- 本機以 axe-core 4.14 掃描 12 個畫面（含 390px 手機寬度），`list`、`aria-prohibited-attr`、`label-content-name-mismatch` 由 3 類降為 0；並實測對方傳訊、自己另一台裝置傳訊、往上捲動時傳訊三種情況的播報內容。
+
+## 2026-10-23 — 文字對比提高到 WCAG AA（UI／UX 第 1 項）
+
+- 頁首英文小標、訊息時間（自己與對方的泡泡）、日期分隔與捲動時的日期提示、聯絡人頭像縮寫、第 5 組強調色（群組成員名稱）、選取中聯絡人的狀態文字，對比原為 1.6–4.5:1，現在都至少 4.5:1。日期分隔原本是半透明深色底配白字（約 1.6:1），改為淺色底配次要文字色。
+- 本機以桌面 Chrome 與 axe-core 4.14 掃描登入、註冊、聊天清單、群組與私訊聊天室、聯絡人、聯絡人詳情、個人檔案、建立群組視窗，以及 390px 手機寬度：對比違規由 4 類降為 0。其餘結構性無障礙問題另由第 2–4 項的 PR 處理。
+
+## 2026-10-23 — 啟用完整內容安全政策（CSP）（SEC-07）
+
+- Caddy（正式與本機）改送完整 CSP：script／style 只允許同源；圖片只允許同源與 `blob:`（解密後的頭像與附件）；`fetch`／WSS 只允許同源與 GCS 簽章網址；`default-src`、`object-src`、`base-uri` 為 `'none'`，表單只能送往同源，禁止被嵌入。不使用 `unsafe-inline` 或 `unsafe-eval`。
+- 先以 report-only 模式在 CI 的 Chrome／Edge 瀏覽器驗收跑完全部情境（含 review-shell），零違規後才改為強制。
+- 瀏覽器驗收原本使用自己產生的 Caddy 設定、沒有任何安全標頭；現在直接讀取兩份 Caddyfile 的標頭區塊（兩份不一致即失敗），每個瀏覽器設定檔都收集 CSP 違規，並新增檢查：全部頁面零違規、注入的 inline script 與外站圖片會被阻擋並回報。
+- 本機以 Docker stack 的真 Caddy 與桌面 Chrome 實測註冊、登入、加聯絡人、傳訊、重新整理，無 CSP 違規。附件上傳／下載需要真 GCS，尚未在 CSP 下實測。
+
+## 2026-10-23 — 工作階段憑證攻擊負向測試與 SQL 拼接靜態防線（SEC-04）
+
+- 新增 `tests/product/test_session_attacks.py`，對真實 API／PostgreSQL／Redis／BA 共 16 個案例：50 種以上竄改 JWT（錯誤金鑰、原簽章換內文、`alg:none`、HS384／HS512、缺少或為 null 的必要欄位、錯誤型別、`aud` 為清單、未來 `iat`／`nbf`、`exp` 與資料庫不符、他裝置 `did`、`kid`／`crit`）與非 `Bearer ` 標頭，在公開 REST 與內部 validateAccess 皆為 401，且原憑證仍可使用；另涵蓋過期 JWT（重簽與實際 3 秒到期）、舊世代、同裝置取代、過期 refresh cookie、refresh 與登出競態、並行 refresh 只有一個贏家。
+- 真實 WSS：W01 對偽造、他人裝置、refresh 前／登出後／被取代的憑證回相關聯的 UNAUTHENTICATED 並以 1001 關閉、不送出 `auth.accepted`；登出（通知經 Redis 送達，5 秒內）關閉同工作階段的兩個連線而其他裝置不受影響；refresh 後舊世代連線被關閉（1008），其途中 `message.send` 不會得到 ack 也不寫入資料庫；同裝置取代、並行 refresh 與 Redis PUBLISH 被 ACL 拒絕時（改由輪詢關閉）皆已驗證。
+- `tests/integration/test_realtime_boundaries.py` 新增 5 個假後端案例：W01 錯裝置、`session_invalidation` 通知在 PUBLISH 被拒時由輪詢關閉且同 `notice_id` 可重送、較舊世代條目不得關閉新世代、同一工作階段兩個連線同時關閉、`expires_at` 已過期。
+- 新增 `infra/tests/test_sql_static.py`：以 AST 掃描 API 與 BA 原始碼，凡 asyncpg 呼叫（`execute`／`fetch*`／`copy_*` 等）的第一個參數不是純字串常值組成（f-string、`%`、`.format`、函式呼叫、參數皆不允許）即失敗，並附自我檢查案例。目前行為已用 `test_policy_pin_*` 固定供決策：refresh cookie 重播不偵測重用（攻擊者先輪替會讓受害者被鎖出，只有同裝置重新登入可驅逐）、無 cookie 登出回 204 但不撤銷。AC-N04 故障演練（通知遺失加 BA→API 連線中斷）尚未納入。
 
 ## 2026-10-23 — 跨帳號與成員授權的負向測試（SEC-03）
 

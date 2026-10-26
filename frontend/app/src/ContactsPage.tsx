@@ -113,7 +113,7 @@ export function Avatar({ session, attachmentId, name }: { session: SessionContro
     void handle.url.then(value => { if (!active) return; if (value) setUrl(value); else setFailed(true); });
     return () => { active = false; handle.release(); };
   }, [session, attachmentId]);
-  return <span className="avatar" aria-label={failed ? '頭像載入失敗' : name}>{url ? <img src={url} alt={`${name}的頭像`} /> : <span aria-hidden="true">{Array.from(name)[0] ?? 'H'}</span>}</span>;
+  return <span className="avatar" role="img" aria-label={failed ? '頭像載入失敗' : name}>{url ? <img src={url} alt="" /> : <span aria-hidden="true">{Array.from(name)[0] ?? 'H'}</span>}</span>;
 }
 export class ContactLookupLifetime {
   private active = true;
@@ -185,7 +185,7 @@ export function ContactsPage({ session, chat, onNavigate }: { session: SessionCo
       <form className="lookup-form" onSubmit={lookup}><label htmlFor="known-id">已知公開 ID</label><div className="input-action"><input id="known-id" value={knownId} onChange={event => setKnownId(event.target.value)} placeholder="貼上對方分享的 ID" /><button disabled={busy}>查詢</button></div></form>
       <label htmlFor="contact-filter">篩選已載入的聯絡人</label><input id="contact-filter" type="search" value={filter} onChange={event => setFilter(event.target.value)} /><p className="small muted">僅篩選已載入項目，不是全站找人。</p>
       {list.error && <p className="notice error" role="alert">{list.error}</p>}{error && !selected && <p className="notice error" role="alert">{error}</p>}
-      <ul className="item-list">{loaded.map(item => <li key={item.user.id}><button className={`list-item ${selected?.id === item.user.id ? 'selected' : ''}`} onClick={() => selectUser(item.user)}><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /><span className="item-copy"><strong>{item.user.display_name}</strong><span className="muted small">{chat.getSnapshot().presence[item.user.id] ?? item.presence ?? 'unknown'}</span></span><span aria-hidden="true">›</span></button></li>)}</ul>
+      <ul className="item-list">{loaded.map(item => <li key={item.user.id}><button className={`list-item ${selected?.id === item.user.id ? 'selected' : ''}`} onClick={() => selectUser(item.user)}><span aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /></span><span className="item-copy"><strong>{item.user.display_name}</strong><span className="muted small">{chat.getSnapshot().presence[item.user.id] ?? item.presence ?? 'unknown'}</span></span><span aria-hidden="true">›</span></button></li>)}</ul>
       {!loaded.length && !list.busy && <div className="empty-state"><strong>{filter ? '沒有符合的已載入項目' : '還沒有聯絡人'}</strong><p>輸入對方的公開 ID，核對後加入。</p></div>}{list.busy && <p role="status">載入聯絡人…</p>}
       <div className="actions"><button disabled={list.busy} onClick={() => { void list.load(true); }}>重新整理</button>{list.cursor && <button disabled={list.busy} onClick={() => { void list.load(); }}>載入下一頁</button>}</div>
     </div>
