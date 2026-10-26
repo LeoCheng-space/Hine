@@ -1,5 +1,10 @@
 # HINE 文件變更紀錄
 
+## 2026-10-26 — 即時服務映像改用與 API 相同的 Debian 13 基底（依賴稽核）
+
+- Dependency Audit 自 2026-10-26 起在 `main` 失敗：即時服務映像的基底 `python:3.12-slim-bookworm`（Debian 12）含 OpenSSL 的 HIGH 漏洞 CVE-2026-84782（`libssl3`／`openssl` 3.0.22-1~deb12u1）。Debian 已推出修正版 deb12u2，但 Python 官方映像尚未重建。API 映像使用 `python:3.12-slim`（Debian 13），掃描結果是 0。
+- `backend/realtime/Dockerfile` 改用 `python:3.12-slim`，與 API 一致。Debian 12 已在 2026 年 6 月結束一般安全支援，repo 也沒有任何說明需要固定使用 bookworm。本機以 CI 相同版本的 Trivy 0.76.1 重現：改前 2 筆 HIGH，改後 0 筆；隔離 stack 五個服務都 healthy，並以兩個帳號實測 WSS 即時傳訊（寄件者收到 `message.ack`，收件者收到 `message.created`）。
+
 ## 2026-10-23 — 螢幕閱讀器語意修正與新訊息播報（UI／UX 第 2–4 項）
 
 - 訊息清單的日期分隔改為一般清單項目，`<ol>` 只包含 `<li>`，螢幕閱讀器的清單項目數因此正確。
