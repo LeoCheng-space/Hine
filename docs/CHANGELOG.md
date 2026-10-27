@@ -5,6 +5,13 @@
 - Dependency Audit 自 2026-10-26 起在 `main` 失敗：即時服務映像的基底 `python:3.12-slim-bookworm`（Debian 12）含 OpenSSL 的 HIGH 漏洞 CVE-2026-84782（`libssl3`／`openssl` 3.0.22-1~deb12u1）。Debian 已推出修正版 deb12u2，但 Python 官方映像尚未重建。API 映像使用 `python:3.12-slim`（Debian 13），掃描結果是 0。
 - `backend/realtime/Dockerfile` 改用 `python:3.12-slim`，與 API 一致。Debian 12 已在 2026 年 6 月結束一般安全支援，repo 也沒有任何說明需要固定使用 bookworm。本機以 CI 相同版本的 Trivy 0.76.1 重現：改前 2 筆 HIGH，改後 0 筆；隔離 stack 五個服務都 healthy，並以兩個帳號實測 WSS 即時傳訊（寄件者收到 `message.ack`，收件者收到 `message.created`）。
 
+## 2026-10-23 — 介面英文改為中文（UI／UX 第 9 項）
+
+- 頁首小標 `WELCOME TO HINE`、`YOUR PEOPLE`、`YOUR ACCOUNT` 改為「歡迎使用 HINE」「您的聯絡人」「您的帳號」，並把字級由 .65rem 調為 .78rem、字距由 .18em 調為 .08em，讓中文小標也看得清楚。
+- 聯絡人清單的狀態原本直接顯示 `online`／`offline`／`unknown`，改為「線上」「離線」「狀態未知」，與聊天室標題原有的「線上」一致。
+- 個人檔案的頭像選擇原本是瀏覽器內建的檔案欄位，文字隨瀏覽器語言顯示（例如 `Choose File`／`No file chosen`）。改為中文按鈕「選擇頭像圖片…」加上檔名或「尚未選擇檔案」，原本的欄位與標籤保留但隱藏，做法與聊天室的附件按鈕相同。
+- 品牌名稱 HINE、檔案格式（JPEG、PNG、PDF）與快捷鍵名稱維持原樣。
+
 ## 2026-10-23 — 登入／註冊失敗後焦點回到可修正的欄位（UI／UX 第 5 項）
 
 - 送出時欄位會暫時停用，原本焦點因此掉到頁面最外層，鍵盤與螢幕閱讀器使用者必須重新找回輸入框。現在：帳號或密碼錯誤時，焦點回到密碼欄並選取內容，兩個欄位標示 `aria-invalid`；其他失敗時，焦點回到電子郵件欄；註冊成功時，焦點移到「前往登入」。錯誤訊息以 `aria-describedby` 連到欄位。
