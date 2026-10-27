@@ -96,7 +96,8 @@ export function App({ session, chat, router }: { session: SessionController; cha
     { label: '聯絡人', icon: 'contacts', active: route.kind === 'contacts', onSelect: () => router.navigate('/contacts') },
     { label: '個人檔案', icon: 'profile', avatar: selfAvatar, active: route.kind === 'profile', onSelect: () => router.navigate('/profile') },
   ];
-  const brand = <button type="button" className="brand-button" aria-label="HINE 聊天首頁" onClick={() => router.navigate('/chats')}><span className="brand-mark" aria-hidden="true">H</span>{narrow && <strong aria-hidden="true">HINE</strong>}</button>;
+  // The accessible name comes from content so it always contains the visible "HINE" (WCAG 2.5.3 Label in Name).
+  const brand = <button type="button" className="brand-button" onClick={() => router.navigate('/chats')}><span className="brand-mark" aria-hidden="true">H</span>{narrow ? <><strong>HINE</strong><span className="visually-hidden"> 聊天首頁</span></> : <span className="visually-hidden">HINE 聊天首頁</span>}</button>;
   return <div className={`app-shell${narrow ? ' narrow' : ''}`}><a className="skip-link" href="#main-content">跳至主要內容</a>
     {narrow
       ? <header className="app-nav app-topbar">

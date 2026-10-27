@@ -1,4 +1,6 @@
-FROM python:3.12-slim-bookworm
+# Same base as backend/api/Dockerfile (Debian 13 "trixie"): Debian 12 left regular security support in June 2026,
+# and its python image lags OpenSSL fixes that the dependency-audit gate requires (e.g. CVE-2026-84782).
+FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/backend/realtime/src \
