@@ -21,6 +21,23 @@ function subscribeNarrow(listener: () => void): () => void { const query = match
 function narrowSnapshot(): boolean { return matchMedia(NARROW_QUERY).matches; }
 /** Owners whose unresolved group-creation intent was already auto-opened in this page load (design §8). */
 const autoOpenedIntents = new Set<string>();
+
+function PublicHome({ onNavigate }: { onNavigate: (path: string) => void }) {
+  return <main className="account-page">
+    <div className="brand-lockup"><span className="brand-mark">H</span><div><strong>HINE</strong><p>讓每一次對話，更靠近。</p></div></div>
+    <section className="card account-card">
+      <p className="eyebrow">WELCOME TO HINE</p>
+      <h1 tabIndex={-1} data-route-heading>HINE 即時通訊</h1>
+      <p className="muted">跨平台即時聊天、群組通訊、圖片與檔案傳輸，以及離線同步。</p>
+      <div className="actions">
+        <button className="primary" type="button" onClick={() => onNavigate('/register')}>免費註冊</button>
+        <button type="button" onClick={() => onNavigate('/login')}>登入</button>
+      </div>
+      <p className="security-note">HTTPS 安全連線 · 即時訊息 · 多裝置工作階段</p>
+    </section>
+  </main>;
+}
+
 export function App({ session, chat, router }: { session: SessionController; chat: ChatController; router: BrowserRouter }) {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot), chatSnapshot = useSyncExternalStore(chat.subscribe, chat.getSnapshot), path = useSyncExternalStore(router.subscribe, router.getSnapshot);
   const route = parseRoute(path), requested = useRef<string | null>(route && !['root', 'login', 'register'].includes(route.kind) ? path : null);
@@ -56,7 +73,7 @@ export function App({ session, chat, router }: { session: SessionController; cha
     let active = true; setAllowedKey(null); setRouteError(null);
     if (snapshot.phase !== 'ready' || context.state === 'refreshing') return;
     if (!route) return;
-    if (context.state === 'logged_out') { if (route.kind !== 'login' && route.kind !== 'register') { if (route.kind !== 'root') requested.current = path; router.navigate('/login', true); } return; }
+    if (context.state === 'logged_out') { if (!['root', 'login', 'register'].includes(route.kind)) { requested.current = path; router.navigate('/login', true); } return; }
     if (route.kind === 'root') { router.navigate('/chats', true); return; }
     if (route.kind === 'login' || route.kind === 'register') { void returnAfterLogin(); return; }
     if (route.kind !== 'chat') chat.closeChat();
@@ -72,11 +89,15 @@ export function App({ session, chat, router }: { session: SessionController; cha
   useEffect(() => {
     if ((route?.kind === 'chat' || route?.kind === 'group') && chatSnapshot.denied.includes(route.conversationId)) { setAllowedKey(null); setShellNotice('您已離開或被移出這個群組。'); router.navigate('/chats', true); }
   }, [chatSnapshot.denied, path]);
-  useEffect(() => { if (allowedKey === key || routeError || route?.kind === 'login' || route?.kind === 'register') document.querySelector<HTMLElement>('[data-route-heading]')?.focus(); }, [path, allowedKey, routeError]);
+  useEffect(() => { if (allowedKey === key || routeError || route?.kind === 'root' || route?.kind === 'login' || route?.kind === 'register') document.querySelector<HTMLElement>('[data-route-heading]')?.focus(); }, [path, allowedKey, routeError]);
   if (snapshot.phase === 'unsupported' || snapshot.phase === 'blocked') return <main className="status-page"><span className="brand-mark">H</span><h1>{snapshot.phase === 'blocked' ? '聊天已在另一個分頁開啟' : '無法啟用安全聊天'}</h1><p role="alert">{snapshot.error}</p><p className="muted">{snapshot.phase === 'blocked' ? '請關閉另一個操作分頁，再重新載入此頁面。' : '請使用 HTTPS 與新版 Chrome / Edge，並允許 Cookie 與本機儲存。'}</p><button onClick={() => location.reload()}>重新載入</button></main>;
   if (snapshot.phase === 'initializing' || context.state === 'refreshing') return <main className="status-page"><span className="brand-mark">H</span><h1>正在安全初始化</h1><p role="status">確認工作階段與本機儲存…</p></main>;
   if (!route) return <main className="status-page"><h1>找不到這個頁面</h1><button onClick={() => router.navigate('/', true)}>返回首頁</button></main>;
-  if (context.state === 'logged_out') return route.kind === 'login' || route.kind === 'register' ? <><AccountPage key={route.kind} session={session} mode={route.kind} onNavigate={router.navigate} onAuthenticated={returnAfterLogin} />{snapshot.error && <div className="session-notice notice error" role="alert">{snapshot.error}</div>}</> : <main className="status-page"><p role="status">導向登入頁…</p></main>;
+  if (context.state === 'logged_out') {
+    if (route.kind === 'root') return <PublicHome onNavigate={router.navigate} />;
+    if (route.kind === 'login' || route.kind === 'register') return <><AccountPage key={route.kind} session={session} mode={route.kind} onNavigate={router.navigate} onAuthenticated={returnAfterLogin} />{snapshot.error && <div className="session-notice notice error" role="alert">{snapshot.error}</div>}</>;
+    return <main className="status-page"><p role="status">導向登入頁…</p></main>;
+  }
   if (route.kind === 'root' || route.kind === 'login' || route.kind === 'register') return <main className="status-page"><p role="status">確認返回頁面權限…</p></main>;
   const titles: Record<string,string> = { chats: '聊天', chat: '聊天', contacts: '聯絡人', profile: '個人檔案', group: '群組管理' };
   let content;
