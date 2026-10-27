@@ -88,11 +88,11 @@ export function usePagedList<T>(session: SessionController, scope: 'contacts' | 
   return { items: current.items, cursor: current.cursor, busy: current.busy, error: current.error, load: lifecycle.load };
 }
 export async function fetchAvatarBytes(grant: DownloadGrant, fetcher: (url: string, init: globalThis.RequestInit) => Promise<Response> = fetch, signal?: AbortSignal): Promise<Blob> {
-  if (!['image/jpeg', 'image/png'].includes(grant.content_type)) throw new Error('頭像類型不正確，請重新取得授權。');
+  if (!['image/jpeg', 'image/png'].includes(grant.content_type)) throw new Error('頭像格式不正確，請重新載入。');
   const response = await fetcher(grant.download_url, { credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer', signal });
-  if (!response.ok) throw new Error('頭像固定版本無法載入，請重新取得授權。');
+  if (!response.ok) throw new Error('頭像無法載入，請重新載入。');
   const blob = await response.blob();
-  if (blob.size !== grant.size_bytes) throw new Error('頭像位元組與已核驗版本不符。');
+  if (blob.size !== grant.size_bytes) throw new Error('頭像檔案大小與已檢查的檔案不符。');
   return blob;
 }
 /** Downloads verified avatar bytes for the cache, aborting after 30 seconds like the original per-component fetch. */
@@ -187,7 +187,7 @@ export function ContactsPage({ session, chat, onNavigate }: { session: SessionCo
       <label htmlFor="contact-filter">篩選已載入的聯絡人</label><input id="contact-filter" type="search" value={filter} onChange={event => setFilter(event.target.value)} /><p className="small muted">僅篩選已載入項目，不是全站找人。</p>
       {list.error && <p className="notice error" role="alert">{list.error}</p>}{error && !selected && <p className="notice error" role="alert">{error}</p>}
       <ul className="item-list">{loaded.map(item => <li key={item.user.id}><button className={`list-item ${selected?.id === item.user.id ? 'selected' : ''}`} onClick={() => selectUser(item.user)}><span aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /></span><span className="item-copy"><strong>{item.user.display_name}</strong><span className="muted small">{PRESENCE_LABEL[chat.getSnapshot().presence[item.user.id] ?? item.presence ?? 'unknown']}</span></span><span aria-hidden="true">›</span></button></li>)}</ul>
-      {!loaded.length && !list.busy && <div className="empty-state"><strong>{filter ? '沒有符合的已載入項目' : '還沒有聯絡人'}</strong><p>輸入對方的公開 ID，核對後加入。</p></div>}{list.busy && <p role="status">載入聯絡人…</p>}
+      {!loaded.length && !list.busy && <div className="empty-state"><strong>{filter ? '沒有符合的已載入項目' : '還沒有聯絡人'}</strong><p>輸入對方的公開 ID，確認後加入。</p></div>}{list.busy && <p role="status">載入聯絡人…</p>}
       <div className="actions"><button disabled={list.busy} onClick={() => { void list.load(true); }}>重新整理</button>{list.cursor && <button disabled={list.busy} onClick={() => { void list.load(); }}>載入下一頁</button>}</div>
     </div>
     <div className="detail-panel">{selected ? <>

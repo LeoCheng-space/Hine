@@ -144,7 +144,7 @@ export class ChatController {
   };
   socket.onclose=()=>{if(this.ws===socket)this.connectionLost(epoch);};socket.onerror=()=>{if(this.ws===socket)this.connectionLost(epoch);};
  }
- private connectionLost(epoch:number):void {if(epoch!==this.epoch)return;this.disconnect();this.publish({connection:'offline',error:'連線中斷；未確認的訊息保留原傳送意圖。'});if(this.valid(epoch)&&navigator.onLine){const timer=window.setTimeout(()=>this.connect(epoch),1500);this.timers.push(timer);}}
+ private connectionLost(epoch:number):void {if(epoch!==this.epoch)return;this.disconnect();this.publish({connection:'offline',error:'連線中斷；尚未確認的訊息已保留。'});if(this.valid(epoch)&&navigator.onLine){const timer=window.setTimeout(()=>this.connect(epoch),1500);this.timers.push(timer);}}
  private foreground=():void=>{if(document.visibilityState!=='visible'||!navigator.onLine||!this.valid())return;if(!this.ws)this.connect(this.epoch);else if(this.accepted)void this.reconcile().then(()=>this.flush()).catch(error=>this.operationError(error));};
  private offline=():void=>{this.connectionLost(this.epoch);};
  private ping(epoch:number):void {
@@ -199,7 +199,7 @@ export class ChatController {
   await this.commit(state=>applyEvents(state,events,this.binding?.user??'',joins),epoch,valid,[id],events);
   if(!valid())throw new RepositoryCancelled();this.observedDenied.delete(id);this.verifiedGroups.add(id);this.publish();
  }
- private invalidate():void {this.blockedToken=this.binding?.token??null;++this.epoch;this.disconnect();this.state=emptyPartition();this.publish({connection:'blocked',currentConversation:null,error:'工作階段已失效，請重新登入。',presence:{}});this.session.invalidateAuthentication();}
+ private invalidate():void {this.blockedToken=this.binding?.token??null;++this.epoch;this.disconnect();this.state=emptyPartition();this.publish({connection:'blocked',currentConversation:null,error:'登入已失效，請重新登入。',presence:{}});this.session.invalidateAuthentication();}
  private async commit(change:(state:Partition)=>void,epoch=this.epoch,guard:()=>boolean=()=>true,metadataIds?:Iterable<string>,metadataEvents?:Iterable<WireEvent>,snapshotAuthorities?:Record<string,ConversationDetail>):Promise<void> {
   const repository=this.repository;if(!repository||!this.valid(epoch))throw new ChatFault('UNAUTHENTICATED');
   const versions=metadataIds?new Map<string,number>():null;
@@ -233,7 +233,7 @@ export class ChatController {
    this.state=result;this.publish();
   }catch(error){if(epoch===this.epoch&&!(error instanceof RepositoryCancelled))this.failClosed(error);throw error;}
  }
- private operationError(error:unknown):void {if(error instanceof StorageFault||error instanceof RepositoryCancelled||!this.valid())return;if(error instanceof ChatFault&&error.code==='UNAUTHENTICATED')return;this.publish({error:'操作尚未完成，請稍後核對或重試。'});}
+ private operationError(error:unknown):void {if(error instanceof StorageFault||error instanceof RepositoryCancelled||!this.valid())return;if(error instanceof ChatFault&&error.code==='UNAUTHENTICATED')return;this.publish({error:'操作尚未完成，請稍後確認或重試。'});}
  async reconcile():Promise<void> {
   if(!this.valid()||!this.accepted)return;if(this.syncing)return this.syncing;
   const epoch=this.epoch,scope=this.scope,sourceValid=():boolean=>this.valid(epoch)&&this.scope===scope&&scope!==null&&!scope.queue.abort.signal.aborted;
@@ -454,14 +454,14 @@ export class ChatController {
    }catch(error){
     if(error instanceof AttachmentTransferError&&error.retry)operation.task=error.retry;
     const permanent=operation.blocked||error instanceof StorageFault||error instanceof Error&&'code' in error&&['FORBIDDEN','NOT_FOUND','INVALID_ARGUMENT','UPLOAD_EXPIRED','CONFLICT'].includes(String(error.code));
-    operation.state={phase:operation.ready?'ready':'waiting',error:error instanceof AttachmentTransferError?error.message:'附件尚未傳送；原上傳嘗試或已核驗附件已保留。',retryable:!permanent&&(operation.ready!==null||error instanceof AttachmentTransferError&&error.retry!==null),attemptCreated:operation.ready!==null||error instanceof AttachmentTransferError&&error.attemptCreated};this.publish();throw error;
+    operation.state={phase:operation.ready?'ready':'waiting',error:error instanceof AttachmentTransferError?error.message:'附件尚未傳送；原本的上傳或已檢查完成的附件已保留。',retryable:!permanent&&(operation.ready!==null||error instanceof AttachmentTransferError&&error.retry!==null),attemptCreated:operation.ready!==null||error instanceof AttachmentTransferError&&error.attemptCreated};this.publish();throw error;
    }
   };
   const promise=run();operation.running=promise;void promise.finally(()=>{if(operation.running===promise)operation.running=null;}).catch(()=>{});return promise;
  }
  private blockAttachments(conversationId:string):void {
   const binding=this.binding;if(!binding)return;
-  let changed=false;for(const operation of this.attachmentOperations.values())if(operation.conversationId===conversationId&&operation.userId===binding.user&&operation.deviceId===binding.device&&!operation.blocked){operation.blocked=true;operation.state={phase:'waiting',error:'對話權限已變更，舊附件傳送意圖已停止。',retryable:false,attemptCreated:operation.state.attemptCreated};changed=true;}
+  let changed=false;for(const operation of this.attachmentOperations.values())if(operation.conversationId===conversationId&&operation.userId===binding.user&&operation.deviceId===binding.device&&!operation.blocked){operation.blocked=true;operation.state={phase:'waiting',error:'對話權限已變更，原本待傳送的附件已停止。',retryable:false,attemptCreated:operation.state.attemptCreated};changed=true;}
   if(changed)this.publish();
  }
  async retryIntent(c1:string):Promise<void> {const intent=this.state.intents[c1];if(!intent||intent.status==='persisted'||this.state.denied.includes(intent.conversationId)||intent.retryAt!==null&&intent.retryAt>Date.now())return;this.manualIntentRetries.add(c1);await this.commit(state=>{const value=state.intents[c1];value.status='unknown';value.autoRetryStopped=false;if(value.error!=='MEMBERSHIP_RECHECK_REQUIRED')value.error=null;});void this.flush();}

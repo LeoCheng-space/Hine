@@ -117,13 +117,13 @@ export class SessionController {
       await new Promise<void>((resolve, reject) => {
         const request = indexedDB.open('hine-capabilities', 1);
         request.onupgradeneeded = () => { request.result.createObjectStore('probe'); };
-        request.onerror = () => reject(new Error('IndexedDB 不可用。'));
-        request.onblocked = () => reject(new Error('IndexedDB 被阻擋。'));
+        request.onerror = () => reject(new Error('瀏覽器的資料儲存功能不可用。'));
+        request.onblocked = () => reject(new Error('瀏覽器的資料儲存功能被封鎖。'));
         request.onsuccess = () => {
           const db = request.result, tx = db.transaction('probe', 'readwrite');
           tx.objectStore('probe').put(1, probe); tx.objectStore('probe').delete(probe);
           tx.oncomplete = () => { db.close(); resolve(); };
-          tx.onerror = tx.onabort = () => { db.close(); reject(new Error('IndexedDB 無法保存資料。')); };
+          tx.onerror = tx.onabort = () => { db.close(); reject(new Error('瀏覽器無法儲存資料。')); };
         };
       });
       await new Promise<void>((resolve, reject) => {
@@ -140,7 +140,7 @@ export class SessionController {
       if (!this.disposed && this.snapshot.phase === 'initializing') this.publish(this.snapshot.context, 'ready', this.snapshot.error);
     } catch (error) { this.clear(); this.publish(loggedOut, 'unsupported', describeError(error)); }
   }
-  private requireLock(): void { if (!this.locked || this.disposed || this.snapshot.phase === 'unsupported') throw new Error('此分頁尚未取得安全聊天工作階段。'); }
+  private requireLock(): void { if (!this.locked || this.disposed || this.snapshot.phase === 'unsupported') throw new Error('此分頁尚未啟用安全聊天。'); }
   private clear(): void { ++this.epoch; clearTimeout(this.timer); this.timer = undefined; this.activeAbort?.abort(); this.activeAbort = undefined; this.publish(loggedOut); }
   private async install(value: unknown, submittedEmail?: string, previous?: SessionContext): Promise<void> {
     const access = decodeAccessSession(value, previous), epoch = this.epoch;
@@ -236,7 +236,7 @@ export class SessionController {
     try { const result = await wireRequest<T>(this.config, path, init, context.access_token, init.signal); if (epoch !== this.epoch || this.disposed) throw new ApiError('UNAUTHENTICATED'); return result; }
     catch (error) { if (error instanceof ApiError && error.code === 'UNAUTHENTICATED' && error.authLayer !== 'service' && epoch === this.epoch) { this.clear(); this.publish(loggedOut, 'ready', error.message); } throw error; }
   }
-  invalidateAuthentication(): void { this.clear(); this.publish(loggedOut, 'ready', '工作階段已失效，請重新登入。'); }
+  invalidateAuthentication(): void { this.clear(); this.publish(loggedOut, 'ready', '登入已失效，請重新登入。'); }
   failStorage(error: unknown): void { this.clear(); this.publish(loggedOut, 'unsupported', '本機儲存不可用，已停止聊天。' + describeError(error)); }
   dispose(): void { if (this.disposed) return; this.disposed = true; this.clear(); this.releaseLock?.(); this.releaseLock = undefined; this.listeners.clear(); }
 }
