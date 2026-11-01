@@ -12,6 +12,7 @@ import { accentIndex, buildTimeline, entryAnimationIds } from './chat-presentati
 import { DatePill, DateSeparator, IntentRow, MessageRow } from './MessageRow';
 import { Avatar } from './ContactsPage';
 import { Icon } from './icons';
+import { Illustration } from './Illustration';
 import { directoryFor } from './user-directory';
 import './Chat.css';
 
@@ -121,25 +122,26 @@ export function Chat({session,chat,conversationId,onNavigate}:{session:SessionCo
   try{await chat.refreshConversation(id);if(currentOwner()&&chat.getSnapshot().currentConversation===id&&!chat.getSnapshot().denied.includes(id))setGroupInfoOpen(true);}
   catch{if(currentOwner())setError('群組資訊尚未取得；請重試並確認權限。');}
  }
- if(!conversationId)return <section className="chat-empty empty-state"><span className="empty-symbol" aria-hidden="true">◌</span><h2>選擇一段對話</h2><p>從聊天清單繼續，或到聯絡人開啟新的對話。</p><button type="button" onClick={()=>onNavigate('/contacts')}>前往聯絡人</button></section>;
+ if(!conversationId)return <section className="chat-empty empty-state"><Illustration kind="conversation" /><h2>選擇一段對話</h2><p>從聊天清單繼續，或到聯絡人開啟新的對話。</p><button type="button" onClick={()=>onNavigate('/contacts')}>前往聯絡人</button></section>;
  if(!authorized)return <section className="chat-loading"><h2 tabIndex={-1}>正在確認對話</h2><p role="status">{snapshot.connection==='blocked'?'聊天已停止，請重新載入。':'正在取得目前的對話權限…'}</p>{(error||snapshot.error)&&<p role="alert">{error??snapshot.error}</p>}<button type="button" onClick={()=>onNavigate('/chats')}>返回聊天清單</button></section>;
  const title=detail.type==='group'?detail.title:detail.members.filter(member=>member.user_id!==me).map(member=>nameOf(member.user_id)).join('、');
  const peer=detail.type==='direct'?detail.members.find(member=>member.user_id!==me)?.user_id:undefined,peerEntry=peer?directory.get(peer):undefined;
- const subtitle=detail.type==='group'?`${detail.members.length} 位成員`:peer&&snapshot.presence[peer]==='online'?'線上':'';
+ const online=!!peer&&snapshot.presence[peer]==='online';
+ const subtitle=detail.type==='group'?`${detail.members.length} 位成員`:online?'線上':'';
  return <section ref={root} className="chat-room" aria-labelledby="chat-title">
   <header className="chat-header" data-read-occlusion>
-   <span className={`avatar-accent accent-${accentIndex(peer??detail.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={peerEntry&&!peerEntry.avatarStale?peerEntry.avatarId:null} name={title??'對話'}/></span>
-   <div className="chat-header-copy"><h1 ref={heading} id="chat-title" tabIndex={-1} data-route-heading>{title??'對話'}</h1><p className="chat-subtitle">{subtitle&&<span>{subtitle} · </span>}<small role="status">{CONNECTION_LABEL[snapshot.connection]}</small></p></div>
+   <span className={`avatar-accent accent-${accentIndex(peer??detail.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={peerEntry&&!peerEntry.avatarStale?peerEntry.avatarId:null} name={title??'對話'}/>{online&&<span className="presence-dot"/>}</span>
+   <div className="chat-header-copy"><h1 ref={heading} id="chat-title" tabIndex={-1} data-route-heading>{title??'對話'}</h1><p className="chat-subtitle">{subtitle&&<span className={online?'online':undefined}>{subtitle} · </span>}<small role="status" className={`connection-status ${snapshot.connection}`}>{CONNECTION_LABEL[snapshot.connection]}</small></p></div>
    {detail.type==='group'&&<button ref={groupInfoButton} type="button" className="icon-button chat-info-button" aria-haspopup="dialog" aria-controls="group-info-dialog" aria-expanded={groupInfoOpen} onClick={() => { void openGroupInfo(); }}><Icon name="info"/><span className="visually-hidden">群組資訊</span></button>}
   </header>
   {(error || snapshot.error) && <div className="chat-notice notice error" role="alert" data-read-occlusion>{error ?? snapshot.error}</div>}
-  {groupInfoOpen && detail.type === 'group' && <GroupInfoDialog detail={detail} names={Object.fromEntries(detail.members.map(member=>[member.user_id,nameOf(member.user_id)]))} onClose={closeGroupInfo} returnFocus={restoreGroupInfoFocus} onManage={() => { setGroupInfoOpen(false); onNavigate(`/groups/${encodeURIComponent(conversationId)}/manage`); }} />}
+  {groupInfoOpen && detail.type === 'group' && <GroupInfoDialog session={session} detail={detail} names={Object.fromEntries(detail.members.map(member=>[member.user_id,nameOf(member.user_id)]))} onClose={closeGroupInfo} returnFocus={restoreGroupInfoFocus} onManage={() => { setGroupInfoOpen(false); onNavigate(`/groups/${encodeURIComponent(conversationId)}/manage`); }} />}
   <AttachmentRecovery transfer={transfer} onRetry={() => { void chat.retryAttachment(conversationId).catch(() => { if (!chat.getAttachmentTransfer(conversationId)) setError('原本的附件上傳尚未完成。'); }); }} />
   {pausedReceipts && <div className="chat-notice notice" role="status" data-read-occlusion><p>已讀／送達通知傳送過於頻繁，已停止自動重試；需要等待的時間仍會保留。</p><button type="button" onClick={() => { void chat.retryReceipts(conversationId).catch(() => setError('已讀／送達通知尚未重試。')); }}>手動重試已讀／送達通知</button></div>}
   {quarantined.length > 0 && <div className="chat-notice notice" role="status" data-read-occlusion><p>權限變更前送出、尚未確認結果的訊息已保留，但不會顯示內容。可以用目前的權限重新確認結果。</p>{quarantined.map(intent => <button type="button" key={intent.clientMessageId} disabled={snapshot.connection !== 'ready' || intent.retryAt !== null && intent.retryAt > Date.now()} onClick={() => { void chat.retryIntent(intent.clientMessageId).catch(() => setError('保留的訊息尚未確認結果。')); }}>重新確認原訊息</button>)}</div>}
   <div ref={scroller} className="message-scroller" role="region" aria-label="訊息對話串" tabIndex={0} onScroll={()=>captureAnchor()}>
    {snapshot.historyMore[conversationId]!==false&&<div className="history-control"><button type="button" disabled={loadingHistory} onClick={()=>{void historyPage();}}>{loadingHistory?'正在載入…':'載入較早訊息'}</button></div>}
-   {!messages.length&&!pending.length&&<p className="chat-start muted">這裡還沒有訊息。傳送第一則訊息開始對話。</p>}
+   {!messages.length&&!pending.length&&<p className="chat-start muted"><strong>這裡還沒有訊息</strong>傳送第一則訊息開始對話。</p>}
    <ol className="message-list">
     {timeline.map(item=>{
      if(item.kind==='date')return <DateSeparator key={item.key} label={item.label}/>;

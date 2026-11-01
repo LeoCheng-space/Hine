@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEv
 import { describeError, ownerPartition } from './api';
 import { AttachmentTransferError, uploadAttachment } from './attachment-transfer';
 import { Avatar } from './ContactsPage';
+import { accentIndex } from './chat-presentation';
+import { CopyButton } from './CopyButton';
+import { Icon } from './icons';
 import { directoryFor } from './user-directory';
 import type { SessionController } from './session';
 import type { AttachmentView, UserProfile } from './types';
@@ -86,29 +89,33 @@ export function ProfilePage({ session }: { session: SessionController }) {
   }
   const name = draft.name ?? '', avatar = draft.avatarId ?? null;
   return <section className="page-content profile-page">
-    <p className="eyebrow">您的帳號</p><h1 tabIndex={-1} data-route-heading>個人檔案</h1><p className="muted">您的公開身分，以及只對您顯示的帳號資料。</p>
+    <header className="page-header"><p className="eyebrow">您的帳號</p><h1 tabIndex={-1} data-route-heading>個人檔案</h1><p className="muted">您的公開身分，以及只對您顯示的帳號資料。</p></header>
     {loading && <p role="status">載入個人檔案…</p>}{(loadError || draft.error) && <p className="notice error" role="alert">{loadError ?? draft.error}</p>}
     {!profile && !loading && <button onClick={() => { void load(); }}>重新載入</button>}
     {profile && <form className="card profile-form" onSubmit={save}>
-      <label htmlFor="profile-name">顯示名稱</label><input id="profile-name" value={name} onChange={event => recovery.update({ name: event.target.value })} disabled={draft.pending} aria-invalid={!name} />
-      <label htmlFor="profile-email">電子郵件（僅本人可見）</label><input id="profile-email" type="email" value={profile.email} readOnly />
-      <label htmlFor="profile-id">公開 ID（分享給對方以加入聯絡人）</label><input id="profile-id" value={profile.id} readOnly />
-      <div className="avatar-editor">
-        {preview ? <img className="avatar-preview" src={preview} alt="待儲存頭像預覽" /> : <Avatar session={session} attachmentId={avatar} name={name} />}
+      <div className="profile-cover" aria-hidden="true" />
+      <div className="profile-body">
+        <div className="profile-identity">
+          {preview ? <img className="avatar-preview" src={preview} alt="待儲存頭像預覽" /> : <span className={`avatar-accent accent-${accentIndex(profile.id)}`}><Avatar session={session} attachmentId={avatar} name={name} /></span>}
+          <div className="profile-identity-copy"><strong>{name || profile.display_name}</strong><span className="muted small">{profile.email}</span></div>
+        </div>
         {/* The native file input renders in the browser's UI language ("Choose File / No file chosen"); it stays as the
             labelled form control but is driven by a Chinese button, the same pattern as the chat attachment picker. */}
-        <div><label htmlFor="profile-avatar">更換頭像</label><input ref={avatarInput} id="profile-avatar" className="visually-hidden" tabIndex={-1} type="file" accept="image/jpeg,image/png" disabled={draft.pending} onChange={event => recovery.select(event.target.files?.[0] ?? null)} />
-          <div className="file-picker"><button type="button" disabled={draft.pending} aria-describedby="profile-avatar-file" onClick={() => avatarInput.current?.click()}>選擇頭像圖片…</button><span id="profile-avatar-file" className="small">{draft.file?.name ?? '尚未選擇檔案'}</span></div>
+        <div className="avatar-editor"><label htmlFor="profile-avatar">更換頭像</label><input ref={avatarInput} id="profile-avatar" className="visually-hidden" tabIndex={-1} type="file" accept="image/jpeg,image/png" disabled={draft.pending} onChange={event => recovery.select(event.target.files?.[0] ?? null)} />
+          <div className="file-picker"><button type="button" disabled={draft.pending} aria-describedby="profile-avatar-file" onClick={() => avatarInput.current?.click()}><Icon name="camera" />選擇頭像圖片…</button><span id="profile-avatar-file" className="small">{draft.file?.name ?? '尚未選擇檔案'}</span>
+            <button type="button" className="text-button" disabled={draft.pending} onClick={() => { recovery.select(null); recovery.update({ avatarId: null }); }}>移除頭像</button></div>
           <p className="small muted">JPEG / PNG，最大 10 MiB。檢查完成後才會套用頭像。</p>
-          <button type="button" disabled={draft.pending} onClick={() => { recovery.select(null); recovery.update({ avatarId: null }); }}>移除頭像</button>
         </div>
-      </div>
-      {draft.readyId && <p className="notice" role="status">頭像已檢查完成。再次儲存只會確認是否套用，不會重新上傳。</p>}
-      {draft.attemptRetained && !draft.readyId && <p className="notice" role="status">原本的頭像上傳已保留。再次儲存會繼續確認同一次上傳。</p>}
-      {draft.expired && <p className="notice error" role="alert">原本的上傳已過期。請重新選取檔案，再上傳一次。</p>}
-      {draft.notice && <p className="notice success" role="status">{draft.notice}</p>}
-      <div className="actions"><button className="primary" disabled={draft.pending || draft.expired} type="submit">{draft.pending ? '正在儲存…' : '儲存'}</button>
-        <button disabled={draft.pending} type="button" onClick={() => { recovery.select(null); recovery.update({ name: profile.display_name, avatarId: profile.avatar_attachment_id, error: null, notice: null }); }}>取消變更</button>
+        <label htmlFor="profile-name">顯示名稱</label><input id="profile-name" value={name} onChange={event => recovery.update({ name: event.target.value })} disabled={draft.pending} aria-invalid={!name} />
+        <label htmlFor="profile-email">電子郵件（僅本人可見）</label><input id="profile-email" type="email" value={profile.email} readOnly />
+        <label htmlFor="profile-id">公開 ID（分享給對方以加入聯絡人）</label><div className="input-action"><input id="profile-id" value={profile.id} readOnly /><CopyButton value={profile.id} subject="公開 ID" /></div>
+        {draft.readyId && <p className="notice" role="status">頭像已檢查完成。再次儲存只會確認是否套用，不會重新上傳。</p>}
+        {draft.attemptRetained && !draft.readyId && <p className="notice" role="status">原本的頭像上傳已保留。再次儲存會繼續確認同一次上傳。</p>}
+        {draft.expired && <p className="notice error" role="alert">原本的上傳已過期。請重新選取檔案，再上傳一次。</p>}
+        {draft.notice && <p className="notice success" role="status">{draft.notice}</p>}
+        <div className="actions"><button className="primary" disabled={draft.pending || draft.expired} type="submit">{draft.pending ? '正在儲存…' : '儲存'}</button>
+          <button disabled={draft.pending} type="button" onClick={() => { recovery.select(null); recovery.update({ name: profile.display_name, avatarId: profile.avatar_attachment_id, error: null, notice: null }); }}>取消變更</button>
+        </div>
       </div>
     </form>}
   </section>;

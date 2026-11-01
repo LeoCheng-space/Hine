@@ -74,16 +74,16 @@ export function App({ session, chat, router }: { session: SessionController; cha
   }, [chatSnapshot.denied, path]);
   useEffect(() => { if (allowedKey === key || routeError || route?.kind === 'login' || route?.kind === 'register') document.querySelector<HTMLElement>('[data-route-heading]')?.focus(); }, [path, allowedKey, routeError]);
   if (snapshot.phase === 'unsupported' || snapshot.phase === 'blocked') return <main className="status-page"><span className="brand-mark">H</span><h1>{snapshot.phase === 'blocked' ? '聊天已在另一個分頁開啟' : '無法啟用安全聊天'}</h1><p role="alert">{snapshot.error}</p><p className="muted">{snapshot.phase === 'blocked' ? '請關閉另一個聊天分頁，再重新載入此頁面。' : '請使用 HTTPS 與新版 Chrome / Edge，並允許 Cookie 與本機儲存。'}</p><button onClick={() => location.reload()}>重新載入</button></main>;
-  if (snapshot.phase === 'initializing' || context.state === 'refreshing') return <main className="status-page"><span className="brand-mark">H</span><h1>正在準備安全連線</h1><p role="status">確認登入狀態與本機儲存…</p></main>;
-  if (!route) return <main className="status-page"><h1>找不到這個頁面</h1><button onClick={() => router.navigate('/', true)}>返回首頁</button></main>;
-  if (context.state === 'logged_out') return route.kind === 'login' || route.kind === 'register' ? <><AccountPage key={route.kind} session={session} mode={route.kind} onNavigate={router.navigate} onAuthenticated={returnAfterLogin} />{snapshot.error && <div className="session-notice notice error" role="alert">{snapshot.error}</div>}</> : <main className="status-page"><p role="status">導向登入頁…</p></main>;
-  if (route.kind === 'root' || route.kind === 'login' || route.kind === 'register') return <main className="status-page"><p role="status">確認返回頁面權限…</p></main>;
+  if (snapshot.phase === 'initializing' || context.state === 'refreshing') return <main className="status-page loading"><span className="brand-mark">H</span><h1>正在準備安全連線</h1><p role="status" className="muted">確認登入狀態與本機儲存…</p></main>;
+  if (!route) return <main className="status-page"><span className="brand-mark">H</span><h1>找不到這個頁面</h1><p className="muted">網址可能有誤，或頁面已經不存在。</p><button onClick={() => router.navigate('/', true)}>返回首頁</button></main>;
+  if (context.state === 'logged_out') return route.kind === 'login' || route.kind === 'register' ? <><AccountPage key={route.kind} session={session} mode={route.kind} onNavigate={router.navigate} onAuthenticated={returnAfterLogin} />{snapshot.error && <div className="session-notice notice error" role="alert">{snapshot.error}</div>}</> : <main className="status-page loading"><span className="brand-mark">H</span><p role="status" className="muted">導向登入頁…</p></main>;
+  if (route.kind === 'root' || route.kind === 'login' || route.kind === 'register') return <main className="status-page loading"><span className="brand-mark">H</span><p role="status" className="muted">確認返回頁面權限…</p></main>;
   const titles: Record<string,string> = { chats: '聊天', chat: '聊天', contacts: '聯絡人', profile: '個人檔案', group: '群組管理' };
   let content;
   if (routeError) content = <section className="page-content"><h1 tabIndex={-1} data-route-heading>無法存取此頁面</h1><p className="notice error" role="alert">{routeError}</p><button onClick={() => router.navigate('/chats', true)}>返回聊天清單</button></section>;
   // Chat routes keep one ChatList instance across conversation switches; only the room waits for its A12 authorization (design R13).
   else if (route.kind === 'chats' || route.kind === 'chat') content = <section className={`split-page chats-page ${route.kind === 'chat' ? 'detail-selected' : ''}`}><ChatList session={session} chat={chat} path={path} onNavigate={router.navigate} onCreateGroup={openCreate} /><div className="detail-panel chat-detail">{allowedKey === key
-    ? <>{route.kind === 'chat' && <button className="narrow-back text-button" onClick={() => router.navigate('/chats')}>← 返回聊天清單</button>}<Chat session={session} chat={chat} conversationId={route.kind === 'chat' ? route.conversationId : null} onNavigate={router.navigate} /></>
+    ? <>{route.kind === 'chat' && <button className="narrow-back text-button" onClick={() => router.navigate('/chats')}><Icon name="back" /><span className="visually-hidden">返回聊天清單</span></button>}<Chat session={session} chat={chat} conversationId={route.kind === 'chat' ? route.conversationId : null} onNavigate={router.navigate} /></>
     : <p role="status" className="chat-loading">正在確認頁面權限…</p>}</div></section>;
   else if (allowedKey !== key) content = <section className="page-content"><p role="status">正在確認頁面權限…</p></section>;
   else if (route.kind === 'contacts') content = <ContactsPage session={session} chat={chat} onNavigate={router.navigate} />;
@@ -111,6 +111,6 @@ export function App({ session, chat, router }: { session: SessionController; cha
         </nav>}
     {narrow && <AppMenu open={menuOpen} triggerRef={menuButton} onClose={() => setMenuOpen(false)} header={<div className="app-menu-self">{selfAvatar}<strong>{selfName}</strong></div>} items={[...navItems, { label: '建立群組', icon: 'group', onSelect: () => openCreate(menuButton.current) }, { label: '登出', icon: 'logout', onSelect: () => { void session.logout().catch(error => setShellNotice(describeError(error))); } }]} />}
     {createOpen && <CreateGroup session={session} open onClose={() => setCreateOpen(false)} triggerRef={createTrigger} onCreated={id => { setCreateOpen(false); router.navigate(`/chats/${encodeURIComponent(id)}`); }} />}
-    <div className="workspace">{shellNotice && <div className="notice" role="status">{shellNotice}<button className="text-button" onClick={() => setShellNotice(null)} aria-label="關閉提示">×</button></div>}<main id="main-content">{content}</main></div>
+    <div className="workspace">{shellNotice && <div className="notice" role="status">{shellNotice}<button className="text-button" onClick={() => setShellNotice(null)} aria-label="關閉提示"><Icon name="close" /></button></div>}<main id="main-content">{content}</main></div>
   </div>;
 }

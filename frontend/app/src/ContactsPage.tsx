@@ -3,6 +3,10 @@ import { ApiError, describeError, ownerPartition } from './api';
 import { downloadAttachment } from './attachment-transfer';
 import { avatarCacheFor } from './avatar-cache';
 import { directoryFor } from './user-directory';
+import { accentIndex } from './chat-presentation';
+import { CopyButton } from './CopyButton';
+import { Icon } from './icons';
+import { Illustration } from './Illustration';
 import type { SessionController } from './session';
 import type { ChatController } from './chat';
 import type { ContactView, ConversationCreateResult, Page, Presence, UserSummary, DownloadGrant } from './types';
@@ -180,22 +184,32 @@ export function ContactsPage({ session, chat, onNavigate }: { session: SessionCo
     finally { if (ownerActive()) lifetime.apply(version, () => setBusy(false)); }
   }
   const loaded = list.items.filter(item => item.user.display_name.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
+  const presence = chat.getSnapshot().presence, selectedContact = selected ? list.items.find(item => item.user.id === selected.id) : undefined;
+  const selectedPresence = selectedContact ? presence[selectedContact.user.id] ?? selectedContact.presence ?? 'unknown' : undefined;
   return <section className={`split-page contacts-page ${selected ? 'detail-selected' : ''}`}>
     <div className="list-panel">
       <header className="panel-header"><p className="eyebrow">您的聯絡人</p><h1 tabIndex={-1} data-route-heading>聯絡人</h1><p className="muted">分享公開 ID，開啟新的對話。</p></header>
       <form className="lookup-form" onSubmit={lookup}><label htmlFor="known-id">已知公開 ID</label><div className="input-action"><input id="known-id" value={knownId} onChange={event => setKnownId(event.target.value)} placeholder="貼上對方分享的 ID" /><button disabled={busy}>查詢</button></div></form>
-      <label htmlFor="contact-filter">篩選已載入的聯絡人</label><input id="contact-filter" type="search" value={filter} onChange={event => setFilter(event.target.value)} /><p className="small muted">僅篩選已載入項目，不是全站找人。</p>
+      <label htmlFor="contact-filter">篩選已載入的聯絡人</label><div className="search-field"><Icon name="search" /><input id="contact-filter" type="search" placeholder="輸入名稱" value={filter} onChange={event => setFilter(event.target.value)} /></div><p className="small muted">僅篩選已載入項目，不是全站找人。</p>
       {list.error && <p className="notice error" role="alert">{list.error}</p>}{error && !selected && <p className="notice error" role="alert">{error}</p>}
-      <ul className="item-list">{loaded.map(item => <li key={item.user.id}><button className={`list-item ${selected?.id === item.user.id ? 'selected' : ''}`} onClick={() => selectUser(item.user)}><span aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /></span><span className="item-copy"><strong>{item.user.display_name}</strong><span className="muted small">{PRESENCE_LABEL[chat.getSnapshot().presence[item.user.id] ?? item.presence ?? 'unknown']}</span></span><span aria-hidden="true">›</span></button></li>)}</ul>
-      {!loaded.length && !list.busy && <div className="empty-state"><strong>{filter ? '沒有符合的已載入項目' : '還沒有聯絡人'}</strong><p>輸入對方的公開 ID，確認後加入。</p></div>}{list.busy && <p role="status">載入聯絡人…</p>}
+      <ul className="item-list">{loaded.map(item => { const state = presence[item.user.id] ?? item.presence ?? 'unknown'; return <li key={item.user.id}><button className={`list-item ${selected?.id === item.user.id ? 'selected' : ''}`} onClick={() => selectUser(item.user)}>
+        <span className={`avatar-accent accent-${accentIndex(item.user.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} />{state === 'online' && <span className="presence-dot" />}</span>
+        <span className="item-copy"><strong>{item.user.display_name}</strong><span className={`muted small presence-text ${state}`}>{PRESENCE_LABEL[state]}</span></span>
+        <span className="list-chevron" aria-hidden="true"><Icon name="chevron" /></span>
+      </button></li>; })}</ul>
+      {!loaded.length && !list.busy && <div className="empty-state"><Illustration kind="people" /><strong>{filter ? '沒有符合的已載入項目' : '還沒有聯絡人'}</strong><p>輸入對方的公開 ID，確認後加入。</p></div>}{list.busy && <p role="status">載入聯絡人…</p>}
       <div className="actions"><button disabled={list.busy} onClick={() => { void list.load(true); }}>重新整理</button>{list.cursor && <button disabled={list.busy} onClick={() => { void list.load(); }}>載入下一頁</button>}</div>
     </div>
     <div className="detail-panel">{selected ? <>
-      <button className="narrow-back text-button" onClick={() => selectUser(null)}>← 返回聯絡人</button>
-      <div className="contact-detail"><Avatar session={session} attachmentId={selected.avatar_attachment_id} name={selected.display_name} /><h2 tabIndex={-1}>{selected.display_name}</h2><p className="muted">公開 ID</p><p className="identifier">{selected.id}</p>
+      <button className="narrow-back text-button" onClick={() => selectUser(null)}><Icon name="back" />返回聯絡人</button>
+      <div className="contact-detail"><div className="card contact-card">
+        <span className={`avatar-accent accent-${accentIndex(selected.id)}`}><Avatar session={session} attachmentId={selected.avatar_attachment_id} name={selected.display_name} /></span>
+        <h2 tabIndex={-1}>{selected.display_name}</h2>
+        {selectedPresence && <p className={`muted presence-text ${selectedPresence}`}>{PRESENCE_LABEL[selectedPresence]}</p>}
+        <div className="id-chip"><div><span className="small muted">公開 ID</span><p className="identifier">{selected.id}</p></div><CopyButton value={selected.id} subject="公開 ID" /></div>
         <div className="actions"><button className="primary" disabled={busy} onClick={() => { void action('chat'); }}>開始聊天</button>{list.items.some(item => item.user.id === selected.id) ? <button className="danger" disabled={busy} onClick={() => { void action('remove'); }}>移除聯絡人</button> : <button disabled={busy} onClick={() => { void action('add'); }}>確認加入聯絡人</button>}</div>
         {error && <p className="notice error" role="alert">{error}</p>}{notice && <p className="notice success" role="status">{notice}</p>}
-      </div>
-    </> : <div className="empty-state"><span className="empty-symbol">◎</span><h2>選擇一位聯絡人</h2><p>檢視公開資料，或開始一對一聊天。</p></div>}</div>
+      </div></div>
+    </> : <div className="empty-state"><Illustration kind="people" /><h2>選擇一位聯絡人</h2><p>檢視公開資料，或開始一對一聊天。</p></div>}</div>
   </section>;
 }

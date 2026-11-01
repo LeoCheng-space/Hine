@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { describeError, ApiError } from './api';
-import { passwordProblems } from './password';
+import { Icon } from './icons';
+import { Illustration } from './Illustration';
+import { passwordProblems, passwordViolations } from './password';
 import type { SessionController } from './session';
 export function AccountPage({ session, mode, onNavigate, onAuthenticated }: { session: SessionController; mode: 'login' | 'register'; onNavigate: (path: string) => void; onAuthenticated: () => Promise<void> }) {
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [name, setName] = useState('');
@@ -41,10 +43,34 @@ export function AccountPage({ session, mode, onNavigate, onAuthenticated }: { se
       refocus.current = wrongCredentials ? 'password' : 'email';
     } finally { if (mode === 'register' && refocus.current === null) refocus.current = 'login'; setBusy(false); }
   }
-  return <main className="account-page"><div className="brand-lockup"><span className="brand-mark">H</span><div><strong>HINE</strong><p>讓每一次對話，更靠近。</p></div></div><section className="card account-card"><p className="eyebrow">歡迎使用 HINE</p><h1 tabIndex={-1} data-route-heading>{mode === 'login' ? '歡迎回來' : '建立您的帳號'}</h1><p className="muted">{mode === 'login' ? '登入後接續您的聯絡人與對話。' : '使用電子郵件註冊，與重要的人保持聯繫。'}</p><form noValidate onSubmit={submit}>
+  const violations = passwordViolations(password, email);
+  // Neutral until something is typed, so an empty field never shows rules as already met.
+  const rules: [string, boolean][] = [
+    ['8–128 個字元', !violations.tooShort && !violations.tooLong],
+    ['大寫、小寫、數字、符號（含空格）至少 2 種', !violations.fewClasses],
+    ['不包含電子郵件 @ 前面的帳號名稱', !violations.containsAccount],
+    ['沒有 aaaa、1234、abcd 這類 4 個以上連續或重複的字元', !violations.run],
+  ];
+  return <main className="account-page">
+    <div className="account-hero">
+      <div className="brand-lockup"><span className="brand-mark" aria-hidden="true">H</span><div><strong>HINE</strong><p>讓每一次對話，更靠近。</p></div></div>
+      <div className="account-hero-copy">
+        <p className="account-hero-title">即時、可靠的<br />跨裝置聊天</p>
+        <p className="account-hero-lede">一對一與群組訊息即時送達；網路中斷後重新連線，會自動補齊漏掉的訊息。</p>
+        <ul className="account-features">
+          <li><Icon name="bolt" />送達與已讀狀態即時更新</li>
+          <li><Icon name="sync" />重新連線後自動同步，不重複也不遺漏</li>
+          <li><Icon name="group" />群組聊天，支援圖片與 PDF</li>
+        </ul>
+      </div>
+      <Illustration kind="conversation" />
+    </div>
+    <div className="account-main"><section className="card account-card"><p className="eyebrow">歡迎使用 HINE</p><h1 tabIndex={-1} data-route-heading>{mode === 'login' ? '歡迎回來' : '建立您的帳號'}</h1><p className="muted">{mode === 'login' ? '登入後接續您的聯絡人與對話。' : '使用電子郵件註冊，與重要的人保持聯繫。'}</p><form noValidate onSubmit={submit}>
     <label htmlFor="email">電子郵件</label><input ref={emailInput} id="email" name="email" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} aria-invalid={!!fields.email || rejected} aria-describedby={[fields.email ? 'email-error' : '', error ? 'form-error' : ''].filter(Boolean).join(' ') || undefined} disabled={busy} />{fields.email && <p id="email-error" className="field-error">{fields.email}</p>}
     {mode === 'register' && <><label htmlFor="display_name">顯示名稱</label><input id="display_name" name="display_name" autoComplete="nickname" value={name} onChange={event => setName(event.target.value)} aria-invalid={!!fields.display_name} aria-describedby={fields.display_name ? 'name-error' : undefined} disabled={busy} />{fields.display_name && <p id="name-error" className="field-error">{fields.display_name}</p>}</>}
-    <label htmlFor="password">密碼</label><input ref={passwordInput} id="password" name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} aria-invalid={!!fields.password || rejected} aria-describedby={[mode === 'register' ? 'password-hint' : '', fields.password ? 'password-error' : '', error ? 'form-error' : ''].filter(Boolean).join(' ') || undefined} disabled={busy} />{mode === 'register' && <p id="password-hint" className="field-hint">8–128 個字元，包含大寫、小寫、數字、符號（含空格）其中至少 2 種；不可包含電子郵件帳號名稱，或 aaaa、1234、abcd 這類連續字元。</p>}{fields.password && <p id="password-error" className="field-error">{fields.password}</p>}
+    <label htmlFor="password">密碼</label><input ref={passwordInput} id="password" name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} aria-invalid={!!fields.password || rejected} aria-describedby={[mode === 'register' ? 'password-hint' : '', fields.password ? 'password-error' : '', error ? 'form-error' : ''].filter(Boolean).join(' ') || undefined} disabled={busy} />
+    {mode === 'register' && <div id="password-hint" className="password-rules"><p>密碼需要：</p><ul>{rules.map(([text, ok]) => { const met = password.length > 0 && ok; return <li key={text} className={met ? 'met' : undefined}><Icon name={met ? 'check' : 'dot'} />{text}{met && <span className="visually-hidden">（已符合）</span>}</li>; })}</ul></div>}
+    {fields.password && <p id="password-error" className="field-error">{fields.password}</p>}
     {error && <p id="form-error" className="notice error" role="alert">{error}</p>}{success && <p className="notice success" role="status">{success} <button ref={loginLink} type="button" className="text-button" onClick={() => onNavigate('/login')}>前往登入</button></p>}
-    <button className="primary" disabled={busy} type="submit">{busy ? '處理中…' : mode === 'login' ? '登入' : '建立帳號'}</button></form><p className="account-alternative">{mode === 'login' ? '還沒有帳號？' : '已經有帳號？'} <button className="text-button" onClick={() => onNavigate(mode === 'login' ? '/register' : '/login')}>{mode === 'login' ? '免費註冊' : '登入'}</button></p></section><p className="security-note">安全連線 · 同時只能開一個聊天分頁 · 登入資訊不存放在這台裝置</p></main>;
+    <button className="primary" disabled={busy} type="submit">{busy ? '處理中…' : mode === 'login' ? '登入' : '建立帳號'}</button></form><p className="account-alternative">{mode === 'login' ? '還沒有帳號？' : '已經有帳號？'} <button className="text-button" onClick={() => onNavigate(mode === 'login' ? '/register' : '/login')}>{mode === 'login' ? '免費註冊' : '登入'}</button></p></section><p className="security-note"><Icon name="shield" />安全連線 · 同時只能開一個聊天分頁 · 登入資訊不存放在這台裝置</p></div></main>;
 }

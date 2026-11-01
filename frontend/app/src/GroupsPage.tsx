@@ -108,7 +108,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
   // A public-ID lookup computes the next selection from the list it started with, so the selection stays fixed until it settles.
   const locked = busy || !!pending, selectionLocked = locked || lookupBusy;
   return <dialog ref={dialog} className="create-group-dialog" aria-modal="true" aria-labelledby="create-group-title" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
-    <header className="create-group-header"><h2 id="create-group-title">建立群組</h2><button type="button" className="text-button" onClick={onClose} disabled={busy}>關閉</button></header>
+    <header className="dialog-header"><h2 id="create-group-title">建立群組</h2><button type="button" className="icon-button" onClick={onClose} disabled={busy} aria-label="關閉"><Icon name="close" /></button></header>
     {pending && <p className="notice" role="status">原本的建立內容已保留。重試會確認同一個群組，不會另建一個；請先確認結果再修改內容。</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
     <div className="create-group-body">
@@ -126,7 +126,7 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
         </form>
         <ul className="contact-picker" aria-label="聯絡人">{contacts.items.map(item => { const checked = selected.includes(item.user.id); return <li key={item.user.id}><label className="contact-option">
           <input type="checkbox" checked={checked} disabled={selectionLocked || (!checked && selected.length >= GROUP_OTHER_MEMBER_LIMIT)} onChange={event => toggle(item.user.id, event.target.checked)} />
-          <span aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /></span><span>{item.user.display_name}</span>
+          <span className={`avatar-accent accent-${accentIndex(item.user.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={item.user.avatar_attachment_id} name={item.user.display_name} /></span><span>{item.user.display_name}</span>
         </label></li>; })}</ul>
         {contacts.busy && <p role="status" className="small muted">載入聯絡人…</p>}
         {!contacts.busy && !contacts.items.length && <p className="small muted">還沒有聯絡人。可以輸入公開 ID 加入，或直接建立群組。</p>}
@@ -139,7 +139,8 @@ export function CreateGroup({ session, open, onClose, triggerRef, onCreated }: {
     </form>
   </dialog>;
 }
-export function GroupInfoDialog({ detail, names, onClose, onManage, returnFocus }: { detail: ConversationDetail; names: Record<string, string>; onClose: () => void; onManage: () => void; returnFocus: () => void }) {
+export function GroupInfoDialog({ session, detail, names, onClose, onManage, returnFocus }: { session: SessionController; detail: ConversationDetail; names: Record<string, string>; onClose: () => void; onManage: () => void; returnFocus: () => void }) {
+  const directory = directoryFor(session); useSyncExternalStore(directory.subscribe, directory.getVersion);
   const dialog = useRef<HTMLDialogElement>(null), closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const element = dialog.current;
@@ -147,7 +148,7 @@ export function GroupInfoDialog({ detail, names, onClose, onManage, returnFocus 
     element.showModal(); closeButton.current?.focus(); window.dispatchEvent(new Event('hine-overlay-change'));
     return () => { element.close(); window.dispatchEvent(new Event('hine-overlay-change')); returnFocus(); };
   }, [returnFocus]);
-  return <dialog ref={dialog} id="group-info-dialog" className="card group-info-dialog" aria-modal="true" aria-labelledby="group-info-title"
+  return <dialog ref={dialog} id="group-info-dialog" className="group-info-dialog" aria-modal="true" aria-labelledby="group-info-title"
     onCancel={event => { event.preventDefault(); onClose(); }}
     onKeyDown={event => {
       if (event.key !== 'Tab' || !dialog.current) return;
@@ -155,9 +156,12 @@ export function GroupInfoDialog({ detail, names, onClose, onManage, returnFocus 
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }}>
-    <header className="group-info-header"><h2 id="group-info-title">群組資訊</h2><button ref={closeButton} type="button" onClick={onClose} aria-label="關閉群組資訊">關閉</button></header>
-    <h3>{detail.title}</h3><p className="muted">{detail.members.length} / 50 位成員 · 版本 {detail.membership_version}</p>
-    <ul className="member-list">{detail.members.map(member => <li key={member.user_id}><div><strong>{names[member.user_id] ?? member.user_id}</strong><span className="badge">{member.role === 'admin' ? '管理員' : '成員'}</span><p className="identifier">{member.user_id}</p></div></li>)}</ul>
+    <header className="dialog-header"><h2 id="group-info-title">群組資訊</h2><button ref={closeButton} type="button" className="icon-button" onClick={onClose} aria-label="關閉群組資訊"><Icon name="close" /></button></header>
+    <div className="group-info-summary"><span className={`avatar-accent accent-${accentIndex(detail.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={null} name={detail.title ?? '群組'} /></span><h3>{detail.title}</h3><p className="muted small">{detail.members.length} / 50 位成員</p></div>
+    <ul className="member-list">{detail.members.map(member => { const entry = directory.get(member.user_id), name = names[member.user_id] ?? member.user_id; return <li key={member.user_id}>
+      <span className={`avatar-accent accent-${accentIndex(member.user_id)}`} aria-hidden="true"><Avatar session={session} attachmentId={entry && !entry.avatarStale ? entry.avatarId : null} name={name} /></span>
+      <div className="member-copy"><p className="member-name"><strong>{name}</strong><span className={`badge${member.role === 'admin' ? ' admin' : ''}`}>{member.role === 'admin' ? '管理員' : '成員'}</span></p><p className="identifier">{member.user_id}</p></div>
+    </li>; })}</ul>
     <div className="actions"><button type="button" className="primary" onClick={onManage}>前往群組管理</button></div>
   </dialog>;
 }
@@ -197,7 +201,7 @@ export function GroupsPage({ session, chat, conversationId, onNavigate }: { sess
       <div className="card group-hero">
         <span className={`avatar-accent accent-${accentIndex(detail.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={null} name={detail.title ?? '群組'} /></span>
         <h2>{detail.title}</h2>
-        <p className="muted">{detail.members.length} / 50 位成員 · 版本 {detail.membership_version}</p>
+        <p className="muted">{detail.members.length} / 50 位成員</p>
         {isAdmin && <form onSubmit={event => { event.preventDefault(); if (!title) { setError('請輸入群組名稱。'); event.currentTarget.querySelector('input')?.focus(); return; } void mutate('title'); }}>
           <label htmlFor="rename-group">群組名稱</label>
           <div className="input-action"><input id="rename-group" value={title} onChange={event => setTitle(event.target.value)} disabled={busy} /><button disabled={busy}>儲存名稱</button></div>

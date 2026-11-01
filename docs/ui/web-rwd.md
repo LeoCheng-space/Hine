@@ -50,6 +50,11 @@ UI 路由為 `/`、`/login`、`/register`、`/contacts`、`/chats`、`/chats/{co
   - 斷點在 CSS 與 JS 一律寫作 `(max-width: 767.98px)`，等同 `w < 768`。不用 `(width < 768px)`：打包器會改寫為 `max-width:767.999px`，Chrome 以 1/64 px 精度捨入成 768px，造成 768px 時 CSS 與 `matchMedia` 判定不一致。
   - 窄版清單與聊天室以 `display` 切換，不做滑動過場；聊天室及其祖先不使用 opacity／scale／位移過場，以免改變已讀判定的幾何前提。新訊息進場動畫只套用在少量尾端新訊息，`prefers-reduced-motion: reduce` 時不播放；動畫進行中的泡泡不計入已讀計時（只會延後、不會提早已讀）。
   - 聊天路由切換對話時保留清單實例，只有聊天室面板等待該對話的權限確認；錯誤頁與其他路由的整頁閘門不變。
+- <a id="rwd-ui-polish-2026-11-01"></a>**實作說明（2026-11-01 UI 美化，不變更上列決議）：**
+  - 顏色、陰影與圓角改為語意 token（`frontend/app/src/Shell.css` 開頭），依 `prefers-color-scheme` 提供淺色與深色主題；沒有手動切換，也不保存偏好。
+  - 窄版聊天室的「返回聊天清單」（`.narrow-back`，只顯示返回圖示，可存取名稱不變）疊在聊天室頂部列左側，不再單獨佔一列。鍵盤彈出的精簡檢視（`.compact-viewport`）把它和頂部列一起隱藏：若改回一般排版，聊天室會被往下推，超出 `ChatView` 剛量測的可用高度。
+  - 插圖是內嵌 SVG、顏色來自 CSS class；不使用 `data:` 圖片，以符合 Caddy 的 `img-src 'self' blob:`。
+  - 聊天室與其祖先仍不使用 opacity／scale／位移過場；只有對話框與 ☰ 選單本身有進場過場。
 
 
 <a id="提案-fa-聊天輸入捲動與已讀行為"></a>

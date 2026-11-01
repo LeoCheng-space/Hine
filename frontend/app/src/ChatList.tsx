@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { ownerPartition } from './api';
 import { Avatar, usePagedList } from './ContactsPage';
 import { Icon } from './icons';
+import { Illustration } from './Illustration';
 import { accentIndex, activityBookFor, deniedMemoryFor, formatListTime, previewText, sortConversations } from './chat-presentation';
 import { RepositoryCancelled } from './repository';
 import { directoryFor } from './user-directory';
@@ -108,27 +109,32 @@ export function ChatList({ session, chat, path, onNavigate, onCreateGroup }: { s
 
   return <aside className="list-panel chat-list">
     <header className="chat-list-header">
-      <h1 tabIndex={-1} data-route-heading={path === '/chats' ? '' : undefined}>聊天</h1>
-      <label className="visually-hidden" htmlFor="chat-filter">搜尋已載入的對話</label>
-      <input id="chat-filter" className="chat-search" type="search" placeholder="搜尋" value={filter} onChange={event => setFilter(event.target.value)} />
+      <div className="chat-list-title">
+        <h1 tabIndex={-1} data-route-heading={path === '/chats' ? '' : undefined}>聊天</h1>
+        <button type="button" className="icon-button" aria-label="重新整理" disabled={list.busy} onClick={() => { void list.load(true); }}><Icon name="refresh" /></button>
+      </div>
+      <div className="search-field"><Icon name="search" />
+        <label className="visually-hidden" htmlFor="chat-filter">搜尋已載入的對話</label>
+        <input id="chat-filter" className="chat-search" type="search" placeholder="搜尋對話" value={filter} onChange={event => setFilter(event.target.value)} />
+      </div>
       {term && <p className="small muted list-hint">只篩選已載入項目</p>}
     </header>
     {list.error && <p role="alert" className="notice error">{list.error}</p>}
     {list.items.length === 0 && list.busy
       ? <ul className="item-list skeleton-list" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map(index => <li key={index}><span className="list-item skeleton-row"><span className="avatar" /><span className="item-copy"><span className="skeleton-bar" /><span className="skeleton-bar short" /></span></span></li>)}</ul>
       : <ul ref={listRef} className="item-list" aria-label="對話清單">{shown.map(({ item, last, peer, title }) => {
-          const target = `/chats/${encodeURIComponent(item.id)}`, selected = path === target, entry = peer ? directory.get(peer) : undefined;
+          const target = `/chats/${encodeURIComponent(item.id)}`, selected = path === target, entry = peer ? directory.get(peer) : undefined, online = !!peer && snapshot.presence[peer] === 'online';
           return <li key={item.id}><button type="button" data-conversation-id={item.id} className={`list-item${selected ? ' selected' : ''}`} aria-current={selected ? 'page' : undefined} onClick={() => onNavigate(target)}>
-            <span className={`avatar-accent accent-${accentIndex(peer ?? item.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={entry && !entry.avatarStale ? entry.avatarId : null} name={title} /></span>
+            <span className={`avatar-accent accent-${accentIndex(peer ?? item.id)}`} aria-hidden="true"><Avatar session={session} attachmentId={entry && !entry.avatarStale ? entry.avatarId : null} name={title} />{online && <span className="presence-dot" />}</span>
             <span className="item-copy">
-              <span className="item-line"><strong>{title}</strong>{last && <time className="item-time" dateTime={last.created_at}>{formatListTime(last.created_at, now)}</time>}</span>
+              <span className="item-line"><strong>{title}</strong>{online && <span className="visually-hidden">（線上）</span>}{last && <time className={`item-time${item.unread_count > 0 ? ' has-unread' : ''}`} dateTime={last.created_at}>{formatListTime(last.created_at, now)}</time>}</span>
               <span className="item-line"><span className="item-preview">{previewText(last, item.type, me, id => directory.get(id)?.displayName ?? id)}</span>{item.unread_count > 0 && <span className="unread" aria-label={`${item.unread_count} 則未讀`}>{item.unread_count}</span>}</span>
             </span>
           </button></li>;
         })}</ul>}
     {list.busy && <p role="status" className="visually-hidden">載入對話…</p>}
-    {!shown.length && !list.busy && <div className="empty-state"><strong>{term ? '沒有符合的已載入對話' : '還沒有對話'}</strong><p>選擇聯絡人開始聊天，或建立您的群組。</p><button type="button" onClick={() => onNavigate('/contacts')}>到聯絡人開始聊天</button></div>}
-    <div className="actions">{list.cursor && <button type="button" disabled={list.busy} onClick={() => { void list.load(); }}>載入下一頁</button>}<button type="button" className="text-button" disabled={list.busy} onClick={() => { void list.load(true); }}>重新整理</button></div>
+    {!shown.length && !list.busy && <div className="empty-state"><Illustration kind="conversation" /><strong>{term ? '沒有符合的已載入對話' : '還沒有對話'}</strong><p>選擇聯絡人開始聊天，或建立您的群組。</p><button type="button" onClick={() => onNavigate('/contacts')}>到聯絡人開始聊天</button></div>}
+    <div className="actions">{list.cursor && <button type="button" disabled={list.busy} onClick={() => { void list.load(); }}>載入下一頁</button>}</div>
     <button type="button" className="compose-fab" aria-label="建立群組" onClick={event => onCreateGroup(event.currentTarget)}><Icon name="compose" /></button>
   </aside>;
 }
