@@ -7,7 +7,7 @@
 - 聊天：清單加入搜尋圖示，「重新整理」移到標題列，加上線上狀態點，有未讀時時間改用主色。自己的訊息改為品牌色泡泡配白字，「已讀」與「已送達」的雙勾以顏色和粗細區分。同一人連續發的訊息，泡泡在發話側收窄圓角。輸入框有內容時，送出鈕才顯示主色。窄版聊天室的返回鍵併入頂部列，畫面多出約 56px。
 - 聯絡人／個人檔案／群組：聯絡人清單的頭像配色、線上狀態與箭頭跟聊天清單一致。聯絡人詳情與個人檔案改為名片式卡片，並提供「複製公開 ID」。群組資訊加入成員頭像，群組資訊與群組管理頁移除對使用者沒有意義的「版本 N」。
 - 不變：路由、按鈕名稱、欄位標籤、瀏覽器驗收用的定位（`.chat-list`、`.chat-room`、`.message-meta`、`.narrow-back` 等）、已讀判定的幾何前提，以及 768px 斷點。說明見 [Web/RWD 實作說明](ui/web-rwd.md#rwd-ui-polish-2026-11-01)。
-- 驗證：在本機 Docker stack 實測 390／767／768／1280 寬度、淺色與深色、窄版鍵盤精簡檢視、傳訊與已讀狀態顯示；`bun run typecheck`、`bun run test`（119 pass）與正式建置都通過。CI 的 Chrome／Edge 瀏覽器驗收尚未在這個分支執行。
+- 驗證：在本機 Docker stack 實測 390／767／768／1280 寬度、淺色與深色、窄版鍵盤精簡檢視、傳訊與已讀狀態顯示；`bun run typecheck`、`bun run test`（119 pass）與正式建置都通過。CI：`61303ba` 的 [run41316431564](https://github.com/LeoCheng-space/Hine/actions/runs/41316431564)（8 個 job 含 Chrome／Edge 瀏覽器驗收）與 [Dependency Audit run41316431557](https://github.com/LeoCheng-space/Hine/actions/runs/41316431557) 全部 SUCCESS，未 rerun。
 
 ## 2026-10-26 — 即時服務映像改用與 API 相同的 Debian 13 基底（依賴稽核）
 
